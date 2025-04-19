@@ -1,0 +1,26 @@
+{
+  "name": "lookoverlayelectron",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "npm run build && electron ./dist/main.js",
+    "dev": "concurrently \"npm run watch\" \"electron ./dist/main.js\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@electron/typescript-definitions": "^9.1.2",
+    "@types/electron": "^1.4.38",
+    "@types/node": "^22.14.1",
+    "concurrently": "^9.1.2",
+    "electron": "^35.2.0",
+    "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
