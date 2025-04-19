@@ -1,3 +1,11 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  captureScreenshot: () => ipcRenderer.invoke('capture-screenshot'),
+  callAnthropicAPI: (imageData: string, prompt: string) => 
+    ipcRenderer.invoke('call-anthropic-api', imageData, prompt)
+});
+
 window.addEventListener('DOMContentLoaded', () => {
   const replaceText = (selector: string, text: string) => {
     const element = document.getElementById(selector);

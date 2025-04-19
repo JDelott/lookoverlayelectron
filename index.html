@@ -2,16 +2,52 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Electron TypeScript App</title>
+    <title>Transparent Screenshot Analyzer</title>
     <meta http-equiv="Content-Security-Policy" content="script-src 'self';" />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <h1>Hello Electron with TypeScript!</h1>
-    <p>Running on:</p>
-    <ul>
-      <li>Chrome: <span id="chrome-version"></span></li>
-      <li>Node: <span id="node-version"></span></li>
-      <li>Electron: <span id="electron-version"></span></li>
-    </ul>
+    <div class="app-container">
+      <div class="toolbar">
+        <div class="controls">
+          <button id="capture-btn">Capture Screenshot</button>
+          <button id="analyze-btn" disabled>Analyze with Claude</button>
+        </div>
+        <div class="controls">
+          <button id="minimize-btn">_</button>
+          <button id="close-btn">X</button>
+        </div>
+      </div>
+
+      <div class="content-area">
+        <div class="screenshot-area">
+          <div class="screenshot-display">
+            <img id="screenshot-img" style="display: none" />
+            <div id="placeholder-text">Capture a screenshot to analyze it</div>
+          </div>
+        </div>
+
+        <div class="analysis-area" id="analysis-output">
+          Analysis will appear here after processing...
+        </div>
+
+        <div class="chat-input">
+          <input
+            type="text"
+            id="prompt-input"
+            placeholder="Ask Claude about the screenshot..."
+          />
+          <button id="send-btn" disabled>Send</button>
+        </div>
+      </div>
+
+      <div class="info-bar">
+        Running on: Chrome <span id="chrome-version"></span> | Node
+        <span id="node-version"></span> | Electron
+        <span id="electron-version"></span>
+      </div>
+    </div>
+
+    <script src="./dist/renderer.js"></script>
   </body>
 </html>

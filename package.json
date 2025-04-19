@@ -1,7 +1,8 @@
 {
   "name": "lookoverlayelectron",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Transparent overlay for capturing and analyzing screenshots with Claude",
+  "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
@@ -11,7 +12,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.5.0"
+  },
   "devDependencies": {
     "@electron/typescript-definitions": "^9.1.2",
     "@types/electron": "^1.4.38",
