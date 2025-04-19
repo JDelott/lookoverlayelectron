@@ -13,27 +13,70 @@ document.addEventListener('DOMContentLoaded', () => {
   // Screenshot data storage
   let currentScreenshotData: string | null = null;
 
-  // Capture screenshot
+  // Capture screenshot - focusing on window content only
   captureBtn.addEventListener('click', async () => {
     try {
-      currentScreenshotData = await window.electronAPI.captureScreenshot();
+      // Update UI
+      captureBtn.disabled = true;
+      captureBtn.textContent = 'Capturing...';
       
-      // Display the screenshot
-      if (currentScreenshotData) {
-        screenshotImg.src = currentScreenshotData;
+      // Show capturing state
+      screenshotImg.style.display = 'none';
+      placeholderText.textContent = 'Capturing content...';
+      placeholderText.style.display = 'block';
+      
+      // Disable buttons
+      analyzeBtn.disabled = true;
+      sendBtn.disabled = true;
+      
+      // Clear old image
+      if (screenshotImg.src) {
+        URL.revokeObjectURL(screenshotImg.src);
+        screenshotImg.src = '';
+      }
+      
+      // Take the screenshot
+      const dataUrl = await window.electronAPI.captureScreenshot();
+      
+      // Create a new Image to verify it loads correctly
+      const testImage = new Image();
+      
+      testImage.onload = () => {
+        // Image loaded successfully, update the UI
+        currentScreenshotData = dataUrl;
+        
+        // Apply to the visible image element with cache busting
+        const timestamp = Date.now();
+        screenshotImg.src = `${dataUrl}#t=${timestamp}`;
+        
+        // Show the image
         screenshotImg.style.display = 'block';
         placeholderText.style.display = 'none';
         
-        // Enable analyze button
+        // Enable buttons
         analyzeBtn.disabled = false;
         sendBtn.disabled = false;
         
-        // Update analysis area
+        // Update message
         analysisOutput.textContent = 'Screenshot captured. Click "Analyze with Claude" to process it.';
-      }
+      };
+      
+      testImage.onerror = () => {
+        console.error('Failed to load captured image data');
+        placeholderText.textContent = 'Error loading screenshot. Please try again.';
+        analysisOutput.textContent = 'Error loading screenshot. Please try again.';
+      };
+      
+      // Test if the image loads
+      testImage.src = dataUrl;
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
+      placeholderText.textContent = 'Error capturing screenshot. Please try again.';
       analysisOutput.textContent = 'Error capturing screenshot. Please try again.';
+    } finally {
+      // Re-enable button
+      captureBtn.disabled = false;
+      captureBtn.textContent = 'Capture Screenshot';
     }
   });
 
@@ -97,8 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Window controls
   minimizeBtn.addEventListener('click', () => {
-    // This will be implemented in the main process
-    console.log('Minimize clicked');
+    window.electronAPI.minimizeWindow();
   });
   
   closeBtn.addEventListener('click', () => {

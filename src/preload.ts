@@ -3,7 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   captureScreenshot: () => ipcRenderer.invoke('capture-screenshot'),
   callAnthropicAPI: (imageData: string, prompt: string) => 
-    ipcRenderer.invoke('call-anthropic-api', imageData, prompt)
+    ipcRenderer.invoke('call-anthropic-api', imageData, prompt),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window')
 });
 
 window.addEventListener('DOMContentLoaded', () => {
