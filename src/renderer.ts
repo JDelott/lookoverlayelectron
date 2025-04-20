@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const captureBtn = document.getElementById('capture-btn') as HTMLButtonElement;
   const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
   const analyzeBtn = document.getElementById('analyze-btn') as HTMLButtonElement;
+  const copyResultBtn = document.getElementById('copy-result-btn') as HTMLButtonElement;
   const minimizeBtn = document.getElementById('minimize-btn') as HTMLButtonElement;
   const closeBtn = document.getElementById('close-btn') as HTMLButtonElement;
   const screenshotImg = document.getElementById('screenshot-img') as HTMLImageElement;
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Screenshot data storage
   let currentScreenshotData: string | null = null;
+  let hasAnalysisResult = false;
 
   // Function to clear the current screenshot
   const clearScreenshot = () => {
@@ -33,13 +35,36 @@ document.addEventListener('DOMContentLoaded', () => {
     analyzeBtn.disabled = true;
     sendBtn.disabled = true;
     clearBtn.disabled = true;
+    copyResultBtn.disabled = true;
     
     // Clear the analysis area
     analysisOutput.textContent = 'Analysis will appear here after processing...';
+    hasAnalysisResult = false;
     
     // Clear the current screenshot data
     currentScreenshotData = null;
   };
+
+  // Copy result to clipboard
+  copyResultBtn.addEventListener('click', () => {
+    const textToCopy = analysisOutput.textContent || '';
+    
+    if (textToCopy && textToCopy !== 'Analysis will appear here after processing...') {
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+          // Show temporary feedback that copy was successful
+          const originalText = copyResultBtn.textContent;
+          copyResultBtn.textContent = 'Copied!';
+          
+          setTimeout(() => {
+            copyResultBtn.textContent = originalText;
+          }, 1500);
+        })
+        .catch(err => {
+          console.error('Failed to copy text: ', err);
+        });
+    }
+  });
 
   // Clear Screenshot button
   clearBtn.addEventListener('click', clearScreenshot);
@@ -60,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
       analyzeBtn.disabled = true;
       sendBtn.disabled = true;
       clearBtn.disabled = true;
+      copyResultBtn.disabled = true;
       
       // Clear old image
       if (screenshotImg.src) {
@@ -91,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         analyzeBtn.disabled = false;
         sendBtn.disabled = false;
         clearBtn.disabled = false;
+        copyResultBtn.disabled = false;
         
         // Update message
         analysisOutput.textContent = 'Screenshot captured. Click "Analyze with Claude" to process it.';
@@ -123,6 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
+      // Disable copy button during analysis
+      copyResultBtn.disabled = true;
+      hasAnalysisResult = false;
+      
       analysisOutput.textContent = 'Analyzing screenshot with Claude...';
       const result = await window.electronAPI.callAnthropicAPI(
         currentScreenshotData,
@@ -131,6 +162,9 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (result.success) {
         analysisOutput.textContent = result.analysis;
+        // Enable copy button now that we have results
+        copyResultBtn.disabled = false;
+        hasAnalysisResult = true;
       } else {
         analysisOutput.textContent = 'Analysis failed. Please try again.';
       }
@@ -146,6 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!prompt || !currentScreenshotData) return;
     
     try {
+      // Disable copy button during processing
+      copyResultBtn.disabled = true;
+      hasAnalysisResult = false;
+      
       analysisOutput.textContent = `Processing: "${prompt}"...`;
       const result = await window.electronAPI.callAnthropicAPI(
         currentScreenshotData,
@@ -154,6 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (result.success) {
         analysisOutput.textContent = result.analysis;
+        // Enable copy button now that we have results
+        copyResultBtn.disabled = false;
+        hasAnalysisResult = true;
       } else {
         analysisOutput.textContent = 'Analysis failed. Please try again.';
       }

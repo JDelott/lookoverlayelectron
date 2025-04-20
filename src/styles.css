@@ -58,13 +58,28 @@ body {
   object-fit: contain;
 }
 
+.analysis-container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  background-color: rgba(50, 50, 50, 0.7);
+  border-radius: 5px 5px 0 0;
+}
+
 .analysis-area {
   height: 200px;
   background-color: rgba(60, 60, 60, 0.5);
-  border-radius: 5px;
+  border-radius: 0 0 5px 5px;
   padding: 10px;
   overflow-y: auto;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .chat-input {
@@ -109,4 +124,19 @@ button:hover {
   color: #cccccc;
   text-align: center;
   padding: 5px;
+}
+
+#copy-result-btn {
+  font-size: 0.8em;
+  padding: 4px 8px;
+  background-color: #2a6bb8;
+}
+
+#copy-result-btn:hover {
+  background-color: #3a80d2;
+}
+
+#copy-result-btn:disabled {
+  background-color: #555;
+  cursor: not-allowed;
 }
