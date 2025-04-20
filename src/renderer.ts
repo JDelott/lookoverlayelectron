@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const captureBtn = document.getElementById('capture-btn') as HTMLButtonElement;
+  const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
   const analyzeBtn = document.getElementById('analyze-btn') as HTMLButtonElement;
   const minimizeBtn = document.getElementById('minimize-btn') as HTMLButtonElement;
   const closeBtn = document.getElementById('close-btn') as HTMLButtonElement;
@@ -13,7 +14,37 @@ document.addEventListener('DOMContentLoaded', () => {
   // Screenshot data storage
   let currentScreenshotData: string | null = null;
 
-  // Capture screenshot - focusing on window content only
+  // Function to clear the current screenshot
+  const clearScreenshot = () => {
+    // Reset UI elements
+    if (screenshotImg.src) {
+      // Clean up any blob URLs
+      if (screenshotImg.src.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotImg.src);
+      }
+      screenshotImg.src = '';
+    }
+    
+    screenshotImg.style.display = 'none';
+    placeholderText.textContent = 'Capture a screenshot to analyze it';
+    placeholderText.style.display = 'block';
+    
+    // Disable buttons that need a screenshot
+    analyzeBtn.disabled = true;
+    sendBtn.disabled = true;
+    clearBtn.disabled = true;
+    
+    // Clear the analysis area
+    analysisOutput.textContent = 'Analysis will appear here after processing...';
+    
+    // Clear the current screenshot data
+    currentScreenshotData = null;
+  };
+
+  // Clear Screenshot button
+  clearBtn.addEventListener('click', clearScreenshot);
+
+  // Capture screenshot
   captureBtn.addEventListener('click', async () => {
     try {
       // Update UI
@@ -28,10 +59,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Disable buttons
       analyzeBtn.disabled = true;
       sendBtn.disabled = true;
+      clearBtn.disabled = true;
       
       // Clear old image
       if (screenshotImg.src) {
-        URL.revokeObjectURL(screenshotImg.src);
+        if (screenshotImg.src.startsWith('blob:')) {
+          URL.revokeObjectURL(screenshotImg.src);
+        }
         screenshotImg.src = '';
       }
       
@@ -56,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Enable buttons
         analyzeBtn.disabled = false;
         sendBtn.disabled = false;
+        clearBtn.disabled = false;
         
         // Update message
         analysisOutput.textContent = 'Screenshot captured. Click "Analyze with Claude" to process it.';

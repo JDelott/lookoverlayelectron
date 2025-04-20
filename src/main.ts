@@ -107,8 +107,16 @@ ipcMain.handle('capture-screenshot', async () => {
     // Restore window opacity
     mainWindow.setOpacity(originalOpacity);
     
-    // Convert to data URL
+    // Convert to data URL in memory (no file saving)
     const dataURL = croppedImage.toDataURL();
+    
+    // Clean up memory
+    sources.forEach(source => {
+      if (source !== mainSource) {
+        // @ts-ignore - force cleanup
+        source.thumbnail = null;
+      }
+    });
     
     return dataURL;
   } catch (error) {
