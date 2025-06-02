@@ -1,0 +1,142 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  color: white;
+  background-color: rgba(25, 25, 25, 0.7);
+  border-radius: 8px;
+  -webkit-app-region: drag;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  background-color: rgba(40, 40, 40, 0.7);
+  border-radius: 5px;
+  margin-bottom: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screenshot-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.screenshot-display {
+  flex: 1;
+  background-color: rgba(60, 60, 60, 0.5);
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.screenshot-display img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.analysis-container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  background-color: rgba(50, 50, 50, 0.7);
+  border-radius: 5px 5px 0 0;
+}
+
+.analysis-area {
+  height: 200px;
+  background-color: rgba(60, 60, 60, 0.5);
+  border-radius: 0 0 5px 5px;
+  padding: 10px;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+.chat-input {
+  display: flex;
+  background-color: rgba(60, 60, 60, 0.5);
+  border-radius: 5px;
+  padding: 5px;
+  -webkit-app-region: no-drag;
+}
+
+.chat-input input {
+  flex: 1;
+  background-color: rgba(80, 80, 80, 0.5);
+  border: none;
+  border-radius: 3px;
+  color: white;
+  padding: 8px 12px;
+  margin-right: 5px;
+}
+
+button {
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 8px 12px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+button:hover {
+  background-color: #3a80d2;
+}
+
+.controls {
+  display: flex;
+  gap: 5px;
+}
+
+.info-bar {
+  font-size: 0.8em;
+  color: #cccccc;
+  text-align: center;
+  padding: 5px;
+}
+
+#copy-result-btn {
+  font-size: 0.8em;
+  padding: 4px 8px;
+  background-color: #2a6bb8;
+}
+
+#copy-result-btn:hover {
+  background-color: #3a80d2;
+}
+
+#copy-result-btn:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}

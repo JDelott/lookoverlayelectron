@@ -1,0 +1,30 @@
+{
+  "name": "lookoverlayelectron",
+  "version": "1.0.0",
+  "description": "Lightweight IDE with Monaco Editor",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "tsc -p tsconfig.renderer.json",
+    "build": "npm run build:main && npm run build:renderer",
+    "watch:main": "tsc -p tsconfig.main.json -w",
+    "watch:renderer": "tsc -p tsconfig.renderer.json -w",
+    "watch": "concurrently \"npm run watch:main\" \"npm run watch:renderer\"",
+    "start": "npm run build && electron ./dist/main.js",
+    "dev": "concurrently \"npm run watch\" \"electron ./dist/main.js\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "monaco-editor": "^0.44.0"
+  },
+  "devDependencies": {
+    "@electron/typescript-definitions": "^9.1.2",
+    "@types/electron": "^1.4.38",
+    "@types/node": "^22.14.1",
+    "concurrently": "^9.1.2",
+    "electron": "^35.2.0",
+    "typescript": "^5.8.3"
+  }
+}
