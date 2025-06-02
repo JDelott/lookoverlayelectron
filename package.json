@@ -17,12 +17,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "monaco-editor": "^0.44.0"
+    "monaco-editor": "^0.44.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@electron/typescript-definitions": "^9.1.2",
     "@types/electron": "^1.4.38",
     "@types/node": "^22.14.1",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
     "concurrently": "^9.1.2",
     "electron": "^35.2.0",
     "typescript": "^5.8.3"

@@ -147,3 +147,64 @@ function getContentBounds(windowBounds: Electron.Rectangle, displayBounds: Elect
     height: Math.round(windowBounds.height * scaleFactor)
   };
 }
+
+// Handle file system operations
+ipcMain.handle('get-directory-contents', async (event, directoryPath?: string) => {
+  try {
+    const targetPath = directoryPath || process.cwd();
+    
+    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const files = await Promise.all(
+      items.map(async (item) => {
+        const fullPath = path.join(targetPath, item.name);
+        const stats = await fs.promises.stat(fullPath);
+        
+        return {
+          name: item.name,
+          path: fullPath,
+          type: item.isDirectory() ? 'directory' : 'file',
+          size: stats.size,
+          modified: stats.mtime
+        };
+      })
+    );
+    
+    // Sort: directories first, then files, both alphabetically
+    files.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    return {
+      files,
+      rootPath: targetPath
+    };
+  } catch (error) {
+    console.error('Error reading directory:', error);
+    throw error;
+  }
+});
+
+// Handle reading file contents
+ipcMain.handle('read-file-contents', async (event, filePath: string) => {
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return content;
+  } catch (error) {
+    console.error('Error reading file:', error);
+    throw error;
+  }
+});
+
+// Handle writing file contents
+ipcMain.handle('write-file-contents', async (event, filePath: string, content: string) => {
+  try {
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Error writing file:', error);
+    throw error;
+  }
+});
