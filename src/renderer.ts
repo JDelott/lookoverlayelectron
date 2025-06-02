@@ -293,35 +293,6 @@ async function loadFileContent(filePath: string) {
     const content = await (window as any).electronAPI?.readFileContents(filePath);
     if (monacoEditor && content !== undefined) {
       monacoEditor.setValue(content);
-      
-      // Set language based on file extension
-      const extension = filePath.split('.').pop()?.toLowerCase();
-      let language = 'plaintext';
-      
-      switch (extension) {
-        case 'js':
-        case 'jsx':
-          language = 'javascript';
-          break;
-        case 'ts':
-        case 'tsx':
-          language = 'typescript';
-          break;
-        case 'css':
-          language = 'css';
-          break;
-        case 'html':
-          language = 'html';
-          break;
-        case 'json':
-          language = 'json';
-          break;
-        case 'md':
-          language = 'markdown';
-          break;
-      }
-      
-      (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), language);
     }
   } catch (error) {
     console.error('Failed to load file content:', error);
