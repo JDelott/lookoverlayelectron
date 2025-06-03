@@ -1106,6 +1106,48 @@ const globalStyles = `
       opacity: 1;
     }
   }
+
+  /* Enhanced scrollbars for better UX */
+  .ai-chat-messages::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-track {
+    background: #252526;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 4px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-corner {
+    background: #252526;
+  }
+
+  /* Code block scrollbars */
+  .code-block-container pre::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .code-block-container pre::-webkit-scrollbar-track {
+    background: #1e1e1e;
+  }
+
+  .code-block-container pre::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 3px;
+  }
+
+  .code-block-container pre::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 // DOM content loaded handler
@@ -1152,7 +1194,7 @@ function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
 
-  // Add main app CSS including AI chat styles
+  // Keep the full CSS but fix the horizontal scrolling issues
   const style = document.createElement('style');
   style.textContent = `
     /* Main Layout Styles */
@@ -1184,7 +1226,7 @@ function createLayout() {
       overflow: hidden !important;
       box-sizing: border-box !important;
     }
-
+    
     .sidebar {
       width: 250px;
       background-color: #252526;
@@ -1197,7 +1239,7 @@ function createLayout() {
       padding: 8px 12px;
       background-color: #2d2d30;
       border-bottom: 1px solid #3e3e42;
-      font-size: 11px;
+              font-size: 11px;
       font-weight: bold;
       color: #cccccc;
       text-transform: uppercase;
@@ -1491,12 +1533,12 @@ function createLayout() {
     }
 
     .chat-control-btn {
-              background: transparent;
-              border: 1px solid #3c3c3c;
-              color: #cccccc;
-              padding: 4px 8px;
-              border-radius: 3px;
-              cursor: pointer;
+      background: transparent;
+      border: 1px solid #3c3c3c;
+      color: #cccccc;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
       font-size: 12px;
     }
 
@@ -1575,42 +1617,43 @@ function createLayout() {
       text-decoration: underline;
     }
 
-    /* Messages */
+    /* Messages - FIXED FOR HORIZONTAL SCROLLING */
     .ai-chat-messages {
       flex: 1 !important;
       overflow-y: auto !important;
-      overflow-x: hidden !important;
+      overflow-x: auto !important;  /* Allow horizontal scrolling */
       padding: 8px 10px !important;
       background-color: #1e1e1e !important;
       scroll-behavior: smooth !important;
       min-height: 0 !important;
-      word-wrap: break-word !important;
       box-sizing: border-box !important;
     }
 
     .message-bubble {
-      margin-bottom: 12px; /* Reduced margin */
-      padding: 8px 10px; /* Reduced padding */
+      margin-bottom: 12px;
+      padding: 8px 10px;
       border-radius: 8px;
       background-color: #2d2d30;
       border: 1px solid #3c3c3c;
-      font-size: 12px; /* Smaller font */
+      font-size: 12px;
       line-height: 1.4;
-      max-width: 100%; /* Prevent overflow */
-      word-wrap: break-word;
-      overflow-wrap: break-word;
+      max-width: none !important;  /* Remove width constraint */
+      min-width: 280px !important;  /* Ensure minimum width */
+      word-wrap: normal !important;  /* Don't wrap automatically */
+      white-space: normal !important;
+      box-sizing: border-box;
     }
 
     .message-bubble.user {
       background-color: #0e639c;
       color: white;
-      margin-left: 20px; /* Reduced margin */
+      margin-left: 20px;
     }
 
     .message-bubble.assistant {
       background-color: #2d2d30;
       color: #cccccc;
-      margin-right: 20px; /* Reduced margin */
+      margin-right: 20px;
     }
 
     .message-header {
@@ -1634,7 +1677,9 @@ function createLayout() {
       color: #d4d4d4;
       font-size: 13px;
       line-height: 1.5;
-      word-wrap: break-word;
+      word-wrap: normal !important;  /* Don't wrap */
+      white-space: pre-wrap !important;  /* Preserve formatting */
+      overflow: visible !important;  /* Allow content to expand */
     }
 
     .message-content strong {
@@ -1654,6 +1699,76 @@ function createLayout() {
       border-radius: 3px;
       font-family: 'Consolas', monospace;
       font-size: 12px;
+      white-space: nowrap !important;  /* Don't wrap inline code */
+    }
+
+    /* Code Blocks - FIXED FOR HORIZONTAL SCROLLING */
+    .code-block-container {
+      margin: 12px 0;
+      background-color: #1e1e1e;
+      border-radius: 6px;
+      border: 1px solid #3c3c3c;
+      overflow: visible !important;  /* Allow expansion */
+      max-width: none !important;  /* Remove width constraint */
+      min-width: 280px !important;  /* Ensure minimum width */
+    }
+
+    .code-block-header {
+      background-color: #2d2d30;
+      padding: 6px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .code-language {
+      color: #569cd6;
+      font-weight: 600;
+    }
+
+    .insert-code-btn,
+    .copy-code-btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .insert-code-btn:hover,
+    .copy-code-btn:hover {
+      background: #1177bb;
+    }
+
+    .code-block-container pre {
+      margin: 0 !important;
+      padding: 12px !important;
+      overflow-x: auto !important;  /* Enable horizontal scrolling */
+      overflow-y: visible !important;
+      background-color: #1e1e1e !important;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+      font-size: 12px !important;
+      line-height: 1.4 !important;
+      white-space: pre !important;  /* Preserve formatting, no wrapping */
+      word-wrap: normal !important;  /* Don't wrap */
+      max-width: none !important;  /* Remove width constraint */
+      min-width: 100% !important;  /* Take full available width */
+    }
+
+    .code-block-container code {
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #d4d4d4;
+      background: none;
+      padding: 0;
+      white-space: pre !important;  /* Preserve formatting */
+      word-wrap: normal !important;  /* Don't wrap */
     }
 
     /* Chat Input */
@@ -1818,6 +1933,7 @@ function createLayout() {
 
     .ai-chat-messages::-webkit-scrollbar {
       width: 8px;
+      height: 8px;  /* Add horizontal scrollbar */
     }
 
     .ai-chat-messages::-webkit-scrollbar-track {
@@ -1830,6 +1946,29 @@ function createLayout() {
     }
 
     .ai-chat-messages::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    .ai-chat-messages::-webkit-scrollbar-corner {
+      background: #252526;  /* Handle corner where scrollbars meet */
+    }
+
+    /* Code block scrollbars */
+    .code-block-container pre::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    .code-block-container pre::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+
+    .code-block-container pre::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 3px;
+    }
+
+    .code-block-container pre::-webkit-scrollbar-thumb:hover {
       background: #555;
     }
 
@@ -1856,12 +1995,43 @@ function createLayout() {
 
     /* Layout adjustments for AI chat */
     #main-ide.ai-chat-open {
-      width: calc(100% - 350px);
+      width: calc(100% - 320px);
     }
 
     #ai-chat-panel.ai-chat-open {
-      width: 350px;
+      width: 320px;
       display: flex;
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #888;
+      font-size: 12px;
+      padding: 8px 12px;
+    }
+
+    .dots span {
+      animation: blink 1.4s infinite both;
+    }
+
+    .dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes blink {
+      0%, 80%, 100% {
+        opacity: 0;
+      }
+      40% {
+        opacity: 1;
+      }
     }
   `;
   
@@ -3643,66 +3813,19 @@ function toggleAIChat() {
 function updateLayoutForAIChat() {
   const mainIde = document.getElementById('main-ide');
   const aiChatPanel = document.getElementById('ai-chat-panel');
-  const mainLayout = document.querySelector('.main-layout') as HTMLElement;
   
-  if (mainIde && aiChatPanel && mainLayout) {
+  if (mainIde && aiChatPanel) {
     if (aiChatVisible) {
-      // Force flexbox layout with strict constraints
-      aiChatPanel.style.display = 'flex';
-      aiChatPanel.style.position = 'relative';
-      aiChatPanel.style.flexShrink = '0';
+      // Use 320px to match CSS
       aiChatPanel.style.width = '320px';
-      aiChatPanel.style.minWidth = '320px';
-      aiChatPanel.style.maxWidth = '320px';
-      aiChatPanel.style.height = '100vh';
-      aiChatPanel.style.backgroundColor = '#252526';
-      aiChatPanel.style.borderLeft = '1px solid #3c3c3c';
-      aiChatPanel.style.overflow = 'hidden';
-      aiChatPanel.style.boxSizing = 'border-box';
+      aiChatPanel.style.display = 'flex';
+      mainIde.style.width = 'calc(100% - 320px)';
       
-      // Ensure main layout handles flexbox properly and stays within viewport
-      mainLayout.style.display = 'flex';
-      mainLayout.style.overflow = 'hidden';
-      mainLayout.style.width = '100vw';
-      mainLayout.style.maxWidth = '100vw';
-      mainLayout.style.height = '100vh';
-      mainLayout.style.boxSizing = 'border-box';
-      
-      mainIde.style.flex = '1';
-      mainIde.style.minWidth = '0';
-      mainIde.style.width = 'calc(100vw - 320px)';
-      mainIde.style.maxWidth = 'calc(100vw - 320px)';
-      mainIde.style.marginRight = '';
-      mainIde.style.overflow = 'hidden';
-      mainIde.style.boxSizing = 'border-box';
-      
-      console.log('AI Chat panel positioned with flexbox, width:', aiChatPanel.offsetWidth);
+      console.log('AI Chat panel shown with proper CSS');
     } else {
+      aiChatPanel.style.width = '0';
       aiChatPanel.style.display = 'none';
-      
-      // Reset all positioning when chat is closed
-      aiChatPanel.style.position = '';
-      aiChatPanel.style.flexShrink = '';
-      aiChatPanel.style.width = '';
-      aiChatPanel.style.minWidth = '';
-      aiChatPanel.style.maxWidth = '';
-      aiChatPanel.style.height = '';
-      aiChatPanel.style.overflow = '';
-      aiChatPanel.style.boxSizing = '';
-      
-      // Reset main IDE
-      mainIde.style.flex = '';
-      mainIde.style.minWidth = '';
-      mainIde.style.width = '';
-      mainIde.style.maxWidth = '';
-      mainIde.style.marginRight = '';
-      mainIde.style.overflow = '';
-      mainIde.style.boxSizing = '';
-      
-      mainLayout.style.overflow = '';
-      mainLayout.style.width = '';
-      mainLayout.style.maxWidth = '';
-      mainLayout.style.boxSizing = '';
+      mainIde.style.width = '100%';
     }
   }
 }
@@ -3756,10 +3879,9 @@ function updateChatMessages() {
   const messagesContainer = document.getElementById('ai-chat-messages');
   if (!messagesContainer) return;
   
-  // Clear and re-render just the messages
+  // Clear and re-render messages
   messagesContainer.innerHTML = '';
   
-  // Add each message as a separate element
   aiChatMessages.forEach(msg => {
     const messageElement = document.createElement('div');
     messageElement.innerHTML = renderMessage(msg);
@@ -3772,23 +3894,6 @@ function updateChatMessages() {
     loadingElement.className = 'typing-indicator';
     loadingElement.innerHTML = '<span>AI is thinking</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>';
     messagesContainer.appendChild(loadingElement);
-  }
-  
-  // Ensure the container maintains proper sizing
-  const aiChatPanel = document.getElementById('ai-chat-panel');
-  const aiChatContainer = document.querySelector('.ai-chat-container') as HTMLElement;
-  if (aiChatPanel && aiChatContainer) {
-    // Force consistent width constraints
-    aiChatPanel.style.width = '320px !important';
-    aiChatPanel.style.minWidth = '320px !important';
-    aiChatPanel.style.maxWidth = '320px !important';
-    aiChatPanel.style.flexShrink = '0';
-    aiChatPanel.style.overflow = 'hidden';
-    
-    aiChatContainer.style.width = '320px !important';
-    aiChatContainer.style.minWidth = '320px !important';
-    aiChatContainer.style.maxWidth = '320px !important';
-    aiChatContainer.style.overflow = 'hidden';
   }
   
   // Scroll to bottom
@@ -3865,56 +3970,51 @@ function renderMessage(message: any): string {
   const formattedContent = formatMessageContent(message.content);
   const timeStr = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
+  // Use simplified structure that works with external CSS
   return `
-    <div class="message-bubble ${message.role}" style="
-      max-width: 100%;
-      width: 100%;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      box-sizing: border-box;
-      margin-bottom: 12px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background-color: ${message.role === 'user' ? '#0e639c' : '#2d2d30'};
-      border: 1px solid #3c3c3c;
-      font-size: 12px;
-      line-height: 1.4;
-      color: ${message.role === 'user' ? 'white' : '#cccccc'};
-    ">
-      <div class="message-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px;">
-        <span class="message-role" style="font-weight: 600; color: ${message.role === 'user' ? 'white' : '#cccccc'};">
+    <div class="message-bubble ${message.role}">
+      <div class="message-header">
+        <span class="message-role">
           ${message.role === 'user' ? '👤' : '🤖'} ${message.role}
         </span>
-        <span class="message-time" style="color: #888;">${timeStr}</span>
+        <span class="message-time">${timeStr}</span>
       </div>
-      <div class="message-content" style="word-wrap: break-word; overflow-wrap: break-word; color: ${message.role === 'user' ? 'white' : '#d4d4d4'};">${formattedContent}</div>
+      <div class="message-content">${formattedContent}</div>
     </div>
   `;
 }
 
 function formatMessageContent(content: string): string {
-  // Handle code blocks
-  content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+  // Handle code blocks with proper horizontal scrolling
+  content = content.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
     const language = lang || 'text';
-    const escapedCode = escapeHtml(code.trim());
+    const cleanCode = code.trim();
+    const escapedCode = escapeHtml(cleanCode);
+    const encodedCode = encodeURIComponent(cleanCode).replace(/'/g, '\\\'');
+    
     return `
       <div class="code-block-container">
         <div class="code-block-header">
           <span class="code-language">${language}</span>
-          <button class="copy-code-btn" onclick="copyCodeToClipboard('${encodeURIComponent(code.trim())}')">Copy</button>
-          <button class="insert-code-btn" onclick="insertCodeIntoEditor('${encodeURIComponent(code.trim())}')">Insert</button>
+          <div>
+            <button class="copy-code-btn" onclick="copyCodeToClipboard('${encodedCode}')">Copy</button>
+            <button class="insert-code-btn" onclick="insertCodeIntoEditor('${encodedCode}')">Insert</button>
+          </div>
         </div>
-        <pre><code class="language-${language}">${escapedCode}</code></pre>
+        <pre><code>${escapedCode}</code></pre>
       </div>
     `;
   });
   
   // Handle inline code
-  content = content.replace(/`([^`]+)`/g, '<code>$1</code>');
+  content = content.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   
   // Handle bold and italic
   content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  // Handle bullet points
+  content = content.replace(/^• (.*$)/gm, '<div style="margin: 2px 0;">• $1</div>');
   
   // Handle line breaks
   content = content.replace(/\n/g, '<br>');
