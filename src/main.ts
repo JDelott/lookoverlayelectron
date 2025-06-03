@@ -67,7 +67,7 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
-// Execute single commands with process tracking
+// Execute single commands with better long-running process support
 ipcMain.handle('execute-command', async (event, command: string, workingDir?: string) => {
   try {
     return new Promise((resolve) => {
@@ -80,12 +80,19 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
       
       const childProcess = spawn(shell, args, {
         cwd: cwd,
-        env: process.env,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '1', // Enable colors for better output
+          NODE_ENV: process.env.NODE_ENV || 'development'
+        },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
+      // Check if this is a long-running process
+      const isLongRunning = command.includes('dev') || command.includes('start') || command.includes('serve') ||
+                           command.includes('watch') || command.startsWith('node ');
+      
       // Track long-running processes
-      const isLongRunning = command.includes('dev') || command.includes('start') || command.includes('serve');
       if (isLongRunning) {
         const processId = `${Date.now()}-${Math.random()}`;
         runningProcesses.set(processId, childProcess);
@@ -97,7 +104,13 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         });
         
         // Clean up when process ends
-        childProcess.on('close', () => {
+        childProcess.on('close', (code) => {
+          runningProcesses.delete(processId);
+          mainWindow?.webContents.send('process-ended', { id: processId });
+        });
+        
+        childProcess.on('error', (error) => {
+          console.error('Process error:', error);
           runningProcesses.delete(processId);
           mainWindow?.webContents.send('process-ended', { id: processId });
         });
@@ -105,50 +118,71 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
 
       let output = '';
       let error = '';
-      let hasOutput = false;
+      let hasInitialOutput = false;
 
+      // Handle stdout
       childProcess.stdout?.on('data', (data) => {
         const chunk = data.toString();
         output += chunk;
-        hasOutput = true;
+        hasInitialOutput = true;
         
+        // For long-running processes, stream output immediately
         if (isLongRunning) {
           mainWindow?.webContents.send('command-output-stream', chunk);
         }
       });
 
+      // Handle stderr
       childProcess.stderr?.on('data', (data) => {
         const chunk = data.toString();
         error += chunk;
-        hasOutput = true;
+        hasInitialOutput = true;
         
+        // For long-running processes, stream error output too
         if (isLongRunning) {
           mainWindow?.webContents.send('command-output-stream', chunk);
         }
       });
 
+      // Handle process completion
       childProcess.on('close', (code) => {
+        console.log(`Command completed with code: ${code}`);
         resolve({
           success: code === 0,
           output: output + error,
           code,
+          workingDir: cwd,
+          isLongRunning: false // Mark as completed
+        });
+      });
+
+      // Handle process errors
+      childProcess.on('error', (err) => {
+        console.error('Process spawn error:', err);
+        resolve({
+          success: false,
+          output: `Error: ${err.message}`,
+          code: -1,
           workingDir: cwd
         });
       });
 
-      // For long-running processes, resolve quickly but keep process running
+      // For long-running processes, resolve early with partial success
       if (isLongRunning) {
         setTimeout(() => {
-          if (hasOutput || childProcess.pid) {
+          if (hasInitialOutput || childProcess.pid) {
+            // Don't resolve here for long-running processes - let them continue
+            console.log(`Long-running process started: ${command}`);
+          } else {
+            // If no output after 5 seconds, might be an error
             resolve({
-              success: true,
-              output: output + error,
-              code: 0,
-              workingDir: cwd,
-              isLongRunning: true
+              success: false,
+              output: 'Process started but no output received',
+              code: -1,
+              workingDir: cwd
             });
           }
-        }, 3000);
+        }, 5000);
       }
     });
   } catch (error) {

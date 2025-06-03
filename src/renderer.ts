@@ -29,6 +29,23 @@ interface OpenTab {
 let openTabs: Map<string, OpenTab> = new Map();
 let activeTabPath: string = '';
 
+// Terminal management state
+interface Terminal {
+  id: string;
+  name: string;
+  workingDirectory: string;
+  output: string;
+  history: string[];
+  isActive: boolean;
+  runningProcesses: Set<string>;
+  currentProcess: string; // Track current running process
+  shell: string; // Track shell type
+}
+
+let terminals: Map<string, Terminal> = new Map();
+let activeTerminalId: string = '';
+let terminalCounter = 1;
+
 // Global styles for VS Code-like layout with resizable terminal
 const globalStyles = `
   * {
@@ -439,6 +456,83 @@ const globalStyles = `
   .tab-bar::-webkit-scrollbar-thumb:hover {
     background: #555;
   }
+  
+  .terminal-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .terminal-tab {
+    background-color: #3c3c3c;
+    border: 1px solid #555;
+    border-radius: 4px 4px 0 0;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    min-width: 80px;
+    max-width: 150px;
+  }
+  
+  .terminal-tab:hover {
+    background-color: #4c4c4c;
+  }
+  
+  .terminal-tab.active {
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #1e1e1e;
+    color: #ffffff;
+  }
+  
+  .terminal-tab-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 4px;
+  }
+  
+  .terminal-tab-icon {
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  
+  .terminal-tab-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  
+  .terminal-process-indicator {
+    font-size: 8px;
+    margin-right: 2px;
+  }
+  
+  .terminal-tab-close {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #cccccc;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    flex-shrink: 0;
+  }
+  
+  .terminal-tab:hover .terminal-tab-close {
+    opacity: 1;
+  }
+  
+  .terminal-tab-close:hover {
+    background-color: #e81123;
+    color: #ffffff;
+  }
 `;
 
 // DOM content loaded handler
@@ -446,9 +540,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM loaded, initializing Monaco Editor');
   
   // Add styles
-  const styleElement = document.createElement('style');
-  styleElement.textContent = globalStyles;
-  document.head.appendChild(styleElement);
+const styleElement = document.createElement('style');
+styleElement.textContent = globalStyles;
+document.head.appendChild(styleElement);
 
   // Create layout
   createLayout();
@@ -535,21 +629,31 @@ function createLayout() {
       </div>
       <div class="editor-area">
         <div class="tab-bar" id="tab-bar"></div>
-        <div class="editor-container" id="editor-container"></div>
+      <div class="editor-container" id="editor-container"></div>
       </div>
       <div class="terminal-container" id="terminal-container">
         <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
         <div class="terminal-header">
           <div class="terminal-header-left">
-            <span>Terminal</span>
-            <span id="process-indicator" style="
+            <div class="terminal-tabs" id="terminal-tabs"></div>
+            <button id="new-terminal" style="
+              background: #0e639c;
+              color: white;
+              border: none;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-size: 10px;
+              cursor: pointer;
               margin-left: 8px;
+            ">+ New Terminal</button>
+          </div>
+          <div class="terminal-header-right">
+            <span id="process-indicator" style="
+              margin-right: 8px;
               font-size: 11px;
               color: #28a745;
               display: none;
             ">🟢 Server Running</span>
-          </div>
-          <div class="terminal-header-right">
             <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
           </div>
         </div>
@@ -564,12 +668,13 @@ function createLayout() {
 
   // Add event listeners
   document.getElementById('terminal-toggle')?.addEventListener('click', toggleTerminal);
-  document.getElementById('clear-terminal')?.addEventListener('click', clearTerminal);
+  document.getElementById('clear-terminal')?.addEventListener('click', clearActiveTerminal);
   document.getElementById('refresh-explorer')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('save-file')?.addEventListener('click', saveCurrentFile);
   document.getElementById('toggle-autosave')?.addEventListener('click', toggleAutoSave);
   document.getElementById('stop-processes')?.addEventListener('click', stopAllProcesses);
+  document.getElementById('new-terminal')?.addEventListener('click', createNewTerminal);
   
   const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
   terminalInput?.addEventListener('keydown', handleTerminalInput);
@@ -889,7 +994,7 @@ function handleTerminalInput(event: KeyboardEvent) {
       executeRealCommand(command.trim());
       
       input.value = '';
-      
+    
       // Add to history
       terminalHistory.unshift(command.trim());
       if (terminalHistory.length > 100) {
@@ -926,10 +1031,13 @@ function handleTerminalInput(event: KeyboardEvent) {
 }
 
 async function executeRealCommand(command: string) {
+  const activeTerminal = terminals.get(activeTerminalId);
+  if (!activeTerminal) return;
+  
   try {
-    console.log('Executing command:', command, 'in directory:', currentWorkingDirectory);
+    console.log('Executing command:', command, 'in directory:', activeTerminal.workingDirectory);
     
-    // Parse command
+    // Parse command to get process name
     const args = command.trim().split(/\s+/);
     const cmd = args[0].toLowerCase();
     
@@ -945,21 +1053,43 @@ async function executeRealCommand(command: string) {
       return;
     }
     
+    // Update terminal name for long-running processes
+    const isLongRunning = command.includes('dev') || command.includes('start') || command.includes('serve') || 
+                         cmd === 'node' || cmd === 'python' || cmd === 'ruby';
+    
+    if (isLongRunning) {
+      // Extract meaningful process name
+      let processName = cmd;
+      
+      if (cmd === 'npm') {
+        const subCmd = args[1];
+        if (subCmd === 'run') {
+          processName = args[2] || 'npm';
+        } else {
+          processName = `npm:${subCmd}`;
+        }
+      } else if (cmd === 'yarn') {
+        processName = args[1] ? `yarn:${args[1]}` : 'yarn';
+      } else if (cmd === 'node') {
+        processName = args[1] ? `node:${args[1].split('/').pop()?.replace('.js', '')}` : 'node';
+      }
+      
+      updateTerminalName(activeTerminalId, processName);
+    }
+    
     // Show a loading indicator
     const loadingMsg = '⏳ Executing...';
     writeToTerminal(loadingMsg);
     
-    const result = await (window as any).electronAPI.executeCommand(command, currentWorkingDirectory);
+    const result = await (window as any).electronAPI.executeCommand(command, activeTerminal.workingDirectory);
     console.log('Command result:', result);
     
     // Remove loading message
-    const output = document.getElementById('terminal-output');
-    if (output) {
-      const text = output.textContent || '';
-      const lines = text.split('\n');
-      if (lines[lines.length - 2] === loadingMsg) {
-        lines.splice(-2, 1);
-        output.textContent = lines.join('\n');
+    if (activeTerminal.output.endsWith(`${loadingMsg}\n`)) {
+      activeTerminal.output = activeTerminal.output.slice(0, -loadingMsg.length - 1);
+      const output = document.getElementById('terminal-output');
+      if (output) {
+        output.textContent = activeTerminal.output;
       }
     }
     
@@ -970,6 +1100,11 @@ async function executeRealCommand(command: string) {
     
     if (!result.success && result.code !== 0) {
       writeToTerminal(`(Exit code: ${result.code})`);
+      
+      // Reset terminal name if process failed
+      if (isLongRunning) {
+        updateTerminalName(activeTerminalId);
+      }
     }
     
     // Commands that modify the file system should refresh the explorer
@@ -998,69 +1133,50 @@ async function handlePackageManagerCommand(command: string) {
   
   writeToTerminal(`🔧 Running ${packageManager} command...`);
   
-  // Provide helpful feedback for common commands
-  if (subCommand === 'install' || subCommand === 'i') {
-    writeToTerminal('📦 Installing dependencies...');
-    if (args.length > 2) {
-      writeToTerminal(`➕ Adding packages: ${args.slice(2).join(', ')}`);
-    }
-  } else if (subCommand === 'init') {
-    writeToTerminal('🚀 Initializing new project...');
+  // Update terminal name for long-running commands
+  let processName = packageManager;
+  if (subCommand === 'run' && script) {
+    processName = script; // Show the script name (dev, start, build)
+    updateTerminalName(activeTerminalId, processName);
   } else if (subCommand === 'start') {
-    writeToTerminal('▶️ Starting development server...');
-    writeToTerminal('🌐 Will attempt to open browser when ready...');
-  } else if (subCommand === 'build') {
-    writeToTerminal('🔨 Building project...');
-  } else if (subCommand === 'test') {
-    writeToTerminal('🧪 Running tests...');
-  } else if (subCommand === 'run') {
-    writeToTerminal(`🏃 Running script: ${script || 'unknown'}`);
-    
-    // Special handling for dev servers
-    if (script === 'dev' || script === 'start' || script === 'serve') {
-      writeToTerminal('🌐 Development server starting...');
-      writeToTerminal('⏳ Waiting for server to be ready...');
-    }
+    processName = 'start';
+    updateTerminalName(activeTerminalId, processName);
+  }
+  
+  // Provide helpful feedback for common commands
+  if (subCommand === 'run' && (script === 'dev' || script === 'start' || script === 'serve')) {
+    writeToTerminal(`🏃 Running script: ${script}`);
+    writeToTerminal('🌐 Development server starting...');
+    writeToTerminal('⏳ Waiting for server to be ready...');
+    writeToTerminal('📡 Output will stream below:');
+    writeToTerminal('');
   }
   
   try {
     const result = await (window as any).electronAPI.executeCommand(command, currentWorkingDirectory);
     
-    if (result.output && result.output.trim()) {
-      const output = result.output.trim();
-      writeToTerminal(output);
-      
-      // Check for development server URLs and offer to open them
-      const urlRegex = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/g;
-      const urls = output.match(urlRegex);
-      
-      if (urls && (script === 'dev' || script === 'start' || subCommand === 'start')) {
-        urls.forEach((url: string) => {
-          writeToTerminal(`🌐 Server running at: ${url}`);
-          writeToTerminal(`💻 Click to open: ${url}`);
-          
-          // Add clickable link functionality
-          setTimeout(() => {
-            addClickableLink(url);
-          }, 100);
-        });
-      }
+    // For non-streaming commands, show output normally
+    if (!result.isLongRunning && result.output && result.output.trim()) {
+      writeToTerminal(result.output.trim());
     }
     
     if (result.success) {
-      // Provide success feedback
-      if (subCommand === 'install' || subCommand === 'i') {
-        writeToTerminal('✅ Dependencies installed successfully!');
-        setTimeout(async () => {
-          await refreshCurrentDirectory();
-        }, 1000);
-      } else if (subCommand === 'init') {
-        writeToTerminal('✅ Project initialized successfully!');
-        setTimeout(async () => {
-          await refreshCurrentDirectory();
-        }, 500);
+      if (!result.isLongRunning) {
+        if (subCommand === 'install' || subCommand === 'i') {
+          writeToTerminal('✅ Dependencies installed successfully!');
+          setTimeout(async () => {
+            await refreshCurrentDirectory();
+          }, 1000);
+        }
+        // Reset name for non-long-running commands
+        updateTerminalName(activeTerminalId);
+      } else {
+        writeToTerminal('✅ Development server started! Output streaming above...');
       }
     } else {
+      // Reset name if command failed
+      updateTerminalName(activeTerminalId);
+      
       writeToTerminal(`❌ ${packageManager} command failed (Exit code: ${result.code})`);
       
       // Provide helpful suggestions for common errors
@@ -1080,6 +1196,7 @@ async function handlePackageManagerCommand(command: string) {
     }
   } catch (error) {
     writeToTerminal(`❌ Error running ${packageManager}: ${error}`);
+    updateTerminalName(activeTerminalId); // Reset name on error
   }
   
   writeToTerminal('');
@@ -1117,13 +1234,16 @@ function clearTerminal() {
 
 function writeToTerminal(text: string) {
   const output = document.getElementById('terminal-output');
-  if (!output) return;
+  const activeTerminal = terminals.get(activeTerminalId);
   
-  const timestamp = new Date().toLocaleTimeString();
-  output.textContent += `${text}\n`;
+  if (activeTerminal) {
+    activeTerminal.output += `${text}\n`;
+  }
   
-  // Auto-scroll to bottom
-  output.scrollTop = output.scrollHeight;
+  if (output) {
+    output.textContent += `${text}\n`;
+    output.scrollTop = output.scrollHeight;
+  }
 }
 
 async function executeCommand(command: string) {
@@ -1134,12 +1254,12 @@ async function executeCommand(command: string) {
   if ((window as any).electronAPI?.executeCommand) {
     if (cmd === 'pwd') {
       writeToTerminal(currentWorkingDirectory);
-      writeToTerminal('');
-      return;
-    }
+        writeToTerminal('');
+        return;
+      }
     
     await executeRealCommand(command);
-    return;
+      return;
   }
   
   // Built-in commands
@@ -1230,23 +1350,23 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-    });
+      });
       
-    (window as any).require(['vs/editor/editor.main'], () => {
-      console.log('Monaco modules loaded');
-      
+      (window as any).require(['vs/editor/editor.main'], () => {
+        console.log('Monaco modules loaded');
+        
       monacoEditor = (window as any).monaco.editor.create(container, {
         value: getWelcomeContent(),
         language: 'markdown',
-        theme: 'vs-dark',
-        automaticLayout: true,
+              theme: 'vs-dark',
+              automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on'
-      });
-      
+              scrollBeyondLastLine: false,
+              wordWrap: 'on'
+            });
+            
       // Setup auto-save after Monaco is ready
       setupAutoSave();
       
@@ -1771,46 +1891,44 @@ function getLanguageFromExtension(extension: string): string {
 }
 
 async function handleCdCommand(args: string[]) {
+  const activeTerminal = terminals.get(activeTerminalId);
+  if (!activeTerminal) return;
+  
   try {
     let targetDir = '';
     
     if (args.length === 1) {
-      // cd with no arguments - go to home directory
       const homeResult = await (window as any).electronAPI.executeCommand('echo $HOME');
       if (homeResult.success && homeResult.output) {
         targetDir = homeResult.output.trim();
       } else {
-        targetDir = '/'; // Fallback
+        targetDir = '/';
       }
     } else {
       targetDir = args.slice(1).join(' ');
       
-      // Handle relative paths
       if (!targetDir.startsWith('/') && !targetDir.match(/^[A-Za-z]:/)) {
-        // Relative path
         if (targetDir === '..') {
-          const parts = currentWorkingDirectory.split('/');
-          parts.pop(); // Remove last directory
+          const parts = activeTerminal.workingDirectory.split('/');
+          parts.pop();
           targetDir = parts.join('/') || '/';
         } else if (targetDir === '.') {
-          targetDir = currentWorkingDirectory;
+          targetDir = activeTerminal.workingDirectory;
         } else {
-          targetDir = `${currentWorkingDirectory}/${targetDir}`;
+          targetDir = `${activeTerminal.workingDirectory}/${targetDir}`;
         }
       }
     }
     
-    // Clean up the path (remove double slashes, etc.)
     targetDir = targetDir.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
     
-    // Test if directory exists by trying to list it
     const testResult = await (window as any).electronAPI.executeCommand('ls', targetDir);
     
     if (testResult.success) {
-      currentWorkingDirectory = targetDir;
-      writeToTerminal(`📁 Changed to: ${currentWorkingDirectory}`);
+      activeTerminal.workingDirectory = targetDir;
+      currentWorkingDirectory = targetDir; // Update global for file explorer
+      writeToTerminal(`📁 Changed to: ${targetDir}`);
       
-      // Refresh file tree to show new location
       setTimeout(async () => {
         await refreshCurrentDirectory();
       }, 100);
@@ -1877,41 +1995,312 @@ function setupCommandStreaming() {
   (window as any).electronAPI.onCommandOutputStream((data: string) => {
     console.log('Streaming output received:', data);
     
-    const output = document.getElementById('terminal-output');
-    if (output) {
-      output.textContent += data;
-      output.scrollTop = output.scrollHeight;
-      
-      // Check for development server URLs
-      const urlRegex = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/g;
-      const urls = data.match(urlRegex);
-      
-      if (urls) {
-        urls.forEach((url: string) => {
-          writeToTerminal(`🌐 Server running at: ${url}`);
-          writeToTerminal(`💻 Click to open: ${url}`);
-          
-          setTimeout(() => {
-            addClickableLink(url);
-          }, 100);
-        });
-      }
+    writeToTerminal(data.replace(/\n$/, '')); // Remove trailing newline to prevent double spacing
+    
+    // Check for development server URLs
+    const urlRegex = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/g;
+    const urls = data.match(urlRegex);
+    
+    if (urls) {
+      urls.forEach((url: string) => {
+        writeToTerminal(`🌐 Server running at: ${url}`);
+        writeToTerminal(`💻 Click to open: ${url}`);
+        
+        setTimeout(() => {
+          addClickableLink(url);
+        }, 100);
+      });
     }
   });
   
   // Listen for process lifecycle events
   (window as any).electronAPI.onProcessStarted((process: {id: string, command: string}) => {
     console.log('Process started:', process);
+    
+    const activeTerminal = terminals.get(activeTerminalId);
+    if (activeTerminal) {
+      activeTerminal.runningProcesses.add(process.id);
+      
+      // Extract process name from command
+      const args = process.command.split(' ');
+      let processName = args[0];
+      
+      if (processName === 'npm' && args[1] === 'run' && args[2]) {
+        processName = args[2]; // npm run dev -> "dev"
+      } else if (processName === 'yarn' && args[1]) {
+        processName = args[1]; // yarn dev -> "dev"
+      } else if (processName === 'node' && args[1]) {
+        processName = `node:${args[1].split('/').pop()?.replace('.js', '')}`;
+      }
+      
+      updateTerminalName(activeTerminalId, processName);
+    }
+    
     runningProcesses.set(process.id, process);
     updateProcessIndicators();
+    renderTerminalTabs(); // Update tab indicators
     writeToTerminal(`🚀 Started: ${process.command}`);
     writeToTerminal('💡 Press Ctrl+C to stop the server');
   });
   
   (window as any).electronAPI.onProcessEnded((process: {id: string}) => {
     console.log('Process ended:', process.id);
+    
+    // Remove from all terminals and reset names
+    terminals.forEach(terminal => {
+      if (terminal.runningProcesses.has(process.id)) {
+        terminal.runningProcesses.delete(process.id);
+        
+        // Reset name if no more processes running
+        if (terminal.runningProcesses.size === 0) {
+          updateTerminalName(terminal.id);
+        }
+      }
+    });
+    
     runningProcesses.delete(process.id);
     updateProcessIndicators();
+    renderTerminalTabs(); // Update tab indicators
     writeToTerminal('🛑 Process stopped');
   });
+}
+
+function createNewTerminal() {
+  const terminalId = `terminal-${terminalCounter++}`;
+  
+  // Detect shell type
+  const shellType = detectShell();
+  
+  const newTerminal: Terminal = {
+    id: terminalId,
+    name: shellType, // Start with shell name
+    workingDirectory: currentWorkingDirectory,
+    output: '',
+    history: [],
+    isActive: false,
+    runningProcesses: new Set(),
+    currentProcess: '',
+    shell: shellType
+  };
+  
+  terminals.set(terminalId, newTerminal);
+  
+  // Initialize the terminal with welcome message
+  const welcomeMessage = `✅ Terminal ready! Type commands below.\n📁 Current directory: ${newTerminal.workingDirectory}\n\n`;
+  newTerminal.output = welcomeMessage;
+  
+  // Switch to the new terminal
+  switchToTerminal(terminalId);
+  
+  // Render terminal tabs
+  renderTerminalTabs();
+  
+  if (terminalVisible) {
+    writeToTerminal(`🆕 Created new terminal (${shellType})`);
+  }
+  
+  console.log(`Created new terminal: ${terminalId}`);
+}
+
+function detectShell(): string {
+  // Try to detect the user's shell
+  if (typeof navigator !== 'undefined') {
+    if (navigator.platform.includes('Mac')) {
+      return 'zsh'; // macOS default
+    } else if (navigator.platform.includes('Win')) {
+      return 'cmd';
+    } else {
+      return 'bash'; // Linux default
+    }
+  }
+  return 'zsh'; // fallback
+}
+
+function updateTerminalName(terminalId: string, processName?: string) {
+  const terminal = terminals.get(terminalId);
+  if (!terminal) return;
+  
+  if (processName) {
+    terminal.currentProcess = processName;
+    terminal.name = processName;
+  } else {
+    terminal.currentProcess = '';
+    terminal.name = terminal.shell;
+  }
+  
+  renderTerminalTabs();
+}
+
+function switchToTerminal(terminalId: string) {
+  const terminal = terminals.get(terminalId);
+  if (!terminal) return;
+  
+  // Update active states
+  terminals.forEach(t => t.isActive = false);
+  terminal.isActive = true;
+  activeTerminalId = terminalId;
+  
+  // Update current working directory
+  currentWorkingDirectory = terminal.workingDirectory;
+  
+  // Update terminal output display
+  const outputElement = document.getElementById('terminal-output');
+  if (outputElement) {
+    outputElement.textContent = terminal.output;
+    outputElement.scrollTop = outputElement.scrollHeight;
+  }
+  
+  // Update terminal history
+  terminalHistory = [...terminal.history];
+  historyIndex = -1;
+  
+  // Update tab styling
+  updateActiveTerminalTab();
+  
+  // Update process indicators
+  updateProcessIndicators();
+  
+  console.log(`Switched to terminal: ${terminalId}`);
+}
+
+function closeTerminal(terminalId: string, event?: Event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  
+  const terminal = terminals.get(terminalId);
+  if (!terminal) return;
+  
+  // Don't close if there are running processes (ask for confirmation)
+  if (terminal.runningProcesses.size > 0) {
+    const confirmClose = confirm(`Terminal "${terminal.name}" has running processes. Close anyway?`);
+    if (!confirmClose) return;
+    
+    // Kill processes in this terminal
+    terminal.runningProcesses.forEach(processId => {
+      (window as any).electronAPI.killProcess(processId);
+    });
+  }
+  
+  // Remove terminal
+  terminals.delete(terminalId);
+  
+  // If this was the active terminal, switch to another one
+  if (activeTerminalId === terminalId) {
+    const remainingTerminals = Array.from(terminals.keys());
+    if (remainingTerminals.length > 0) {
+      switchToTerminal(remainingTerminals[0]);
+    } else {
+      // No terminals left, create a new one
+      createNewTerminal();
+    }
+  }
+  
+  // Re-render terminal tabs
+  renderTerminalTabs();
+  
+  console.log(`Closed terminal: ${terminalId}`);
+}
+
+function renderTerminalTabs() {
+  const tabsContainer = document.getElementById('terminal-tabs');
+  if (!tabsContainer) return;
+  
+  tabsContainer.innerHTML = '';
+  
+  terminals.forEach((terminal, terminalId) => {
+    const tabElement = document.createElement('div');
+    tabElement.className = `terminal-tab ${terminal.isActive ? 'active' : ''}`;
+    tabElement.setAttribute('data-terminal-id', terminalId);
+    
+    // Terminal icon and name
+    const tabContent = document.createElement('div');
+    tabContent.className = 'terminal-tab-content';
+    
+    const icon = document.createElement('span');
+    icon.className = 'terminal-tab-icon';
+    
+    // Set icon based on current process
+    if (terminal.currentProcess) {
+      if (terminal.currentProcess.includes('dev') || terminal.currentProcess.includes('start')) {
+        icon.textContent = '🚀'; // Dev server
+      } else if (terminal.currentProcess.includes('build')) {
+        icon.textContent = '🔨'; // Build process
+      } else if (terminal.currentProcess.includes('test')) {
+        icon.textContent = '🧪'; // Tests
+      } else if (terminal.currentProcess.includes('node')) {
+        icon.textContent = '📗'; // Node.js
+      } else if (terminal.currentProcess.includes('npm') || terminal.currentProcess.includes('yarn')) {
+        icon.textContent = '📦'; // Package manager
+      } else {
+        icon.textContent = '⚡'; // Generic process
+      }
+    } else {
+      icon.textContent = '🖥️'; // Shell
+    }
+    
+    const name = document.createElement('span');
+    name.className = 'terminal-tab-name';
+    name.textContent = terminal.name;
+    
+    // Process indicator
+    if (terminal.runningProcesses.size > 0) {
+      const processIndicator = document.createElement('span');
+      processIndicator.className = 'terminal-process-indicator';
+      processIndicator.textContent = '🟢';
+      processIndicator.title = `${terminal.runningProcesses.size} running process(es)`;
+      tabContent.appendChild(processIndicator);
+    }
+    
+    tabContent.appendChild(icon);
+    tabContent.appendChild(name);
+    
+    // Close button (don't show if it's the only terminal)
+    if (terminals.size > 1) {
+      const closeBtn = document.createElement('span');
+      closeBtn.className = 'terminal-tab-close';
+      closeBtn.textContent = '×';
+      closeBtn.title = 'Close Terminal';
+      tabContent.appendChild(closeBtn);
+      
+      closeBtn.addEventListener('click', (e) => {
+        closeTerminal(terminalId, e);
+      });
+    }
+    
+    tabElement.appendChild(tabContent);
+    
+    // Click to switch terminals
+    tabContent.addEventListener('click', (e) => {
+      // Only switch if not clicking close button and it exists
+      const closeBtn = tabContent.querySelector('.terminal-tab-close');
+      if (e.target !== closeBtn) {
+        switchToTerminal(terminalId);
+      }
+    });
+    tabsContainer.appendChild(tabElement);
+  });
+}
+
+function updateActiveTerminalTab() {
+  document.querySelectorAll('.terminal-tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  
+  const activeTab = document.querySelector(`[data-terminal-id="${activeTerminalId}"]`);
+  if (activeTab) {
+    activeTab.classList.add('active');
+  }
+}
+
+function clearActiveTerminal() {
+  const activeTerminal = terminals.get(activeTerminalId);
+  if (activeTerminal) {
+    activeTerminal.output = '';
+  }
+  
+  const output = document.getElementById('terminal-output');
+  if (output) {
+    output.textContent = '';
+  }
 }
