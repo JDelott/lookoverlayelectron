@@ -3400,7 +3400,9 @@ async function renderFileTree() {
 function getLanguageFromExtension(extension: string): string {
   const languageMap: { [key: string]: string } = {
     'js': 'javascript',
+    'jsx': 'javascriptreact',    // Better JSX support
     'ts': 'typescript',
+    'tsx': 'typescriptreact',    // Better TSX support
     'html': 'html',
     'css': 'css',
     'json': 'json',
