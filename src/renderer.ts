@@ -1168,18 +1168,21 @@ function createLayout() {
 
     /* Main Layout - ensure proper viewport handling */
     .main-layout {
-      display: flex;
-      height: 100vh;
-      width: 100vw;
-      background-color: #1e1e1e;
-      overflow: hidden;
+      display: flex !important;
+      height: 100vh !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+      background-color: #1e1e1e !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
     }
 
     #main-ide {
-      flex: 1;
-      display: flex;
-      min-width: 0;
-      overflow: hidden;
+      flex: 1 !important;
+      display: flex !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
     }
 
     .sidebar {
@@ -1446,13 +1449,17 @@ function createLayout() {
 
     /* AI Chat Container */
     .ai-chat-container {
-      width: 350px;
-      height: 100%;
-      background-color: #252526;
-      border-left: 1px solid #3c3c3c;
-      display: flex;
-      flex-direction: column;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      width: 320px !important;
+      min-width: 320px !important;
+      max-width: 320px !important;
+      height: 100% !important;
+      background-color: #252526 !important;
+      border-left: 1px solid #3c3c3c !important;
+      display: flex !important;
+      flex-direction: column !important;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
     }
 
     /* AI Chat Header */
@@ -1570,13 +1577,15 @@ function createLayout() {
 
     /* Messages */
     .ai-chat-messages {
-      flex: 1;
+      flex: 1 !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
-      padding: 8px 10px; /* Reduced padding */
-      background-color: #1e1e1e;
-      scroll-behavior: smooth;
-      max-height: calc(100vh - 200px); /* Ensure it doesn't exceed viewport */
+      padding: 8px 10px !important;
+      background-color: #1e1e1e !important;
+      scroll-behavior: smooth !important;
+      min-height: 0 !important;
+      word-wrap: break-word !important;
+      box-sizing: border-box !important;
     }
 
     .message-bubble {
@@ -3638,7 +3647,7 @@ function updateLayoutForAIChat() {
   
   if (mainIde && aiChatPanel && mainLayout) {
     if (aiChatVisible) {
-      // Use flexbox instead of absolute positioning for better viewport handling
+      // Force flexbox layout with strict constraints
       aiChatPanel.style.display = 'flex';
       aiChatPanel.style.position = 'relative';
       aiChatPanel.style.flexShrink = '0';
@@ -3649,15 +3658,23 @@ function updateLayoutForAIChat() {
       aiChatPanel.style.backgroundColor = '#252526';
       aiChatPanel.style.borderLeft = '1px solid #3c3c3c';
       aiChatPanel.style.overflow = 'hidden';
+      aiChatPanel.style.boxSizing = 'border-box';
       
-      // Ensure main layout handles flexbox properly
+      // Ensure main layout handles flexbox properly and stays within viewport
+      mainLayout.style.display = 'flex';
       mainLayout.style.overflow = 'hidden';
       mainLayout.style.width = '100vw';
+      mainLayout.style.maxWidth = '100vw';
+      mainLayout.style.height = '100vh';
+      mainLayout.style.boxSizing = 'border-box';
+      
       mainIde.style.flex = '1';
       mainIde.style.minWidth = '0';
-      mainIde.style.width = '';
+      mainIde.style.width = 'calc(100vw - 320px)';
+      mainIde.style.maxWidth = 'calc(100vw - 320px)';
       mainIde.style.marginRight = '';
       mainIde.style.overflow = 'hidden';
+      mainIde.style.boxSizing = 'border-box';
       
       console.log('AI Chat panel positioned with flexbox, width:', aiChatPanel.offsetWidth);
     } else {
@@ -3671,16 +3688,21 @@ function updateLayoutForAIChat() {
       aiChatPanel.style.maxWidth = '';
       aiChatPanel.style.height = '';
       aiChatPanel.style.overflow = '';
+      aiChatPanel.style.boxSizing = '';
       
       // Reset main IDE
       mainIde.style.flex = '';
       mainIde.style.minWidth = '';
       mainIde.style.width = '';
+      mainIde.style.maxWidth = '';
       mainIde.style.marginRight = '';
       mainIde.style.overflow = '';
+      mainIde.style.boxSizing = '';
       
       mainLayout.style.overflow = '';
       mainLayout.style.width = '';
+      mainLayout.style.maxWidth = '';
+      mainLayout.style.boxSizing = '';
     }
   }
 }
@@ -3750,6 +3772,23 @@ function updateChatMessages() {
     loadingElement.className = 'typing-indicator';
     loadingElement.innerHTML = '<span>AI is thinking</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>';
     messagesContainer.appendChild(loadingElement);
+  }
+  
+  // Ensure the container maintains proper sizing
+  const aiChatPanel = document.getElementById('ai-chat-panel');
+  const aiChatContainer = document.querySelector('.ai-chat-container') as HTMLElement;
+  if (aiChatPanel && aiChatContainer) {
+    // Force consistent width constraints
+    aiChatPanel.style.width = '320px !important';
+    aiChatPanel.style.minWidth = '320px !important';
+    aiChatPanel.style.maxWidth = '320px !important';
+    aiChatPanel.style.flexShrink = '0';
+    aiChatPanel.style.overflow = 'hidden';
+    
+    aiChatContainer.style.width = '320px !important';
+    aiChatContainer.style.minWidth = '320px !important';
+    aiChatContainer.style.maxWidth = '320px !important';
+    aiChatContainer.style.overflow = 'hidden';
   }
   
   // Scroll to bottom
@@ -3827,14 +3866,28 @@ function renderMessage(message: any): string {
   const timeStr = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   return `
-    <div class="message-bubble ${message.role}" style="max-width: 100%; word-wrap: break-word; overflow-wrap: break-word; box-sizing: border-box;">
-      <div class="message-header">
-        <span class="message-role">
+    <div class="message-bubble ${message.role}" style="
+      max-width: 100%;
+      width: 100%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background-color: ${message.role === 'user' ? '#0e639c' : '#2d2d30'};
+      border: 1px solid #3c3c3c;
+      font-size: 12px;
+      line-height: 1.4;
+      color: ${message.role === 'user' ? 'white' : '#cccccc'};
+    ">
+      <div class="message-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px;">
+        <span class="message-role" style="font-weight: 600; color: ${message.role === 'user' ? 'white' : '#cccccc'};">
           ${message.role === 'user' ? '👤' : '🤖'} ${message.role}
         </span>
-        <span class="message-time">${timeStr}</span>
+        <span class="message-time" style="color: #888;">${timeStr}</span>
       </div>
-      <div class="message-content" style="word-wrap: break-word; overflow-wrap: break-word;">${formattedContent}</div>
+      <div class="message-content" style="word-wrap: break-word; overflow-wrap: break-word; color: ${message.role === 'user' ? 'white' : '#d4d4d4'};">${formattedContent}</div>
     </div>
   `;
 }
