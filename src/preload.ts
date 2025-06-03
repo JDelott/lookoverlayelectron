@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system operations
   getDirectoryContents: (path?: string) => ipcRenderer.invoke('get-directory-contents', path),
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke('write-file', filePath, content),
   getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
   
   // Single command execution with working directory support

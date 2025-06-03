@@ -468,6 +468,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('Application initialized successfully');
 });
 
+// Add auto-save functionality
+let autoSaveTimeout: NodeJS.Timeout | null = null;
+let isAutoSaveEnabled = true;
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
@@ -494,10 +498,30 @@ function createLayout() {
         <button id="terminal-toggle">Toggle Terminal</button>
         <button id="clear-terminal">Clear Terminal</button>
         <button id="refresh-files">🔄 Refresh Files</button>
+        <button id="save-file" style="
+          background: #0e639c;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 11px;
+          cursor: pointer;
+          margin-left: 8px;
+        ">💾 Save (Ctrl+S)</button>
+        <button id="toggle-autosave" style="
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 11px;
+          cursor: pointer;
+          margin-left: 4px;
+        ">🔄 Auto-Save: ON</button>
       </div>
       <div class="editor-area">
         <div class="tab-bar" id="tab-bar"></div>
-      <div class="editor-container" id="editor-container"></div>
+        <div class="editor-container" id="editor-container"></div>
       </div>
       <div class="terminal-container" id="terminal-container">
         <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
@@ -523,9 +547,123 @@ function createLayout() {
   document.getElementById('clear-terminal')?.addEventListener('click', clearTerminal);
   document.getElementById('refresh-explorer')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
+  document.getElementById('save-file')?.addEventListener('click', saveCurrentFile);
+  document.getElementById('toggle-autosave')?.addEventListener('click', toggleAutoSave);
   
   const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
   terminalInput?.addEventListener('keydown', handleTerminalInput);
+  
+  // Add keyboard shortcuts
+  document.addEventListener('keydown', handleKeyboardShortcuts);
+}
+
+function handleKeyboardShortcuts(event: KeyboardEvent) {
+  // Ctrl+S or Cmd+S to save
+  if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+    event.preventDefault();
+    saveCurrentFile();
+  }
+}
+
+async function saveCurrentFile() {
+  if (!activeTabPath || !monacoEditor) {
+    writeToTerminal('❌ No file open to save');
+    return;
+  }
+  
+  const currentContent = monacoEditor.getValue();
+  const tab = openTabs.get(activeTabPath);
+  
+  if (!tab) {
+    writeToTerminal('❌ No active tab found');
+    return;
+  }
+  
+  try {
+    const result = await (window as any).electronAPI.writeFile(activeTabPath, currentContent);
+    
+    if (result.success) {
+      // Update tab content and mark as clean
+      tab.content = currentContent;
+      tab.isDirty = false;
+      
+      // Update tab display
+      renderTabs();
+      
+      console.log(`✅ Saved: ${tab.name}`);
+      writeToTerminal(`💾 Saved: ${tab.name}`);
+      
+      // Show temporary save indicator
+      showSaveIndicator();
+      
+    } else {
+      writeToTerminal(`❌ Failed to save ${tab.name}: ${result.error}`);
+    }
+  } catch (error) {
+    writeToTerminal(`❌ Error saving file: ${error}`);
+  }
+}
+
+function showSaveIndicator() {
+  const saveBtn = document.getElementById('save-file');
+  if (saveBtn) {
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = '✅ Saved!';
+    saveBtn.style.backgroundColor = '#28a745';
+    
+    setTimeout(() => {
+      saveBtn.textContent = originalText;
+      saveBtn.style.backgroundColor = '#0e639c';
+    }, 1000);
+  }
+}
+
+function toggleAutoSave() {
+  isAutoSaveEnabled = !isAutoSaveEnabled;
+  const btn = document.getElementById('toggle-autosave');
+  
+  if (btn) {
+    if (isAutoSaveEnabled) {
+      btn.textContent = '🔄 Auto-Save: ON';
+      btn.style.backgroundColor = '#28a745';
+      writeToTerminal('✅ Auto-save enabled');
+    } else {
+      btn.textContent = '⏸️ Auto-Save: OFF';
+      btn.style.backgroundColor = '#6c757d';
+      writeToTerminal('⏸️ Auto-save disabled');
+      
+      // Clear any pending auto-save
+      if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = null;
+      }
+    }
+  }
+}
+
+function setupAutoSave() {
+  if (!monacoEditor) return;
+  
+  // Listen for content changes
+  monacoEditor.onDidChangeModelContent(() => {
+    if (!isAutoSaveEnabled || !activeTabPath) return;
+    
+    // Mark tab as dirty
+    const tab = openTabs.get(activeTabPath);
+    if (tab) {
+      tab.isDirty = true;
+      renderTabs(); // Update tab display to show dirty indicator
+    }
+    
+    // Debounce auto-save (save 2 seconds after last change)
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    autoSaveTimeout = setTimeout(() => {
+      saveCurrentFile();
+    }, 2000);
+  });
 }
 
 function setupTerminalResize() {
@@ -1060,23 +1198,26 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-      });
+    });
       
-      (window as any).require(['vs/editor/editor.main'], () => {
-        console.log('Monaco modules loaded');
-        
+    (window as any).require(['vs/editor/editor.main'], () => {
+      console.log('Monaco modules loaded');
+      
       monacoEditor = (window as any).monaco.editor.create(container, {
         value: getWelcomeContent(),
         language: 'markdown',
-              theme: 'vs-dark',
-              automaticLayout: true,
+        theme: 'vs-dark',
+        automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              wordWrap: 'on'
-            });
-            
+        scrollBeyondLastLine: false,
+        wordWrap: 'on'
+      });
+      
+      // Setup auto-save after Monaco is ready
+      setupAutoSave();
+      
       console.log('Monaco Editor created successfully!');
       resolve();
     });
@@ -1388,10 +1529,13 @@ function renderTabs() {
     const extension = tab.name.split('.').pop()?.toLowerCase();
     icon.textContent = getFileIcon(extension || '');
     
-    // File name
+    // File name with dirty indicator
     const name = document.createElement('span');
     name.className = 'tab-name';
-    name.textContent = tab.name;
+    name.textContent = tab.isDirty ? `● ${tab.name}` : tab.name;
+    if (tab.isDirty) {
+      name.style.fontStyle = 'italic';
+    }
     
     // Close button
     const closeBtn = document.createElement('span');

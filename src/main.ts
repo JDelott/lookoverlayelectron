@@ -313,6 +313,18 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 });
 
+// Write file operation
+ipcMain.handle('write-file', async (event, filePath: string, content: string) => {
+  try {
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    console.log(`File saved: ${filePath}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error writing file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
