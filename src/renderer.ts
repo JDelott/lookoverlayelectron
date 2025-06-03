@@ -13,8 +13,10 @@ let currentFile: string = '';
 let terminalVisible: boolean = false;
 let terminalHistory: string[] = [];
 let historyIndex: number = -1;
+let terminalHeight: number = 200;
+let isResizing: boolean = false;
 
-// Global styles for VS Code-like layout with simple terminal
+// Global styles for VS Code-like layout with resizable terminal
 const globalStyles = `
   * {
     margin: 0;
@@ -29,6 +31,7 @@ const globalStyles = `
     background-color: #1e1e1e;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: #cccccc;
+    user-select: none;
   }
   
   #root {
@@ -68,7 +71,6 @@ const globalStyles = `
     padding: 2px 8px;
     cursor: pointer;
     font-size: 13px;
-    user-select: none;
   }
   
   .file-item:hover {
@@ -93,6 +95,7 @@ const globalStyles = `
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
   
   .toolbar {
@@ -122,18 +125,35 @@ const globalStyles = `
   .editor-container {
     flex: 1;
     position: relative;
+    min-height: 200px;
   }
   
   .terminal-container {
-    height: 200px;
     background-color: #1e1e1e;
     border-top: 1px solid #3c3c3c;
     display: none;
     flex-direction: column;
+    position: relative;
   }
   
   .terminal-container.visible {
     display: flex;
+  }
+  
+  .terminal-resize-handle {
+    height: 4px;
+    background-color: #3c3c3c;
+    cursor: row-resize;
+    position: relative;
+    border-top: 1px solid #555;
+  }
+  
+  .terminal-resize-handle:hover {
+    background-color: #0e639c;
+  }
+  
+  .terminal-resize-handle.dragging {
+    background-color: #1177bb;
   }
   
   .terminal-header {
@@ -142,6 +162,26 @@ const globalStyles = `
     font-size: 12px;
     color: #cccccc;
     border-bottom: 1px solid #3c3c3c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .terminal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .terminal-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .terminal-size-indicator {
+    font-size: 10px;
+    color: #888;
   }
   
   .terminal-output {
@@ -154,6 +194,7 @@ const globalStyles = `
     white-space: pre-wrap;
     background-color: #1e1e1e;
     color: #d4d4d4;
+    user-select: text;
   }
   
   .terminal-input-container {
@@ -197,6 +238,31 @@ const globalStyles = `
   .terminal-output::-webkit-scrollbar-thumb:hover {
     background: #555;
   }
+  
+  .file-tree::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .file-tree::-webkit-scrollbar-track {
+    background: #252526;
+  }
+  
+  .file-tree::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 4px;
+  }
+  
+  .file-tree::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+  
+  body.resizing {
+    cursor: row-resize !important;
+  }
+  
+  body.resizing * {
+    user-select: none !important;
+  }
 `;
 
 // DOM content loaded handler
@@ -217,6 +283,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load file tree
   await renderFileTree();
   
+  // Setup resize functionality
+  setupTerminalResize();
+  
   console.log('Application initialized successfully');
 });
 
@@ -236,7 +305,15 @@ function createLayout() {
       </div>
       <div class="editor-container" id="editor-container"></div>
       <div class="terminal-container" id="terminal-container">
-        <div class="terminal-header">Terminal</div>
+        <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
+        <div class="terminal-header">
+          <div class="terminal-header-left">
+            <span>Terminal</span>
+          </div>
+          <div class="terminal-header-right">
+            <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
+          </div>
+        </div>
         <div class="terminal-output" id="terminal-output"></div>
         <div class="terminal-input-container">
           <span class="terminal-prompt">$</span>
@@ -254,6 +331,76 @@ function createLayout() {
   terminalInput?.addEventListener('keydown', handleTerminalInput);
 }
 
+function setupTerminalResize() {
+  const resizeHandle = document.getElementById('terminal-resize-handle');
+  if (!resizeHandle) return;
+
+  let startY = 0;
+  let startHeight = 0;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = terminalHeight;
+    
+    document.body.classList.add('resizing');
+    resizeHandle!.classList.add('dragging');
+    
+    // Add global mouse event listeners
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  });
+
+  function handleMouseMove(e: MouseEvent) {
+    if (!isResizing) return;
+    
+    e.preventDefault();
+    const deltaY = startY - e.clientY; // Inverted because we want drag up to increase height
+    const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
+    
+    setTerminalHeight(newHeight);
+  }
+
+  function handleMouseUp(e: MouseEvent) {
+    if (!isResizing) return;
+    
+    e.preventDefault();
+    isResizing = false;
+    
+    document.body.classList.remove('resizing');
+    resizeHandle!.classList.remove('dragging');
+    
+    // Remove global mouse event listeners
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    
+    // Force Monaco to resize after drag is complete
+    setTimeout(() => {
+      monacoEditor?.layout();
+    }, 10);
+  }
+}
+
+function setTerminalHeight(height: number) {
+  terminalHeight = height;
+  const terminalContainer = document.getElementById('terminal-container');
+  const sizeIndicator = document.getElementById('terminal-size-indicator');
+  
+  if (terminalContainer) {
+    terminalContainer.style.height = `${height}px`;
+  }
+  
+  if (sizeIndicator) {
+    sizeIndicator.textContent = `Height: ${height}px`;
+  }
+  
+  // Trigger Monaco layout update
+  if (monacoEditor) {
+    monacoEditor.layout();
+  }
+}
+
 function toggleTerminal() {
   terminalVisible = !terminalVisible;
   console.log('Terminal toggle clicked, visible:', terminalVisible);
@@ -263,6 +410,8 @@ function toggleTerminal() {
   
   if (terminalVisible) {
     terminalContainer.classList.add('visible');
+    setTerminalHeight(terminalHeight);
+    
     // Focus the terminal input
     const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
     terminalInput?.focus();
@@ -287,6 +436,7 @@ function initializeTerminal() {
   
   writeToTerminal('🎉 Terminal initialized successfully!');
   writeToTerminal('Welcome to the integrated terminal');
+  writeToTerminal('💡 Tip: Drag the top border to resize the terminal height');
   writeToTerminal('Available commands: help, clear, date, echo, ls, pwd, cat');
   writeToTerminal('Type "help" for more information');
   writeToTerminal('');
@@ -366,6 +516,7 @@ async function executeCommand(command: string) {
       writeToTerminal('  pwd          - Show current directory');
       writeToTerminal('  cat <file>   - Show file contents (mock)');
       writeToTerminal('  history      - Show command history');
+      writeToTerminal('  resize <h>   - Set terminal height (100-600px)');
       break;
       
     case 'clear':
@@ -407,6 +558,21 @@ async function executeCommand(command: string) {
       terminalHistory.slice(0, 10).forEach((cmd, i) => {
         writeToTerminal(`  ${i + 1}: ${cmd}`);
       });
+      break;
+      
+    case 'resize':
+      if (args[1]) {
+        const height = parseInt(args[1]);
+        if (height >= 100 && height <= 600) {
+          setTerminalHeight(height);
+          writeToTerminal(`Terminal height set to ${height}px`);
+        } else {
+          writeToTerminal('Height must be between 100 and 600 pixels');
+        }
+      } else {
+        writeToTerminal(`Current terminal height: ${terminalHeight}px`);
+        writeToTerminal('Usage: resize <height> (100-600px)');
+      }
       break;
       
     default:
@@ -458,10 +624,14 @@ async function initializeMonaco() {
 // 
 // Features:
 // 📁 File Explorer - Click files to open them
-// 🖥️  Integrated Terminal - Toggle terminal to run commands
+// 🖥️  Resizable Terminal - Drag the terminal border to resize
 // 📝 Monaco Editor - Full VS Code editor experience
 //
-// Try opening files from the explorer or using the terminal!
+// Try these terminal commands:
+// - help (show all commands)
+// - resize 300 (set terminal to 300px height)
+// - ls (list files)
+// - date (show current time)
 
 console.log("Hello from Monaco Editor!");
 
@@ -554,7 +724,7 @@ async function openFile(filePath: string) {
         content = `{
   "name": "lookoverlayelectron",
   "version": "1.0.0",
-  "description": "VS Code-like IDE with integrated terminal",
+  "description": "VS Code-like IDE with resizable terminal",
   "main": "dist/main.js",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
@@ -574,14 +744,22 @@ This is a **VS Code-like IDE** built with Electron!
 ## Features
 
 - 📁 **File Explorer** - Browse and open files
-- 🖥️  **Integrated Terminal** - Run commands with history
-- 📝 **Monaco Editor** - Full VS Code editor experience
+- 🖥️  **Resizable Terminal** - Drag to resize height (100-600px)
+- 📝 **Monaco Editor** - Full VS Code editor experience  
 - 🎨 **Dark Theme** - Professional look and feel
+
+## Terminal Commands
+
+- \`help\` - Show all available commands
+- \`resize <height>\` - Set terminal height
+- \`clear\` - Clear terminal output
+- \`ls\` - List directory contents
+- \`date\` - Show current date/time
 
 ## Usage
 
 1. Click files in the explorer to open them
-2. Use the terminal to run commands
+2. Use the terminal with drag-to-resize functionality
 3. Edit code with full syntax highlighting
 
 Enjoy coding! 🎉`;
@@ -595,7 +773,7 @@ Enjoy coding! 🎉`;
 </head>
 <body>
   <h1>VS Code-like IDE</h1>
-  <p>Mock content for ${fileName}</p>
+  <p>Resizable terminal content for ${fileName}</p>
   <script>
     console.log('Hello from ${fileName}');
   </script>
@@ -603,20 +781,22 @@ Enjoy coding! 🎉`;
 </html>`;
       } else {
         content = `// File: ${filePath}
-// This is mock content since real file API is not available
+// This is mock content with resizable terminal support
 
 console.log('Hello from ${fileName}');
 
 /**
  * Demo function for ${fileName}
+ * Try resizing the terminal by dragging its top border!
  */
 function demo() {
   console.log('This is a demo function');
-  return 'VS Code-like experience!';
+  console.log('Terminal can be resized from 100px to 600px');
+  return 'VS Code-like experience with resizable terminal!';
 }
 
 // You can edit this content in Monaco Editor
-const message = "Welcome to your VS Code-like IDE!";
+const message = "Welcome to your resizable terminal IDE!";
 console.log(message);
 
 export default demo;`;
@@ -703,7 +883,9 @@ async function renderFileTree() {
     
     items.forEach(item => {
       const element = createFileElement(item, depth);
-      fileTree?.appendChild(element);
+      if (fileTree) {
+        fileTree.appendChild(element);
+      }
       
       if (item.type === 'directory' && item.isExpanded && item.children) {
         renderItems(item.children, depth + 1);
