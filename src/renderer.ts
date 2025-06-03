@@ -567,14 +567,16 @@ const globalStyles = `
   
   /* AI Chat Container */
   .ai-chat-container {
-    width: 100%;
-    height: 100%;
+    width: 320px !important;
+    min-width: 320px !important;
+    max-width: 320px !important;
+    height: 100% !important;
     background-color: #252526;
     border-left: 1px solid #3c3c3c;
     display: flex;
     flex-direction: column;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 12px; /* Smaller base font */
+    overflow: hidden;
   }
 
   /* Header - more compact */
@@ -758,18 +760,20 @@ const globalStyles = `
     max-height: calc(100vh - 200px); /* Ensure it doesn't exceed viewport */
     }
 
+    /* Message bubbles - ensure they don't overflow */
     .message-bubble {
-    margin-bottom: 12px; /* Reduced margin */
-    padding: 8px 10px; /* Reduced padding */
-    border-radius: 8px;
-    background-color: #2d2d30;
-    border: 1px solid #3c3c3c;
-    font-size: 12px; /* Smaller font */
-    line-height: 1.4;
-    max-width: 100%; /* Prevent overflow */
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-  }
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background-color: #2d2d30;
+      border: 1px solid #3c3c3c;
+      font-size: 12px;
+      line-height: 1.4;
+      max-width: 100%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      box-sizing: border-box;
+    }
 
   .message-bubble.user {
     background-color: #0e639c;
@@ -1162,16 +1166,20 @@ function createLayout() {
       height: 100vh;
     }
 
+    /* Main Layout - ensure proper viewport handling */
     .main-layout {
       display: flex;
       height: 100vh;
+      width: 100vw;
       background-color: #1e1e1e;
+      overflow: hidden;
     }
 
     #main-ide {
       flex: 1;
       display: flex;
       min-width: 0;
+      overflow: hidden;
     }
 
     .sidebar {
@@ -3630,40 +3638,49 @@ function updateLayoutForAIChat() {
   
   if (mainIde && aiChatPanel && mainLayout) {
     if (aiChatVisible) {
+      // Use flexbox instead of absolute positioning for better viewport handling
       aiChatPanel.style.display = 'flex';
-      
-      // Use absolute positioning to avoid flexbox conflicts
-      aiChatPanel.style.position = 'absolute';
-      aiChatPanel.style.top = '0';
-      aiChatPanel.style.right = '0';
+      aiChatPanel.style.position = 'relative';
+      aiChatPanel.style.flexShrink = '0';
       aiChatPanel.style.width = '320px';
-      aiChatPanel.style.height = '100%';
-      aiChatPanel.style.zIndex = '1000';
+      aiChatPanel.style.minWidth = '320px';
+      aiChatPanel.style.maxWidth = '320px';
+      aiChatPanel.style.height = '100vh';
       aiChatPanel.style.backgroundColor = '#252526';
       aiChatPanel.style.borderLeft = '1px solid #3c3c3c';
+      aiChatPanel.style.overflow = 'hidden';
       
-      // Adjust main IDE by adding right margin
-      mainIde.style.marginRight = '320px';
-      mainIde.style.width = 'calc(100% - 320px)';
+      // Ensure main layout handles flexbox properly
+      mainLayout.style.overflow = 'hidden';
+      mainLayout.style.width = '100vw';
+      mainIde.style.flex = '1';
+      mainIde.style.minWidth = '0';
+      mainIde.style.width = '';
+      mainIde.style.marginRight = '';
+      mainIde.style.overflow = 'hidden';
       
-      // Make sure the parent layout is positioned relative
-      mainLayout.style.position = 'relative';
-      
-      console.log('AI Chat panel positioned absolutely with width:', aiChatPanel.offsetWidth);
+      console.log('AI Chat panel positioned with flexbox, width:', aiChatPanel.offsetWidth);
     } else {
       aiChatPanel.style.display = 'none';
       
-      // Reset positioning when chat is closed
+      // Reset all positioning when chat is closed
       aiChatPanel.style.position = '';
-      aiChatPanel.style.top = '';
-      aiChatPanel.style.right = '';
-      aiChatPanel.style.zIndex = '';
+      aiChatPanel.style.flexShrink = '';
+      aiChatPanel.style.width = '';
+      aiChatPanel.style.minWidth = '';
+      aiChatPanel.style.maxWidth = '';
+      aiChatPanel.style.height = '';
+      aiChatPanel.style.overflow = '';
       
       // Reset main IDE
-      mainIde.style.marginRight = '';
+      mainIde.style.flex = '';
+      mainIde.style.minWidth = '';
       mainIde.style.width = '';
+      mainIde.style.marginRight = '';
+      mainIde.style.overflow = '';
       
-      mainLayout.style.position = '';
+      mainLayout.style.overflow = '';
+      mainLayout.style.width = '';
     }
   }
 }
@@ -3810,14 +3827,14 @@ function renderMessage(message: any): string {
   const timeStr = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   return `
-    <div class="message-bubble ${message.role}">
+    <div class="message-bubble ${message.role}" style="max-width: 100%; word-wrap: break-word; overflow-wrap: break-word; box-sizing: border-box;">
       <div class="message-header">
         <span class="message-role">
           ${message.role === 'user' ? '👤' : '🤖'} ${message.role}
         </span>
         <span class="message-time">${timeStr}</span>
       </div>
-      <div class="message-content">${formattedContent}</div>
+      <div class="message-content" style="word-wrap: break-word; overflow-wrap: break-word;">${formattedContent}</div>
     </div>
   `;
 }
@@ -3945,6 +3962,14 @@ function adjustTextareaHeight() {
   if (textarea) {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    
+    // Ensure parent container stays properly sized
+    const chatPanel = document.getElementById('ai-chat-panel');
+    if (chatPanel) {
+      chatPanel.style.width = '320px';
+      chatPanel.style.minWidth = '320px';
+      chatPanel.style.maxWidth = '320px';
+    }
   }
 }
 
@@ -4074,7 +4099,10 @@ async function sendChatMessage(event?: Event) {
   
   // Set loading state
   isAILoading = true;
-  updateChatMessages(); // Changed from renderAIChat()
+  
+  // Update messages and maintain layout
+  updateChatMessages();
+  updateLayoutForAIChat(); // Ensure layout stays consistent
   
   try {
     // Build context-aware message if needed
@@ -4146,7 +4174,8 @@ async function sendChatMessage(event?: Event) {
     
   } finally {
     isAILoading = false;
-    updateChatMessages(); // Changed from renderAIChat()
+    updateChatMessages();
+    updateLayoutForAIChat(); // Ensure layout stays consistent after response
     
     // Scroll to bottom
     setTimeout(() => {
