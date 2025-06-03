@@ -2,6 +2,7 @@ console.log('Renderer loaded');
 console.log('Renderer loaded');
 console.log('Renderer loaded');
 console.log('Renderer loaded');
+console.log('Renderer loaded');
 
 interface FileItem {
   name: string;
@@ -1190,6 +1191,10 @@ interface Project {
   lastOpened: string;
 }
 
+// Add these variables at the top with other state variables
+let aiChatWidth: number = 320; // Default width
+let isAIChatResizing: boolean = false;
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
@@ -1487,21 +1492,43 @@ function createLayout() {
       transition: width 0.3s ease;
       background-color: #252526;
       border-left: 1px solid #3c3c3c;
+      position: relative; /* Add for resize handle positioning */
+    }
+
+    /* AI Chat Resize Handle */
+    .ai-chat-resize-handle {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background-color: #3c3c3c;
+      cursor: col-resize;
+      z-index: 1000;
+      border-right: 1px solid #555;
+    }
+
+    .ai-chat-resize-handle:hover {
+      background-color: #0e639c;
+    }
+
+    .ai-chat-resize-handle.dragging {
+      background-color: #1177bb;
     }
 
     /* AI Chat Container */
     .ai-chat-container {
-      width: 320px !important;
-      min-width: 320px !important;
-      max-width: 320px !important;
+      width: 100% !important;
+      min-width: 280px !important;
+      max-width: none !important;
       height: 100% !important;
       background-color: #252526 !important;
-      border-left: 1px solid #3c3c3c !important;
       display: flex !important;
       flex-direction: column !important;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
       overflow: hidden !important;
       box-sizing: border-box !important;
+      padding-left: 4px; /* Space for resize handle */
     }
 
     /* AI Chat Header */
@@ -1621,7 +1648,7 @@ function createLayout() {
     .ai-chat-messages {
       flex: 1 !important;
       overflow-y: auto !important;
-      overflow-x: auto !important;  /* Allow horizontal scrolling */
+      overflow-x: auto !important;
       padding: 8px 10px !important;
       background-color: #1e1e1e !important;
       scroll-behavior: smooth !important;
@@ -1637,9 +1664,9 @@ function createLayout() {
       border: 1px solid #3c3c3c;
       font-size: 12px;
       line-height: 1.4;
-      max-width: none !important;  /* Remove width constraint */
-      min-width: 280px !important;  /* Ensure minimum width */
-      word-wrap: normal !important;  /* Don't wrap automatically */
+      max-width: none !important;
+      min-width: calc(100% - 40px) !important; /* Responsive to container width */
+      word-wrap: normal !important;
       white-space: normal !important;
       box-sizing: border-box;
     }
@@ -1708,9 +1735,9 @@ function createLayout() {
       background-color: #1e1e1e;
       border-radius: 6px;
       border: 1px solid #3c3c3c;
-      overflow: visible !important;  /* Allow expansion */
-      max-width: none !important;  /* Remove width constraint */
-      min-width: 280px !important;  /* Ensure minimum width */
+      overflow: visible !important;
+      max-width: none !important;
+      min-width: calc(100% - 20px) !important; /* Responsive to container */
     }
 
     .code-block-header {
@@ -1748,16 +1775,16 @@ function createLayout() {
     .code-block-container pre {
       margin: 0 !important;
       padding: 12px !important;
-      overflow-x: auto !important;  /* Enable horizontal scrolling */
+      overflow-x: auto !important;
       overflow-y: visible !important;
       background-color: #1e1e1e !important;
       font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
       font-size: 12px !important;
       line-height: 1.4 !important;
-      white-space: pre !important;  /* Preserve formatting, no wrapping */
-      word-wrap: normal !important;  /* Don't wrap */
-      max-width: none !important;  /* Remove width constraint */
-      min-width: 100% !important;  /* Take full available width */
+      white-space: pre !important;
+      word-wrap: normal !important;
+      max-width: none !important;
+      min-width: 100% !important;
     }
 
     .code-block-container code {
@@ -2139,7 +2166,9 @@ function createLayout() {
           </div>
         </div>
       </div>
-      <div id="ai-chat-panel"></div>
+      <div id="ai-chat-panel">
+        <div class="ai-chat-resize-handle" id="ai-chat-resize-handle"></div>
+      </div>
     </div>
   `;
 
@@ -2158,6 +2187,9 @@ function createLayout() {
   terminalInput?.addEventListener('keydown', handleTerminalInput);
   
   document.addEventListener('keydown', handleKeyboardShortcuts);
+  
+  // Setup AI chat resize
+  setupAIChatResize();
 }
 
 function handleKeyboardShortcuts(event: KeyboardEvent) {
@@ -3816,12 +3848,20 @@ function updateLayoutForAIChat() {
   
   if (mainIde && aiChatPanel) {
     if (aiChatVisible) {
-      // Use 320px to match CSS
-      aiChatPanel.style.width = '320px';
+      // Use stored width
+      aiChatPanel.style.width = `${aiChatWidth}px`;
+      aiChatPanel.style.minWidth = `${aiChatWidth}px`;
+      aiChatPanel.style.maxWidth = `${aiChatWidth}px`;
       aiChatPanel.style.display = 'flex';
-      mainIde.style.width = 'calc(100% - 320px)';
+      mainIde.style.width = `calc(100% - ${aiChatWidth}px)`;
       
-      console.log('AI Chat panel shown with proper CSS');
+      // Update container width
+      const container = aiChatPanel.querySelector('.ai-chat-container') as HTMLElement;
+      if (container) {
+        container.style.width = `${aiChatWidth}px`;
+      }
+      
+      console.log(`AI Chat panel shown with width: ${aiChatWidth}px`);
     } else {
       aiChatPanel.style.width = '0';
       aiChatPanel.style.display = 'none';
@@ -3836,12 +3876,26 @@ function renderAIChat() {
   if (!aiChatPanel) return;
 
   if (aiChatVisible) {
-    // Clear the panel completely first
-    aiChatPanel.innerHTML = '';
+    // Find or create resize handle
+    let resizeHandle = document.getElementById('ai-chat-resize-handle');
+    if (!resizeHandle) {
+      resizeHandle = document.createElement('div');
+      resizeHandle.id = 'ai-chat-resize-handle';
+      resizeHandle.className = 'ai-chat-resize-handle';
+      aiChatPanel.appendChild(resizeHandle);
+      setupAIChatResize(); // Setup events if handle was just created
+    }
+    
+    // Clear existing content except resize handle
+    const existingContainer = aiChatPanel.querySelector('.ai-chat-container');
+    if (existingContainer) {
+      existingContainer.remove();
+    }
     
     // Create the container structure
     const container = document.createElement('div');
     container.className = 'ai-chat-container';
+    container.style.width = `${aiChatWidth}px`;
     
     // Add header
     container.innerHTML = `
@@ -3932,6 +3986,18 @@ function renderChatInterface(): string {
     </div>
 
     ${renderChatInput()}
+    
+    <!-- Width indicator -->
+    <div style="
+      position: absolute;
+      bottom: 4px;
+      left: 8px;
+      font-size: 10px;
+      color: #666;
+      pointer-events: none;
+    ">
+      Width: ${aiChatWidth}px
+    </div>
   `;
 }
 
@@ -4612,3 +4678,83 @@ async function initializeEverything() {
 console.log('aiChatVisible:', aiChatVisible);
 console.log('aiChatPanel:', document.getElementById('ai-chat-panel'));
 console.log('aiChatPanel style:', document.getElementById('ai-chat-panel')?.style.display);
+
+function setupAIChatResize() {
+  const resizeHandle = document.getElementById('ai-chat-resize-handle');
+  if (!resizeHandle) return;
+
+  let startX = 0;
+  let startWidth = 0;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    if (!resizeHandle) return; // Add this null check
+    
+    e.preventDefault();
+    isAIChatResizing = true;
+    startX = e.clientX;
+    startWidth = aiChatWidth;
+    
+    document.body.classList.add('ai-chat-resizing');
+    resizeHandle.classList.add('dragging');
+    
+    // Add global mouse event listeners
+    document.addEventListener('mousemove', handleAIChatMouseMove);
+    document.addEventListener('mouseup', handleAIChatMouseUp);
+  });
+
+  function handleAIChatMouseMove(e: MouseEvent) {
+    if (!isAIChatResizing) return;
+    
+    e.preventDefault();
+    const deltaX = startX - e.clientX; // Inverted because we want drag left to increase width
+    const newWidth = Math.max(280, Math.min(800, startWidth + deltaX)); // Min 280px, max 800px
+    
+    setAIChatWidth(newWidth);
+  }
+
+  function handleAIChatMouseUp(e: MouseEvent) {
+    if (!isAIChatResizing || !resizeHandle) return; // Add null check here too
+    
+    e.preventDefault();
+    isAIChatResizing = false;
+    
+    document.body.classList.remove('ai-chat-resizing');
+    resizeHandle.classList.remove('dragging');
+    
+    // Remove global mouse event listeners
+    document.removeEventListener('mousemove', handleAIChatMouseMove);
+    document.removeEventListener('mouseup', handleAIChatMouseUp);
+    
+    // Force Monaco to resize after drag is complete
+    setTimeout(() => {
+      monacoEditor?.layout();
+    }, 10);
+  }
+}
+
+function setAIChatWidth(width: number) {
+  aiChatWidth = width;
+  const aiChatPanel = document.getElementById('ai-chat-panel');
+  const mainIde = document.getElementById('main-ide');
+  
+  if (aiChatPanel && mainIde && aiChatVisible) {
+    aiChatPanel.style.width = `${width}px`;
+    aiChatPanel.style.minWidth = `${width}px`;
+    aiChatPanel.style.maxWidth = `${width}px`;
+    
+    mainIde.style.width = `calc(100% - ${width}px)`;
+    
+    // Update any width-dependent elements
+    const container = aiChatPanel.querySelector('.ai-chat-container') as HTMLElement;
+    if (container) {
+      container.style.width = `${width}px`;
+    }
+  }
+  
+  // Trigger Monaco layout update
+  if (monacoEditor) {
+    monacoEditor.layout();
+  }
+  
+  console.log(`AI Chat width set to: ${width}px`);
+}
