@@ -3,6 +3,28 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawn, ChildProcess } from 'child_process';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Add interface for Anthropic API response
+interface AnthropicResponse {
+  content: Array<{
+    type: string;
+    text: string;
+  }>;
+  id: string;
+  model: string;
+  role: string;
+  stop_reason: string;
+  stop_sequence: null;
+  type: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
 
 let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
@@ -402,6 +424,52 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
     }
   } catch (error) {
     return { success: false, error: (error as Error).message };
+  }
+});
+
+// Update the IPC handler with proper typing
+ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not found in environment variables');
+  }
+  
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
+          role: m.role,
+          content: m.content
+        }))
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    
+    const data = await response.json() as AnthropicResponse;
+    
+    return {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: data.content[0].text,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Anthropic API Error:', error);
+    throw error;
   }
 });
 

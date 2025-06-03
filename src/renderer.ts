@@ -533,6 +533,492 @@ const globalStyles = `
     background-color: #e81123;
     color: #ffffff;
   }
+  
+  /* Layout adjustments for AI chat */
+  .main-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+  
+  #ai-chat-panel {
+    width: 350px;
+    height: 100%;
+          display: none;
+    flex-direction: column;
+  }
+  
+  /* AI Chat Container */
+  .ai-chat-container {
+    width: 100%;
+    height: 100%;
+    background-color: #252526;
+    border-left: 1px solid #3c3c3c;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  /* Header */
+  .ai-chat-header {
+    background-color: #2d2d30;
+    border-bottom: 1px solid #3c3c3c;
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ai-chat-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #cccccc;
+  }
+
+  .ai-icon {
+    font-size: 16px;
+  }
+
+  .ai-chat-controls {
+    display: flex;
+    gap: 4px;
+  }
+
+  .chat-control-btn {
+    background: transparent;
+    border: 1px solid #3c3c3c;
+    color: #cccccc;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .chat-control-btn:hover {
+    background-color: #3c3c3c;
+  }
+
+  /* API Key Setup */
+  .api-key-setup {
+    padding: 20px;
+    text-align: center;
+    color: #cccccc;
+  }
+
+  .api-key-setup h3 {
+    margin-bottom: 12px;
+    color: #ffffff;
+  }
+
+  .api-key-setup p {
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+
+  .api-key-input-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .api-key-input {
+    flex: 1;
+    background-color: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    color: #cccccc;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .api-key-input:focus {
+    outline: none;
+    border-color: #0e639c;
+  }
+
+  .api-key-submit {
+    background-color: #0e639c;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .api-key-submit:hover:not(:disabled) {
+    background-color: #1177bb;
+  }
+
+  .api-key-submit:disabled {
+    background-color: #666;
+    cursor: not-allowed;
+  }
+
+  .api-key-note {
+    font-size: 12px;
+    color: #888;
+  }
+
+  .api-key-note a {
+    color: #569cd6;
+    text-decoration: none;
+  }
+
+  .api-key-note a:hover {
+    text-decoration: underline;
+  }
+
+  /* Code Context */
+  .code-context {
+    background-color: #2d2d30;
+    border-bottom: 1px solid #3c3c3c;
+    padding: 8px 12px;
+  }
+
+  .context-header {
+    margin-bottom: 8px;
+  }
+
+  .context-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cccccc;
+  }
+
+  .context-content {
+    font-size: 11px;
+    color: #888;
+  }
+
+  .context-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .context-label {
+    font-weight: 600;
+    color: #cccccc;
+  }
+
+  .context-value {
+    color: #569cd6;
+  }
+
+  .selected-text-preview {
+    background-color: #1e1e1e;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-family: 'Consolas', monospace;
+    white-space: pre-wrap;
+    max-width: 200px;
+    overflow: hidden;
+  }
+
+  /* Messages */
+  .ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .message-bubble {
+    background-color: #1e1e1e;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #3c3c3c;
+  }
+
+  .message-bubble.user {
+    background-color: #0e639c;
+    align-self: flex-end;
+    max-width: 90%;
+  }
+
+  .message-bubble.assistant {
+    background-color: #2d2d30;
+    align-self: flex-start;
+    max-width: 95%;
+  }
+
+  .message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+
+  .message-role {
+    font-weight: 600;
+    color: #cccccc;
+  }
+
+  .message-time {
+    color: #888;
+  }
+
+  .message-content {
+    color: #d4d4d4;
+    font-size: 13px;
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+
+  .message-content strong {
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .message-content em {
+    color: #dcdcaa;
+    font-style: italic;
+  }
+
+  .message-content code {
+    background-color: #1e1e1e;
+    color: #d7ba7d;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+  }
+
+  /* Code Blocks */
+  .code-block-container {
+    margin: 12px 0;
+    background-color: #1e1e1e;
+    border-radius: 6px;
+    border: 1px solid #3c3c3c;
+    overflow: hidden;
+  }
+
+  .code-block-header {
+    background-color: #2d2d30;
+    padding: 6px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+  }
+
+  .code-language {
+    color: #569cd6;
+    font-weight: 600;
+  }
+
+  .insert-code-btn,
+  .copy-code-btn {
+    background: #0e639c;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 10px;
+    margin-left: 4px;
+  }
+
+  .insert-code-btn:hover,
+  .copy-code-btn:hover {
+    background: #1177bb;
+  }
+
+  .code-block-container pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    background-color: #1e1e1e;
+  }
+
+  .code-block-container code {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #d4d4d4;
+    background: none;
+    padding: 0;
+  }
+
+  /* Typing Indicator */
+  .typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #888;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .dots span {
+    animation: blink 1.4s infinite both;
+  }
+
+  .dots span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .dots span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes blink {
+    0%, 80%, 100% {
+      opacity: 0;
+    }
+    40% {
+      opacity: 1;
+    }
+  }
+
+  /* Chat Input */
+  .chat-input-container {
+    border-top: 1px solid #3c3c3c;
+    background-color: #2d2d30;
+  }
+
+  .quick-actions {
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #3c3c3c;
+    padding: 12px;
+  }
+
+  .quick-actions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #cccccc;
+  }
+
+  .quick-actions-header button {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .quick-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .quick-action-btn {
+    background-color: #3c3c3c;
+    color: #cccccc;
+    border: 1px solid #555;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .quick-action-btn:hover:not(:disabled) {
+    background-color: #4c4c4c;
+  }
+
+  .chat-input-form {
+    padding: 12px;
+  }
+
+  .input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chat-textarea {
+    background-color: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    color: #d4d4d4;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: none;
+    min-height: 36px;
+    max-height: 120px;
+  }
+
+  .chat-textarea:focus {
+    outline: none;
+    border-color: #0e639c;
+  }
+
+  .input-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .quick-actions-toggle {
+    background: transparent;
+    border: 1px solid #3c3c3c;
+    color: #cccccc;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .context-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #cccccc;
+    cursor: pointer;
+  }
+
+  .send-button {
+    background-color: #0e639c;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .send-button:hover:not(:disabled) {
+    background-color: #1177bb;
+  }
+
+  .send-button:disabled {
+    background-color: #666;
+    cursor: not-allowed;
+  }
+
+  /* Scrollbars */
+  .ai-chat-messages::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-track {
+    background: #252526;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 4px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 // DOM content loaded handler
@@ -569,100 +1055,128 @@ let isAutoSaveEnabled = true;
 // Track running processes
 let runningProcesses: Map<string, {id: string, command: string}> = new Map();
 
+// Add AI chat state variables after the existing state
+let aiChatVisible: boolean = false;
+let aiChatMessages: Array<{
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: Date;
+  metadata?: any;
+}> = [];
+let aiService: any = null;
+let isAILoading: boolean = false;
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
 
+  // Create main layout wrapper
   root.innerHTML = `
-    <div class="sidebar">
-      <div class="sidebar-header">
-        Explorer
-        <button id="refresh-explorer" style="
-          background: transparent;
-          border: 1px solid #3c3c3c;
-          color: #cccccc;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 10px;
-          cursor: pointer;
-          margin-left: 8px;
-        ">🔄</button>
-      </div>
-      <div class="file-tree"></div>
-    </div>
-    <div class="main-content">
-      <div class="toolbar">
-        <button id="terminal-toggle">Toggle Terminal</button>
-        <button id="clear-terminal">Clear Terminal</button>
-        <button id="refresh-files">🔄 Refresh Files</button>
-        <button id="save-file" style="
-          background: #0e639c;
-          color: white;
-          border: none;
-          padding: 4px 8px;
-          border-radius: 3px;
-          font-size: 11px;
-          cursor: pointer;
-          margin-left: 8px;
-        ">💾 Save (Ctrl+S)</button>
-        <button id="toggle-autosave" style="
-          background: #28a745;
-          color: white;
-          border: none;
-          padding: 4px 8px;
-          border-radius: 3px;
-          font-size: 11px;
-          cursor: pointer;
-          margin-left: 4px;
-        ">🔄 Auto-Save: ON</button>
-        <button id="stop-processes" style="
-          background: #dc3545;
-          color: white;
-          border: none;
-          padding: 4px 8px;
-          border-radius: 3px;
-          font-size: 11px;
-          cursor: pointer;
-          margin-left: 8px;
-          display: none;
-        ">🛑 Stop Server (Ctrl+C)</button>
-      </div>
-      <div class="editor-area">
-        <div class="tab-bar" id="tab-bar"></div>
-      <div class="editor-container" id="editor-container"></div>
-      </div>
-      <div class="terminal-container" id="terminal-container">
-        <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
-        <div class="terminal-header">
-          <div class="terminal-header-left">
-            <div class="terminal-tabs" id="terminal-tabs"></div>
-            <button id="new-terminal" style="
-              background: #0e639c;
-              color: white;
-              border: none;
+    <div class="main-layout">
+      <div id="main-ide" style="flex: 1; display: flex; min-width: 0;">
+        <div class="sidebar">
+          <div class="sidebar-header">
+            Explorer
+            <button id="refresh-explorer" style="
+              background: transparent;
+              border: 1px solid #3c3c3c;
+              color: #cccccc;
               padding: 2px 6px;
               border-radius: 3px;
               font-size: 10px;
               cursor: pointer;
               margin-left: 8px;
-            ">+ New Terminal</button>
+            ">🔄</button>
           </div>
-          <div class="terminal-header-right">
-            <span id="process-indicator" style="
-              margin-right: 8px;
-              font-size: 11px;
-              color: #28a745;
-              display: none;
-            ">🟢 Server Running</span>
-            <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
-          </div>
+          <div class="file-tree"></div>
         </div>
-        <div class="terminal-output" id="terminal-output"></div>
-        <div class="terminal-input-container">
-          <span class="terminal-prompt">$</span>
-          <input type="text" class="terminal-input" id="terminal-input" placeholder="Type a command..." />
+        <div class="main-content">
+          <div class="toolbar">
+            <button id="terminal-toggle">Toggle Terminal</button>
+            <button id="clear-terminal">Clear Terminal</button>
+            <button id="refresh-files">🔄 Refresh Files</button>
+            <button id="ai-chat-toggle" style="
+              background: #7b68ee;
+              color: white;
+              border: none;
+              padding: 4px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              cursor: pointer;
+              margin-left: 8px;
+            ">🤖 AI Assistant</button>
+            <button id="save-file" style="
+              background: #0e639c;
+              color: white;
+              border: none;
+              padding: 4px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              cursor: pointer;
+              margin-left: 8px;
+            ">💾 Save (Ctrl+S)</button>
+            <button id="toggle-autosave" style="
+              background: #28a745;
+              color: white;
+              border: none;
+              padding: 4px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              cursor: pointer;
+              margin-left: 4px;
+            ">🔄 Auto-Save: ON</button>
+            <button id="stop-processes" style="
+              background: #dc3545;
+              color: white;
+              border: none;
+              padding: 4px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              cursor: pointer;
+              margin-left: 8px;
+              display: none;
+            ">🛑 Stop Server (Ctrl+C)</button>
+          </div>
+          <div class="editor-area">
+            <div class="tab-bar" id="tab-bar"></div>
+            <div class="editor-container" id="editor-container"></div>
+          </div>
+          <div class="terminal-container" id="terminal-container">
+            <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
+            <div class="terminal-header">
+              <div class="terminal-header-left">
+                <div class="terminal-tabs" id="terminal-tabs"></div>
+                <button id="new-terminal" style="
+                  background: #0e639c;
+                  color: white;
+                  border: none;
+                  padding: 2px 6px;
+                  border-radius: 3px;
+                  font-size: 10px;
+                  cursor: pointer;
+                  margin-left: 8px;
+                ">+ New Terminal</button>
+              </div>
+              <div class="terminal-header-right">
+                <span id="process-indicator" style="
+                  margin-right: 8px;
+                  font-size: 11px;
+                  color: #28a745;
+                  display: none;
+                ">🟢 Server Running</span>
+                <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
+              </div>
+            </div>
+            <div class="terminal-output" id="terminal-output"></div>
+            <div class="terminal-input-container">
+              <span class="terminal-prompt">$</span>
+              <input type="text" class="terminal-input" id="terminal-input" placeholder="Type a command..." />
+            </div>
+          </div>
         </div>
       </div>
+      <div id="ai-chat-panel"></div>
     </div>
   `;
 
@@ -671,6 +1185,7 @@ function createLayout() {
   document.getElementById('clear-terminal')?.addEventListener('click', clearActiveTerminal);
   document.getElementById('refresh-explorer')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
+  document.getElementById('ai-chat-toggle')?.addEventListener('click', toggleAIChat);
   document.getElementById('save-file')?.addEventListener('click', saveCurrentFile);
   document.getElementById('toggle-autosave')?.addEventListener('click', toggleAutoSave);
   document.getElementById('stop-processes')?.addEventListener('click', stopAllProcesses);
@@ -679,7 +1194,6 @@ function createLayout() {
   const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
   terminalInput?.addEventListener('keydown', handleTerminalInput);
   
-  // Add keyboard shortcuts
   document.addEventListener('keydown', handleKeyboardShortcuts);
 }
 
@@ -2304,3 +2818,536 @@ function clearActiveTerminal() {
     output.textContent = '';
   }
 }
+
+// Add the toggle function for AI chat
+function toggleAIChat() {
+  aiChatVisible = !aiChatVisible;
+  renderAIChat();
+  
+  // Update button state
+  const toggleBtn = document.getElementById('ai-chat-toggle');
+  if (toggleBtn) {
+    if (aiChatVisible) {
+      toggleBtn.style.backgroundColor = '#9370db';
+      toggleBtn.textContent = '🤖 Close AI';
+    } else {
+      toggleBtn.style.backgroundColor = '#7b68ee';
+      toggleBtn.textContent = '🤖 AI Assistant';
+    }
+  }
+  
+  // Update layout
+  updateLayoutForAIChat();
+  
+  // Force Monaco to resize
+  setTimeout(() => {
+    monacoEditor?.layout();
+  }, 100);
+}
+
+function updateLayoutForAIChat() {
+  const root = document.getElementById('root');
+  const aiChatPanel = document.getElementById('ai-chat-panel');
+  
+  if (root && aiChatPanel) {
+    if (aiChatVisible) {
+      root.style.width = 'calc(100% - 350px)';
+      aiChatPanel.style.display = 'flex';
+    } else {
+      root.style.width = '100%';
+      aiChatPanel.style.display = 'none';
+    }
+  }
+}
+
+// Add the render function for AI chat
+function renderAIChat() {
+  const aiChatPanel = document.getElementById('ai-chat-panel');
+  if (!aiChatPanel) return;
+
+  if (aiChatVisible) {
+    aiChatPanel.innerHTML = `
+      <div class="ai-chat-container">
+        <div class="ai-chat-header">
+          <div class="ai-chat-title">
+            <span class="ai-icon">🤖</span>
+            <span>AI Assistant</span>
+          </div>
+          <div class="ai-chat-controls">
+            <button onclick="clearAIChat()" class="chat-control-btn" title="Clear Chat">🗑️</button>
+            <button onclick="toggleAIChat()" class="chat-control-btn" title="Close">✕</button>
+          </div>
+        </div>
+        
+        ${!aiService ? renderAPIKeySetup() : renderChatInterface()}
+      </div>
+    `;
+    
+    // Add event listeners after rendering
+    setupAIChatEventListeners();
+  }
+  
+  updateLayoutForAIChat();
+}
+
+function renderAPIKeySetup(): string {
+  return `
+    <div class="api-key-setup">
+      <h3>🔧 Setup Required</h3>
+      <p>Please add your Anthropic API key to the <code>.env</code> file:</p>
+      <div class="code-block-container">
+        <pre><code>ANTHROPIC_API_KEY=sk-ant-api03-your-key-here</code></pre>
+      </div>
+      <p>Then restart the application.</p>
+      <p class="api-key-note">
+        Get your API key from 
+        <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">
+          Anthropic Console
+        </a>
+      </p>
+      <button onclick="initializeAIService()" class="api-key-submit">🔄 Retry Connection</button>
+    </div>
+  `;
+}
+
+function renderChatInterface(): string {
+  return `
+    ${renderCodeContext()}
+    
+    <div class="ai-chat-messages" id="ai-chat-messages">
+      ${aiChatMessages.map(msg => renderMessage(msg)).join('')}
+      ${isAILoading ? '<div class="typing-indicator"><span>AI is thinking</span><span class="dots"><span>.</span><span>.</span><span>.</span></span></div>' : ''}
+    </div>
+
+    ${renderChatInput()}
+  `;
+}
+
+function renderCodeContext(): string {
+  const currentFileName = activeTabPath ? activeTabPath.split('/').pop() : null;
+  const selectedText = monacoEditor ? monacoEditor.getModel()?.getValueInRange(monacoEditor.getSelection()) : null;
+  
+  if (!currentFileName && !selectedText) {
+    return '';
+  }
+  
+  return `
+    <div class="code-context">
+      <div class="context-header">
+        <span class="context-title">📁 Current Context</span>
+      </div>
+      <div class="context-content">
+        ${currentFileName ? `
+          <div class="context-item">
+            <span class="context-label">File:</span>
+            <span class="context-value">${currentFileName}</span>
+          </div>
+        ` : ''}
+        ${selectedText ? `
+          <div class="context-item">
+            <span class="context-label">Selected:</span>
+            <div class="selected-text-preview">${selectedText.length > 100 ? selectedText.substring(0, 100) + '...' : selectedText}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderMessage(message: any): string {
+  const formattedContent = formatMessageContent(message.content);
+  const timeStr = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  return `
+    <div class="message-bubble ${message.role}">
+      <div class="message-header">
+        <span class="message-role">
+          ${message.role === 'user' ? '👤' : '🤖'} ${message.role}
+        </span>
+        <span class="message-time">${timeStr}</span>
+      </div>
+      <div class="message-content">${formattedContent}</div>
+    </div>
+  `;
+}
+
+function formatMessageContent(content: string): string {
+  // Handle code blocks
+  content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+    const language = lang || 'text';
+    const escapedCode = escapeHtml(code.trim());
+    return `
+      <div class="code-block-container">
+        <div class="code-block-header">
+          <span class="code-language">${language}</span>
+          <button class="copy-code-btn" onclick="copyCodeToClipboard('${encodeURIComponent(code.trim())}')">Copy</button>
+          <button class="insert-code-btn" onclick="insertCodeIntoEditor('${encodeURIComponent(code.trim())}')">Insert</button>
+        </div>
+        <pre><code class="language-${language}">${escapedCode}</code></pre>
+      </div>
+    `;
+  });
+  
+  // Handle inline code
+  content = content.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Handle bold and italic
+  content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  // Handle line breaks
+  content = content.replace(/\n/g, '<br>');
+  
+  return content;
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderChatInput(): string {
+  const hasContext = !!(activeTabPath || (monacoEditor && monacoEditor.getModel()?.getValueInRange(monacoEditor.getSelection())));
+  
+  return `
+    <div class="chat-input-container">
+      <div id="quick-actions" class="quick-actions" style="display: none;">
+        <div class="quick-actions-header">
+          <span>Quick Actions</span>
+          <button onclick="toggleQuickActions()">✕</button>
+        </div>
+        <div class="quick-actions-grid">
+          <button class="quick-action-btn" onclick="sendQuickAction('explain')">Explain this code</button>
+          <button class="quick-action-btn" onclick="sendQuickAction('bugs')">Find bugs</button>
+          <button class="quick-action-btn" onclick="sendQuickAction('optimize')">Optimize code</button>
+          <button class="quick-action-btn" onclick="sendQuickAction('comments')">Add comments</button>
+          <button class="quick-action-btn" onclick="sendQuickAction('tests')">Write tests</button>
+          <button class="quick-action-btn" onclick="sendQuickAction('component')">Generate component</button>
+        </div>
+      </div>
+
+      <form class="chat-input-form" onsubmit="sendChatMessage(event)">
+        <div class="input-wrapper">
+          <textarea
+            id="chat-textarea"
+            placeholder="Ask about your code or request new functionality..."
+            class="chat-textarea"
+            rows="1"
+            ${isAILoading ? 'disabled' : ''}
+          ></textarea>
+          
+          <div class="input-controls">
+            <button type="button" class="quick-actions-toggle" onclick="toggleQuickActions()" title="Quick Actions">⚡</button>
+            
+            ${hasContext ? `
+              <label class="context-toggle">
+                <input type="checkbox" id="include-context" />
+                <span class="context-label">Include Context</span>
+              </label>
+            ` : ''}
+            
+            <button type="submit" class="send-button" ${isAILoading ? 'disabled' : ''}>
+              ${isAILoading ? '⏳' : '📤'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function setupAIChatEventListeners() {
+  // API Key setup
+  const apiKeyInput = document.getElementById('api-key-input') as HTMLInputElement;
+  const apiKeySubmit = document.getElementById('api-key-submit');
+  
+  if (apiKeyInput && apiKeySubmit) {
+    apiKeyInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && apiKeyInput.value.trim()) {
+        initializeAIService();
+      }
+    });
+    
+    apiKeySubmit.addEventListener('click', () => {
+      if (apiKeyInput.value.trim()) {
+        initializeAIService();
+      }
+    });
+  }
+  
+  // Chat textarea auto-resize
+  const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
+  if (textarea) {
+    textarea.addEventListener('input', adjustTextareaHeight);
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage(e);
+      }
+    });
+  }
+}
+
+function adjustTextareaHeight() {
+  const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
+  if (textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  }
+}
+
+async function initializeAIService() {
+  try {
+    // Test if API key is available by making a test call
+    const testMessage = {
+      id: 'test',
+      role: 'user',
+      content: 'Hello'
+    };
+    
+    await (window as any).electronAPI.callAnthropicAPI([testMessage], 'You are a helpful assistant.');
+    
+    // Create AI service that uses IPC
+    aiService = {
+      async sendMessage(messages: any[], systemPrompt?: string) {
+        return await (window as any).electronAPI.callAnthropicAPI(messages, systemPrompt);
+      }
+    };
+    
+    // Add welcome message
+    const welcomeMessage = {
+      id: Date.now().toString(),
+      role: 'assistant' as const,  // Add 'as const'
+      content: `Hello! I'm your AI coding assistant. I can help you with:
+
+• **Code Analysis** - Explain and review your code
+• **Code Generation** - Create new components, functions, or files  
+• **Debugging** - Find and fix issues
+• **Refactoring** - Improve code quality
+• **Documentation** - Generate comments and docs
+
+Feel free to ask questions about your code or request new functionality!`,
+      timestamp: new Date()
+    };
+    
+    aiChatMessages = [welcomeMessage];
+    renderAIChat();
+    writeToTerminal('✅ AI Assistant connected successfully!');
+    
+  } catch (error) {
+    console.error('AI Service initialization failed:', error);
+    
+    // Show error message in chat
+    const errorMessage = {
+      id: Date.now().toString(),
+      role: 'assistant' as const,  // Add 'as const'
+      content: `❌ **Setup Required**
+
+Please add your Anthropic API key to the \`.env\` file:
+
+\`\`\`env
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+\`\`\`
+
+Then restart the application.
+
+Get your API key from [Anthropic Console](https://console.anthropic.com/)`,
+      timestamp: new Date()
+    };
+    
+    aiChatMessages = [errorMessage];
+    renderAIChat();
+  }
+}
+
+function getSystemPrompt(): string {
+  return `You are an AI coding assistant integrated into a VS Code-like IDE. You help users with:
+
+1. **Code Analysis**: Analyze and explain code snippets, functions, and files
+2. **Code Generation**: Create new code based on requirements
+3. **Debugging**: Help identify and fix issues in code
+4. **Refactoring**: Suggest improvements and optimizations
+5. **Documentation**: Generate comments and documentation
+6. **Learning**: Explain programming concepts and best practices
+
+When responding:
+- Be concise but thorough
+- Provide working code examples when appropriate
+- Consider the context of the current file/project
+- Suggest file paths and names for new components
+- Use markdown formatting for better readability
+- If suggesting code changes, be specific about where they should go
+
+The user can share their current file content, selected text, or ask general programming questions.`;
+}
+
+async function sendChatMessage(event?: Event) {
+  if (event) {
+    event.preventDefault();
+  }
+  
+  const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
+  const includeContextCheckbox = document.getElementById('include-context') as HTMLInputElement;
+  
+  if (!textarea || !aiService || !textarea.value.trim() || isAILoading) {
+    return;
+  }
+  
+  const message = textarea.value.trim();
+  const includeContext = includeContextCheckbox?.checked || false;
+  
+  // Add user message
+  const userMessage = {
+    id: Date.now().toString(),
+    role: 'user' as const,
+    content: message,
+    timestamp: new Date()
+  };
+  
+  aiChatMessages.push(userMessage);
+  textarea.value = '';
+  adjustTextareaHeight();
+  
+  // Set loading state
+  isAILoading = true;
+  renderAIChat();
+  
+  try {
+    // Build context-aware message if needed
+    let enhancedMessage = message;
+    if (includeContext) {
+      const currentFile = monacoEditor?.getValue();
+      const selectedText = monacoEditor?.getModel()?.getValueInRange(monacoEditor.getSelection());
+      
+      if (currentFile || selectedText) {
+        enhancedMessage += '\n\nContext:\n';
+        if (activeTabPath) {
+          enhancedMessage += `Current file: ${activeTabPath}\n`;
+        }
+        if (selectedText) {
+          enhancedMessage += `Selected text:\n\`\`\`\n${selectedText}\n\`\`\`\n`;
+        }
+        if (currentFile && !selectedText) {
+          enhancedMessage += `Full file content:\n\`\`\`\n${currentFile}\n\`\`\`\n`;
+        }
+      }
+    }
+    
+    // Send to AI service via IPC
+    const messageForAI = { ...userMessage, content: enhancedMessage };
+    const response = await aiService.sendMessage([...aiChatMessages.slice(0, -1), messageForAI], getSystemPrompt());
+    
+    // Convert timestamp string back to Date object
+    response.timestamp = new Date(response.timestamp);
+    aiChatMessages.push(response);
+    
+  } catch (error) {
+    const errorMessage = {
+      id: Date.now().toString(),
+      role: 'assistant' as const,
+      content: `❌ Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
+      timestamp: new Date()
+    };
+    aiChatMessages.push(errorMessage);
+  } finally {
+    isAILoading = false;
+    renderAIChat();
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      const messagesContainer = document.getElementById('ai-chat-messages');
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+    }, 100);
+  }
+}
+
+function toggleQuickActions() {
+  const quickActions = document.getElementById('quick-actions');
+  if (quickActions) {
+    quickActions.style.display = quickActions.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function sendQuickAction(action: string) {
+  const actions: { [key: string]: string | (() => string | null) } = {
+    explain: 'Please explain the current code and what it does.',
+    bugs: 'Please review this code for potential bugs or issues.',
+    optimize: 'Please suggest optimizations for this code.',
+    comments: 'Please add appropriate comments to this code.',
+    tests: 'Please create unit tests for this code.',
+    component: () => {
+      const componentName = prompt('What component would you like to create?');
+      return componentName ? `Create a React component called ${componentName}` : null;
+    }
+  };
+  
+  const actionValue = actions[action];
+  let message: string | null = null;
+  
+  if (typeof actionValue === 'function') {
+    message = actionValue();
+  } else {
+    message = actionValue;
+  }
+  
+  if (message) {
+    const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.value = message;
+      
+      // Check include context
+      const includeContextCheckbox = document.getElementById('include-context') as HTMLInputElement;
+      if (includeContextCheckbox) {
+        includeContextCheckbox.checked = true;
+      }
+      
+      // Hide quick actions
+      toggleQuickActions();
+      
+      // Send message
+      sendChatMessage();
+    }
+  }
+}
+
+function clearAIChat() {
+  aiChatMessages = [];
+  renderAIChat();
+  writeToTerminal('🗑️ AI chat cleared');
+}
+
+function copyCodeToClipboard(encodedCode: string) {
+  const code = decodeURIComponent(encodedCode);
+  navigator.clipboard.writeText(code).then(() => {
+    writeToTerminal('📋 Code copied to clipboard');
+  });
+}
+
+function insertCodeIntoEditor(encodedCode: string) {
+  const code = decodeURIComponent(encodedCode);
+  if (monacoEditor) {
+    const selection = monacoEditor.getSelection();
+    const id = { major: 1, minor: 1 };
+    const op = {
+      identifier: id,
+      range: selection,
+      text: code,
+      forceMoveMarkers: true
+    };
+    monacoEditor.executeEdits('ai-assistant', [op]);
+    monacoEditor.focus();
+    writeToTerminal('✅ Code inserted into editor');
+  }
+}
+
+// Make functions globally available
+(window as any).toggleAIChat = toggleAIChat;
+(window as any).clearAIChat = clearAIChat;
+(window as any).sendChatMessage = sendChatMessage;
+(window as any).toggleQuickActions = toggleQuickActions;
+(window as any).sendQuickAction = sendQuickAction;
+(window as any).copyCodeToClipboard = copyCodeToClipboard;
+(window as any).insertCodeIntoEditor = insertCodeIntoEditor;

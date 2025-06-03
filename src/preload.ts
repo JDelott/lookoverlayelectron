@@ -44,5 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Screen capture operations
   getSources: () => ipcRenderer.invoke('get-sources'),
-  getScreenInfo: () => ipcRenderer.invoke('get-screen-info')
+  getScreenInfo: () => ipcRenderer.invoke('get-screen-info'),
+  
+  // Add secure AI API call
+  callAnthropicAPI: (messages: any[], systemPrompt?: string) => 
+    ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt)
 });
