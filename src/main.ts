@@ -6,6 +6,7 @@ import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
+let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running processes
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -66,14 +67,13 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
-// Execute single commands with streaming output support
+// Execute single commands with process tracking
 ipcMain.handle('execute-command', async (event, command: string, workingDir?: string) => {
   try {
     return new Promise((resolve) => {
       const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['/c', command] : ['-c', command];
       
-      // Use provided working directory or default to current
       const cwd = workingDir || process.cwd();
       
       console.log(`Executing command: ${command} in directory: ${cwd}`);
@@ -84,18 +84,35 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
+      // Track long-running processes
+      const isLongRunning = command.includes('dev') || command.includes('start') || command.includes('serve');
+      if (isLongRunning) {
+        const processId = `${Date.now()}-${Math.random()}`;
+        runningProcesses.set(processId, childProcess);
+        
+        // Send process ID to renderer for tracking
+        mainWindow?.webContents.send('process-started', { 
+          id: processId, 
+          command: command 
+        });
+        
+        // Clean up when process ends
+        childProcess.on('close', () => {
+          runningProcesses.delete(processId);
+          mainWindow?.webContents.send('process-ended', { id: processId });
+        });
+      }
+
       let output = '';
       let error = '';
       let hasOutput = false;
 
-      // For long-running processes, send output as it comes
       childProcess.stdout?.on('data', (data) => {
         const chunk = data.toString();
         output += chunk;
         hasOutput = true;
         
-        // Send streaming output to renderer for long-running processes
-        if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+        if (isLongRunning) {
           mainWindow?.webContents.send('command-output-stream', chunk);
         }
       });
@@ -105,8 +122,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         error += chunk;
         hasOutput = true;
         
-        // Send streaming output to renderer for long-running processes
-        if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+        if (isLongRunning) {
           mainWindow?.webContents.send('command-output-stream', chunk);
         }
       });
@@ -120,10 +136,10 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         });
       });
 
-      // For long-running processes, resolve immediately after a short delay if we get output
-      if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+      // For long-running processes, resolve quickly but keep process running
+      if (isLongRunning) {
         setTimeout(() => {
-          if (hasOutput) {
+          if (hasOutput || childProcess.pid) {
             resolve({
               success: true,
               output: output + error,
@@ -132,7 +148,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
               isLongRunning: true
             });
           }
-        }, 3000); // Wait 3 seconds for initial output
+        }, 3000);
       }
     });
   } catch (error) {
@@ -321,6 +337,36 @@ ipcMain.handle('write-file', async (event, filePath: string, content: string) =>
     return { success: true };
   } catch (error) {
     console.error('Error writing file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Kill running process
+ipcMain.handle('kill-process', async (event, processId?: string) => {
+  try {
+    if (processId) {
+      // Kill specific process
+      const process = runningProcesses.get(processId);
+      if (process) {
+        process.kill('SIGINT'); // Send Ctrl+C signal
+        runningProcesses.delete(processId);
+        console.log(`Killed process: ${processId}`);
+        return { success: true, message: `Process ${processId} terminated` };
+      } else {
+        return { success: false, error: 'Process not found' };
+      }
+    } else {
+      // Kill all running processes
+      let killed = 0;
+      runningProcesses.forEach((process, id) => {
+        process.kill('SIGINT');
+        killed++;
+      });
+      runningProcesses.clear();
+      console.log(`Killed ${killed} processes`);
+      return { success: true, message: `Terminated ${killed} processes` };
+    }
+  } catch (error) {
     return { success: false, error: (error as Error).message };
   }
 });

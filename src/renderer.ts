@@ -472,6 +472,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 let autoSaveTimeout: NodeJS.Timeout | null = null;
 let isAutoSaveEnabled = true;
 
+// Track running processes
+let runningProcesses: Map<string, {id: string, command: string}> = new Map();
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
@@ -518,6 +521,17 @@ function createLayout() {
           cursor: pointer;
           margin-left: 4px;
         ">🔄 Auto-Save: ON</button>
+        <button id="stop-processes" style="
+          background: #dc3545;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 11px;
+          cursor: pointer;
+          margin-left: 8px;
+          display: none;
+        ">🛑 Stop Server (Ctrl+C)</button>
       </div>
       <div class="editor-area">
         <div class="tab-bar" id="tab-bar"></div>
@@ -528,6 +542,12 @@ function createLayout() {
         <div class="terminal-header">
           <div class="terminal-header-left">
             <span>Terminal</span>
+            <span id="process-indicator" style="
+              margin-left: 8px;
+              font-size: 11px;
+              color: #28a745;
+              display: none;
+            ">🟢 Server Running</span>
           </div>
           <div class="terminal-header-right">
             <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
@@ -549,6 +569,7 @@ function createLayout() {
   document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('save-file')?.addEventListener('click', saveCurrentFile);
   document.getElementById('toggle-autosave')?.addEventListener('click', toggleAutoSave);
+  document.getElementById('stop-processes')?.addEventListener('click', stopAllProcesses);
   
   const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
   terminalInput?.addEventListener('keydown', handleTerminalInput);
@@ -562,6 +583,15 @@ function handleKeyboardShortcuts(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key === 's') {
     event.preventDefault();
     saveCurrentFile();
+  }
+  
+  // Ctrl+C to stop processes (when terminal is focused)
+  if (event.ctrlKey && event.key === 'c') {
+    const terminalInput = document.getElementById('terminal-input');
+    if (document.activeElement === terminalInput || runningProcesses.size > 0) {
+      event.preventDefault();
+      stopAllProcesses();
+    }
   }
 }
 
@@ -855,11 +885,11 @@ function handleTerminalInput(event: KeyboardEvent) {
       // Echo the command
       writeToTerminal(`$ ${command}`);
       
-      // Execute command using the working executeCommand API
+      // Execute command
       executeRealCommand(command.trim());
       
       input.value = '';
-    
+      
       // Add to history
       terminalHistory.unshift(command.trim());
       if (terminalHistory.length > 100) {
@@ -869,6 +899,8 @@ function handleTerminalInput(event: KeyboardEvent) {
     } else {
       writeToTerminal('$ ');
     }
+    
+    input.value = '';
   } else if (event.key === 'ArrowUp') {
     event.preventDefault();
     if (historyIndex < terminalHistory.length - 1) {
@@ -884,12 +916,12 @@ function handleTerminalInput(event: KeyboardEvent) {
       historyIndex = -1;
       input.value = '';
     }
-  } else if (event.key === 'Tab') {
-    event.preventDefault();
-    // Tab completion could be implemented here
   } else if (event.ctrlKey && event.key === 'c') {
+    // Handle Ctrl+C in terminal
     event.preventDefault();
     writeToTerminal('^C');
+    input.value = '';
+    stopAllProcesses();
   }
 }
 
@@ -1793,12 +1825,58 @@ async function handleCdCommand(args: string[]) {
   writeToTerminal('');
 }
 
+async function stopAllProcesses() {
+  if (runningProcesses.size === 0) {
+    writeToTerminal('❌ No running processes to stop');
+    return;
+  }
+  
+  writeToTerminal('🛑 Stopping all processes... (Ctrl+C)');
+  
+  try {
+    const result = await (window as any).electronAPI.killProcess();
+    
+    if (result.success) {
+      writeToTerminal(`✅ ${result.message}`);
+      runningProcesses.clear();
+      updateProcessIndicators();
+    } else {
+      writeToTerminal(`❌ Failed to stop processes: ${result.error}`);
+    }
+  } catch (error) {
+    writeToTerminal(`❌ Error stopping processes: ${error}`);
+  }
+  
+  writeToTerminal('');
+}
+
+function updateProcessIndicators() {
+  const stopBtn = document.getElementById('stop-processes');
+  const processIndicator = document.getElementById('process-indicator');
+  
+  if (runningProcesses.size > 0) {
+    if (stopBtn) {
+      stopBtn.style.display = 'inline-block';
+    }
+    if (processIndicator) {
+      processIndicator.style.display = 'inline-block';
+      processIndicator.textContent = `🟢 ${runningProcesses.size} Process${runningProcesses.size > 1 ? 'es' : ''} Running`;
+    }
+  } else {
+    if (stopBtn) {
+      stopBtn.style.display = 'none';
+    }
+    if (processIndicator) {
+      processIndicator.style.display = 'none';
+    }
+  }
+}
+
 function setupCommandStreaming() {
   // Listen for streaming command output
   (window as any).electronAPI.onCommandOutputStream((data: string) => {
     console.log('Streaming output received:', data);
     
-    // Append directly to terminal
     const output = document.getElementById('terminal-output');
     if (output) {
       output.textContent += data;
@@ -1819,5 +1897,21 @@ function setupCommandStreaming() {
         });
       }
     }
+  });
+  
+  // Listen for process lifecycle events
+  (window as any).electronAPI.onProcessStarted((process: {id: string, command: string}) => {
+    console.log('Process started:', process);
+    runningProcesses.set(process.id, process);
+    updateProcessIndicators();
+    writeToTerminal(`🚀 Started: ${process.command}`);
+    writeToTerminal('💡 Press Ctrl+C to stop the server');
+  });
+  
+  (window as any).electronAPI.onProcessEnded((process: {id: string}) => {
+    console.log('Process ended:', process.id);
+    runningProcesses.delete(process.id);
+    updateProcessIndicators();
+    writeToTerminal('🛑 Process stopped');
   });
 }

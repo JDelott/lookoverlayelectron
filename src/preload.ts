@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Single command execution with working directory support
   executeCommand: (command: string, workingDir?: string) => ipcRenderer.invoke('execute-command', command, workingDir),
   
+  // Process control
+  killProcess: (processId?: string) => ipcRenderer.invoke('kill-process', processId),
+  
   // External URL opening
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   
@@ -29,6 +32,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Command output streaming
   onCommandOutputStream: (callback: (data: string) => void) => {
     ipcRenderer.on('command-output-stream', (event, data) => callback(data));
+  },
+  
+  // Process lifecycle events
+  onProcessStarted: (callback: (process: {id: string, command: string}) => void) => {
+    ipcRenderer.on('process-started', (event, process) => callback(process));
+  },
+  onProcessEnded: (callback: (process: {id: string}) => void) => {
+    ipcRenderer.on('process-ended', (event, process) => callback(process));
   },
   
   // Screen capture operations
