@@ -270,10 +270,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM loaded, initializing Monaco Editor');
   
   // Add styles
-  const styleElement = document.createElement('style');
-  styleElement.textContent = globalStyles;
-  document.head.appendChild(styleElement);
-  
+const styleElement = document.createElement('style');
+styleElement.textContent = globalStyles;
+document.head.appendChild(styleElement);
+
   // Create layout
   createLayout();
   
@@ -399,6 +399,11 @@ function setTerminalHeight(height: number) {
   if (monacoEditor) {
     monacoEditor.layout();
   }
+  
+  // Resize real terminal to fit new dimensions
+  setTimeout(() => {
+    resizeTerminalToFit();
+  }, 100);
 }
 
 function toggleTerminal() {
@@ -434,12 +439,148 @@ function initializeTerminal() {
   const output = document.getElementById('terminal-output');
   if (!output) return;
   
-  writeToTerminal('🎉 Terminal initialized successfully!');
-  writeToTerminal('Welcome to the integrated terminal');
-  writeToTerminal('💡 Tip: Drag the top border to resize the terminal height');
-  writeToTerminal('Available commands: help, clear, date, echo, ls, pwd, cat');
-  writeToTerminal('Type "help" for more information');
+  // Clear any existing content
+  output.textContent = '';
+  
+  // Start the real terminal process
+  startRealTerminal();
+}
+
+async function startRealTerminal() {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  
+  console.log('🔧 Starting command-based terminal...');
+  writeToTerminal('✅ Terminal ready! Type commands below.');
+  writeToTerminal('Using command execution mode.');
   writeToTerminal('');
+}
+
+function resizeTerminalToFit() {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  
+  // Calculate approximate character dimensions
+  const style = window.getComputedStyle(output);
+  const fontSize = parseFloat(style.fontSize);
+  const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.4;
+  
+  // Estimate character width (monospace)
+  const charWidth = fontSize * 0.6;
+  
+  // Calculate terminal dimensions
+  const containerWidth = output.clientWidth - 16; // Account for padding
+  const containerHeight = output.clientHeight - 16;
+  
+  const cols = Math.floor(containerWidth / charWidth);
+  const rows = Math.floor(containerHeight / lineHeight);
+  
+  console.log(`Would resize terminal to ${cols}x${rows}`);
+}
+
+function initializeMockTerminal() {
+  writeToTerminal('🔧 Demo Terminal Mode');
+  writeToTerminal('Real terminal failed to start. Using mock commands.');
+  writeToTerminal('Available commands: help, clear, date, echo, ls, pwd');
+  writeToTerminal('');
+  
+  // Remove real terminal input handling and restore mock handling
+  const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
+  if (terminalInput) {
+    // Clone the input to remove existing event listeners
+    const newInput = terminalInput.cloneNode(true) as HTMLInputElement;
+    terminalInput.parentNode?.replaceChild(newInput, terminalInput);
+    newInput.addEventListener('keydown', handleTerminalInput);
+  }
+}
+
+function handleTerminalInput(event: KeyboardEvent) {
+  const input = event.target as HTMLInputElement;
+  
+  if (event.key === 'Enter') {
+    const command = input.value;
+    console.log('🚀 Command entered:', JSON.stringify(command));
+    
+    if (command.trim()) {
+      // Echo the command
+      writeToTerminal(`$ ${command}`);
+      
+      // Execute command using the working executeCommand API
+      executeRealCommand(command.trim());
+      
+      input.value = '';
+      
+      // Add to history
+      terminalHistory.unshift(command.trim());
+      if (terminalHistory.length > 100) {
+        terminalHistory.pop();
+      }
+      historyIndex = -1;
+    } else {
+      writeToTerminal('$ ');
+    }
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (historyIndex < terminalHistory.length - 1) {
+      historyIndex++;
+      input.value = terminalHistory[historyIndex] || '';
+    }
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    if (historyIndex > 0) {
+      historyIndex--;
+      input.value = terminalHistory[historyIndex] || '';
+    } else if (historyIndex === 0) {
+      historyIndex = -1;
+      input.value = '';
+    }
+  } else if (event.key === 'Tab') {
+    event.preventDefault();
+    // Tab completion could be implemented here
+  } else if (event.ctrlKey && event.key === 'c') {
+    event.preventDefault();
+    writeToTerminal('^C');
+  }
+}
+
+async function executeRealCommand(command: string) {
+  try {
+    console.log('Executing command via executeCommand API:', command);
+    
+    // Show a loading indicator
+    const loadingMsg = '⏳ Executing...';
+    writeToTerminal(loadingMsg);
+    
+    const result = await (window as any).electronAPI.executeCommand(command);
+    console.log('Command result:', result);
+    
+    // Remove loading message
+    const output = document.getElementById('terminal-output');
+    if (output) {
+      const text = output.textContent || '';
+      const lines = text.split('\n');
+      if (lines[lines.length - 2] === loadingMsg) {
+        lines.splice(-2, 1);
+        output.textContent = lines.join('\n');
+      }
+    }
+    
+    // Show command output
+    if (result.output && result.output.trim()) {
+      writeToTerminal(result.output.trim());
+    }
+    
+    if (!result.success && result.code !== 0) {
+      writeToTerminal(`(Exit code: ${result.code})`);
+    }
+    
+    writeToTerminal(''); // Empty line for spacing
+    
+  } catch (error) {
+    console.error('Command execution error:', error);
+    writeToTerminal(`Error: ${error}`);
+    writeToTerminal('');
+  }
 }
 
 function clearTerminal() {
@@ -460,51 +601,27 @@ function writeToTerminal(text: string) {
   output.scrollTop = output.scrollHeight;
 }
 
-function handleTerminalInput(event: KeyboardEvent) {
-  const input = event.target as HTMLInputElement;
-  
-  if (event.key === 'Enter') {
-    const command = input.value.trim();
-    if (command) {
-      // Add to history
-      terminalHistory.unshift(command);
-      if (terminalHistory.length > 100) {
-        terminalHistory.pop();
-      }
-      historyIndex = -1;
-      
-      // Echo the command
-      writeToTerminal(`$ ${command}`);
-      
-      // Execute command
-      executeCommand(command);
-    } else {
-      writeToTerminal('$ ');
-    }
-    
-    input.value = '';
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    if (historyIndex < terminalHistory.length - 1) {
-      historyIndex++;
-      input.value = terminalHistory[historyIndex] || '';
-    }
-  } else if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    if (historyIndex > 0) {
-      historyIndex--;
-      input.value = terminalHistory[historyIndex] || '';
-    } else if (historyIndex === 0) {
-      historyIndex = -1;
-      input.value = '';
-    }
-  }
-}
-
 async function executeCommand(command: string) {
   const args = command.split(' ');
   const cmd = args[0].toLowerCase();
   
+  // Try real command first
+  if ((window as any).electronAPI?.executeCommand) {
+    try {
+      const result = await (window as any).electronAPI.executeCommand(command);
+      if (result.output) {
+        writeToTerminal(result.output);
+        writeToTerminal('');
+        return;
+      }
+    } catch (error) {
+      writeToTerminal(`Error executing command: ${error}`);
+      writeToTerminal('');
+      return;
+    }
+  }
+  
+  // Fall back to built-in commands
   switch (cmd) {
     case 'help':
       writeToTerminal('Available commands:');
@@ -512,16 +629,14 @@ async function executeCommand(command: string) {
       writeToTerminal('  clear        - Clear the terminal');
       writeToTerminal('  date         - Show current date and time');
       writeToTerminal('  echo <text>  - Echo text back');
-      writeToTerminal('  ls           - List files (mock)');
-      writeToTerminal('  pwd          - Show current directory');
-      writeToTerminal('  cat <file>   - Show file contents (mock)');
-      writeToTerminal('  history      - Show command history');
       writeToTerminal('  resize <h>   - Set terminal height (100-600px)');
+      writeToTerminal('');
+      writeToTerminal('Real commands: ls, pwd, cd, git, npm, node, etc.');
       break;
       
     case 'clear':
       clearTerminal();
-      return; // Don't add extra newline
+      return;
       
     case 'date':
       writeToTerminal(new Date().toString());
@@ -529,35 +644,6 @@ async function executeCommand(command: string) {
       
     case 'echo':
       writeToTerminal(args.slice(1).join(' '));
-      break;
-      
-    case 'ls':
-      writeToTerminal('📁 src/');
-      writeToTerminal('📄 package.json');
-      writeToTerminal('📄 README.md');
-      writeToTerminal('📄 index.html');
-      writeToTerminal('📄 tsconfig.json');
-      break;
-      
-    case 'pwd':
-      writeToTerminal('/workspace/lookoverlayelectron-main');
-      break;
-      
-    case 'cat':
-      if (args[1]) {
-        writeToTerminal(`Contents of ${args[1]}:`);
-        writeToTerminal(`// This is mock content for ${args[1]}`);
-        writeToTerminal('// In a real implementation, this would show actual file contents');
-      } else {
-        writeToTerminal('Usage: cat <filename>');
-      }
-      break;
-      
-    case 'history':
-      writeToTerminal('Command history:');
-      terminalHistory.slice(0, 10).forEach((cmd, i) => {
-        writeToTerminal(`  ${i + 1}: ${cmd}`);
-      });
       break;
       
     case 'resize':
@@ -576,31 +662,11 @@ async function executeCommand(command: string) {
       break;
       
     default:
-      // Try to execute with real terminal if available
-      if (await tryExecuteRealCommand(command)) {
-        return;
-      }
-      
       writeToTerminal(`Command not found: ${cmd}`);
       writeToTerminal('Type "help" for available commands');
   }
   
   writeToTerminal('');
-}
-
-async function tryExecuteRealCommand(command: string): Promise<boolean> {
-  try {
-    if ((window as any).electronAPI?.executeCommand) {
-      const result = await (window as any).electronAPI.executeCommand(command);
-      if (result && result.output) {
-        writeToTerminal(result.output);
-        return true;
-      }
-    }
-  } catch (error) {
-    console.log('Real command execution not available');
-  }
-  return false;
 }
 
 async function initializeMonaco() {
@@ -614,11 +680,11 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-    });
-
-    (window as any).require(['vs/editor/editor.main'], () => {
-      console.log('Monaco modules loaded');
+      });
       
+      (window as any).require(['vs/editor/editor.main'], () => {
+        console.log('Monaco modules loaded');
+        
       monacoEditor = (window as any).monaco.editor.create(container, {
         value: `// Welcome to your VS Code-like IDE!
 // 
@@ -641,16 +707,16 @@ function demo() {
 }
 
 demo();`,
-        language: 'javascript',
-        theme: 'vs-dark',
-        automaticLayout: true,
+              language: 'javascript',
+              theme: 'vs-dark',
+              automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on'
-      });
-
+              scrollBeyondLastLine: false,
+              wordWrap: 'on'
+            });
+            
       console.log('Monaco Editor created successfully!');
       resolve();
     });
@@ -819,7 +885,7 @@ export default demo;`;
         writeToTerminal(`📄 Opened file: ${filePath}`);
       }
     }
-  } catch (error) {
+          } catch (error) {
     console.error('Failed to open file:', error);
   }
 }
@@ -850,7 +916,7 @@ async function toggleDirectory(item: FileItem) {
         } else {
           item.children = [];
         }
-      } else {
+  } else {
         // Mock children for demo
         item.children = [
           { name: 'example.js', path: `${item.path}/example.js`, type: 'file' },

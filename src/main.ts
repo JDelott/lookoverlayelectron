@@ -1,11 +1,11 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn } from 'child_process';
 import * as os from 'os';
+import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null;
-let terminalProcess: any = null;
+let terminalProcess: ChildProcess | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -25,12 +25,8 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
-  // Always open dev tools to see any errors
-  mainWindow.webContents.openDevTools();
-
   mainWindow.on('closed', () => {
     mainWindow = null;
-    // Clean up terminal process
     if (terminalProcess) {
       terminalProcess.kill();
       terminalProcess = null;
@@ -38,223 +34,218 @@ function createWindow(): void {
   });
 }
 
-// Terminal operations
-ipcMain.handle('terminal-start', async () => {
-  try {
-    const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
-    const cwd = process.cwd();
-    
-    terminalProcess = spawn(shell, [], {
-      cwd,
-      env: process.env,
-    });
-
-    terminalProcess.stdout.on('data', (data: Buffer) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('terminal-data', data.toString());
-      }
-    });
-
-    terminalProcess.stderr.on('data', (data: Buffer) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('terminal-data', data.toString());
-      }
-    });
-
-    terminalProcess.on('exit', (code: number) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('terminal-exit', code);
-      }
-      terminalProcess = null;
-    });
-
-    return { success: true, shell };
-  } catch (error: unknown) {
-    console.error('Failed to start terminal:', error);
-    if (error instanceof Error) {
-      return { success: false, error: error.message };
-    }
-    return { success: false, error: 'An unknown error occurred' };
-  }
-});
-
-ipcMain.handle('terminal-write', async (event, data: string) => {
-  if (terminalProcess && terminalProcess.stdin) {
-    terminalProcess.stdin.write(data);
-    return true;
-  }
-  return false;
-});
-
-ipcMain.handle('terminal-resize', async (event, cols: number, rows: number) => {
-  if (terminalProcess && terminalProcess.resize) {
-    terminalProcess.resize(cols, rows);
-    return true;
-  }
-  return false;
-});
-
-ipcMain.handle('terminal-kill', async () => {
-  if (terminalProcess) {
-    terminalProcess.kill();
-    terminalProcess = null;
-    return true;
-  }
-  return false;
-});
-
-// Handle file system operations
+// File system operations
 ipcMain.handle('get-directory-contents', async (event, directoryPath?: string) => {
   try {
     const targetPath = directoryPath || process.cwd();
-    
     const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
     const files = await Promise.all(
-      items
-        .filter(item => !item.name.startsWith('.')) // Hide hidden files
-        .map(async (item) => {
-          const fullPath = path.join(targetPath, item.name);
-          const stats = await fs.promises.stat(fullPath);
-          
-          return {
-            name: item.name,
-            path: fullPath,
-            type: item.isDirectory() ? 'directory' : 'file',
-            size: stats.size,
-            modified: stats.mtime
-          };
-        })
+      items.map(async (item) => {
+        const fullPath = path.join(targetPath, item.name);
+        return {
+          name: item.name,
+          path: fullPath,
+          type: item.isDirectory() ? 'directory' : 'file'
+        };
+      })
     );
-    
-    // Sort: directories first, then files, both alphabetically
-    files.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === 'directory' ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
-    
-    return {
-      files,
-      rootPath: targetPath
-    };
+    return files;
   } catch (error) {
     console.error('Error reading directory:', error);
-    throw error;
+    return [];
   }
 });
 
-// Handle reading file contents
-ipcMain.handle('read-file-contents', async (event, filePath: string) => {
+ipcMain.handle('read-file', async (event, filePath: string) => {
   try {
     const content = await fs.promises.readFile(filePath, 'utf-8');
     return content;
   } catch (error) {
     console.error('Error reading file:', error);
-    throw error;
+    return null;
   }
 });
 
-// Handle writing file contents
-ipcMain.handle('write-file-contents', async (event, filePath: string, content: string) => {
+// Execute single commands
+ipcMain.handle('execute-command', async (event, command: string) => {
   try {
-    await fs.promises.writeFile(filePath, content, 'utf-8');
-    return true;
-  } catch (error) {
-    console.error('Error writing file:', error);
-    throw error;
-  }
-});
+    return new Promise((resolve) => {
+      const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
+      const args = os.platform() === 'win32' ? ['/c', command] : ['-c', command];
+      
+      const childProcess = spawn(shell, args, {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
 
-// Handle screenshot capture request - capturing only what's visible through the window
-ipcMain.handle('capture-screenshot', async () => {
-  try {
-    if (!mainWindow) {
-      throw new Error('Main window is not available');
-    }
-    
-    // Get the window bounds
-    const bounds = mainWindow.getBounds();
-    
-    // Make window transparent but keep it visible
-    const originalOpacity = mainWindow.getOpacity();
-    mainWindow.setOpacity(0);
-    
-    // Wait for the UI to update
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    // Get primary display information
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const scaleFactor = primaryDisplay.scaleFactor;
-    
-    // Capture the entire screen
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: {
-        width: primaryDisplay.size.width * scaleFactor,
-        height: primaryDisplay.size.height * scaleFactor
-      }
+      let output = '';
+      let error = '';
+
+      childProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      childProcess.stderr?.on('data', (data) => {
+        error += data.toString();
+      });
+
+      childProcess.on('close', (code) => {
+        resolve({
+          success: code === 0,
+          output: output + error,
+          code
+        });
+      });
     });
-    
-    // Find the main screen source
-    const mainSource = sources.find(source => 
-      source.name === 'Entire Screen' || 
-      source.name.includes('Display') || 
-      source.id.includes('screen:')
-    );
-    
-    if (!mainSource) {
-      throw new Error('Failed to find the main screen source');
-    }
-    
-    // Calculate the region to crop - accounting for display scaling
-    const region = {
-      x: Math.round((bounds.x - primaryDisplay.bounds.x) * scaleFactor),
-      y: Math.round((bounds.y - primaryDisplay.bounds.y) * scaleFactor),
-      width: Math.round(bounds.width * scaleFactor),
-      height: Math.round(bounds.height * scaleFactor)
+  } catch (error) {
+    return {
+      success: false,
+      output: `Error: ${(error as Error).message}`,
+      code: -1
     };
-    
-    // Ensure coordinates are valid
-    region.x = Math.max(0, region.x);
-    region.y = Math.max(0, region.y);
-    region.width = Math.min(region.width, primaryDisplay.size.width * scaleFactor - region.x);
-    region.height = Math.min(region.height, primaryDisplay.size.height * scaleFactor - region.y);
-    
-    // Crop the image to just the portion under the window
-    const croppedImage = mainSource.thumbnail.crop(region);
-    
-    // Restore window opacity
-    mainWindow.setOpacity(originalOpacity);
-    
-    // Convert to data URL in memory (no file saving)
-    const dataURL = croppedImage.toDataURL();
-    
-    // Clean up memory
-    sources.forEach(source => {
-      if (source !== mainSource) {
-        // @ts-ignore - force cleanup
-        source.thumbnail = null;
-      }
-    });
-    
-    return dataURL;
-  } catch (error) {
-    console.error('Error capturing screenshot:', error);
-    
-    // Restore window in case of error
-    if (mainWindow) {
-      mainWindow.setOpacity(1);
-    }
-    
-    throw error;
   }
 });
 
-// Add minimize handler for the window controls
-ipcMain.handle('minimize-window', () => {
-  if (mainWindow) {
-    mainWindow.minimize();
+// Persistent terminal operations
+ipcMain.handle('create-terminal', async (event) => {
+  try {
+    console.log('Creating terminal process...');
+    
+    if (terminalProcess) {
+      console.log('Killing existing terminal process');
+      terminalProcess.kill();
+    }
+
+    // Determine the correct shell
+    let shell: string;
+    let args: string[] = [];
+    
+    if (os.platform() === 'win32') {
+      shell = 'cmd.exe';
+    } else {
+      // Try to find the user's shell
+      shell = process.env.SHELL || '/bin/zsh';
+      args = ['-i']; // Interactive shell
+    }
+    
+    console.log(`Starting shell: ${shell} with args:`, args);
+    
+    terminalProcess = spawn(shell, args, {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        SHELL: shell
+      },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    console.log('Terminal process spawned, PID:', terminalProcess.pid);
+
+    // Send terminal output to renderer
+    terminalProcess.stdout?.on('data', (data) => {
+      const output = data.toString();
+      console.log('Terminal stdout:', output);
+      mainWindow?.webContents.send('terminal-output', output);
+    });
+
+    terminalProcess.stderr?.on('data', (data) => {
+      const output = data.toString();
+      console.log('Terminal stderr:', output);
+      mainWindow?.webContents.send('terminal-output', output);
+    });
+
+    terminalProcess.on('close', (code) => {
+      console.log('Terminal process closed with code:', code);
+      mainWindow?.webContents.send('terminal-closed', code);
+      terminalProcess = null;
+    });
+
+    terminalProcess.on('error', (error) => {
+      console.error('Terminal process error:', error);
+      mainWindow?.webContents.send('terminal-output', `Error: ${error.message}\n`);
+    });
+
+    // Send a welcome message
+    setTimeout(() => {
+      mainWindow?.webContents.send('terminal-output', `Welcome to terminal! (PID: ${terminalProcess?.pid})\n`);
+    }, 100);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to create terminal:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('write-terminal', async (event, data: string) => {
+  console.log('Writing to terminal:', JSON.stringify(data));
+  
+  if (terminalProcess && terminalProcess.stdin) {
+    try {
+      terminalProcess.stdin.write(data);
+      console.log('Successfully wrote to terminal');
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing to terminal:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+  
+  console.log('Terminal not available for writing');
+  return { success: false, error: 'Terminal not available' };
+});
+
+ipcMain.handle('kill-terminal', async (event) => {
+  if (terminalProcess) {
+    terminalProcess.kill();
+    terminalProcess = null;
+    return { success: true };
+  }
+  return { success: false };
+});
+
+// Screen capture operations
+ipcMain.handle('get-sources', async () => {
+  try {
+    const inputSources = await desktopCapturer.getSources({
+      types: ['window', 'screen']
+    });
+    return inputSources.map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnail: source.thumbnail.toDataURL()
+    }));
+  } catch (error) {
+    console.error('Error getting sources:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('get-screen-info', async () => {
+  try {
+    const displays = screen.getAllDisplays();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    
+    return {
+      displays: displays.map(display => ({
+        id: display.id,
+        bounds: display.bounds,
+        workArea: display.workArea,
+        scaleFactor: display.scaleFactor,
+        isPrimary: display.id === primaryDisplay.id
+      })),
+      primaryDisplay: {
+        id: primaryDisplay.id,
+        bounds: primaryDisplay.bounds,
+        workArea: primaryDisplay.workArea,
+        scaleFactor: primaryDisplay.scaleFactor
+      }
+    };
+  } catch (error) {
+    console.error('Error getting screen info:', error);
+    return null;
   }
 });
 

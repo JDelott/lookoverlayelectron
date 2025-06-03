@@ -7,11 +7,13 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "tsc -p tsconfig.renderer.json",
     "build": "npm run build:main && npm run build:renderer",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild",
     "watch:main": "tsc -p tsconfig.main.json -w",
     "watch:renderer": "tsc -p tsconfig.renderer.json -w",
     "watch": "concurrently \"npm run watch:main\" \"npm run watch:renderer\"",
     "start": "npm run build && electron ./dist/main.js",
-    "dev": "concurrently \"npm run watch\" \"electron ./dist/main.js\""
+    "dev": "concurrently \"npm run watch:main\" \"npm run watch:renderer\" \"electron ./dist/main.js\""
   },
   "keywords": [],
   "author": "",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^18.3.7",
     "concurrently": "^9.1.2",
     "electron": "^35.2.0",
+    "electron-rebuild": "^3.2.9",
     "typescript": "^5.8.3"
   }
 }
