@@ -64,18 +64,21 @@ const globalStyles = `
     flex: 1;
     padding: 4px 0;
     overflow-y: auto;
+    overflow-x: hidden;
   }
   
   .file-item {
     display: flex;
     align-items: center;
-    padding: 2px 8px;
+    padding: 2px 4px;
     cursor: pointer;
     font-size: 13px;
-    line-height: 20px;
+    line-height: 22px;
     user-select: none;
     border-radius: 3px;
-    margin: 1px 4px;
+    margin: 0 4px;
+    white-space: nowrap;
+    min-height: 22px;
   }
   
   .file-item:hover {
@@ -89,6 +92,16 @@ const globalStyles = `
   
   .file-item.selected:hover {
     background-color: #0e639c;
+  }
+  
+  .expansion-arrow {
+    margin-right: 4px;
+    font-size: 10px;
+    color: #cccccc;
+    cursor: pointer;
+    width: 10px;
+    text-align: center;
+    transition: transform 0.1s ease;
   }
   
   .file-icon {
@@ -107,6 +120,20 @@ const globalStyles = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: 13px;
+  }
+  
+  /* Add subtle background for nested items */
+  .file-item[data-depth="1"] {
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+  
+  .file-item[data-depth="2"] {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+  
+  .file-item[data-depth="3"] {
+    background-color: rgba(255, 255, 255, 0.06);
   }
   
   .current-file-title {
@@ -322,13 +349,34 @@ function createLayout() {
 
   root.innerHTML = `
     <div class="sidebar">
-      <div class="sidebar-header">Explorer</div>
+      <div class="sidebar-header">
+        Explorer
+        <button id="refresh-explorer" style="
+          background: transparent;
+          border: 1px solid #3c3c3c;
+          color: #cccccc;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
+          margin-left: 8px;
+        ">🔄</button>
+      </div>
       <div class="file-tree"></div>
     </div>
     <div class="main-content">
       <div class="toolbar">
         <button id="terminal-toggle">Toggle Terminal</button>
         <button id="clear-terminal">Clear Terminal</button>
+        <button id="refresh-files" style="
+          background: #0e639c;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 11px;
+          cursor: pointer;
+        ">🔄 Refresh Files</button>
       </div>
       <div class="editor-container" id="editor-container"></div>
       <div class="terminal-container" id="terminal-container">
@@ -353,6 +401,8 @@ function createLayout() {
   // Add event listeners
   document.getElementById('terminal-toggle')?.addEventListener('click', toggleTerminal);
   document.getElementById('clear-terminal')?.addEventListener('click', clearTerminal);
+  document.getElementById('refresh-explorer')?.addEventListener('click', refreshCurrentDirectory);
+  document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
   
   const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
   terminalInput?.addEventListener('keydown', handleTerminalInput);
@@ -626,10 +676,12 @@ async function executeRealCommand(command: string) {
       writeToTerminal(`(Exit code: ${result.code})`);
     }
     
-    // If this was mkdir, refresh the file tree
-    if (cmd === 'mkdir' && result.success) {
-      setTimeout(() => {
-        renderFileTree();
+    // Commands that modify the file system should refresh the explorer
+    const fileModifyingCommands = ['mkdir', 'rmdir', 'rm', 'mv', 'cp', 'touch', 'ln'];
+    if (fileModifyingCommands.includes(cmd) && result.success) {
+      setTimeout(async () => {
+        await refreshCurrentDirectory();
+        writeToTerminal(`🔄 File explorer refreshed`);
       }, 100);
     }
     
@@ -648,7 +700,6 @@ async function handleCdCommand(args: string[]) {
     
     if (args.length === 1) {
       // cd with no arguments - go to home directory
-      // Get home directory from environment
       const homeResult = await (window as any).electronAPI.executeCommand('echo $HOME');
       if (homeResult.success && homeResult.output) {
         targetDir = homeResult.output.trim();
@@ -684,8 +735,8 @@ async function handleCdCommand(args: string[]) {
       writeToTerminal(`📁 Changed to: ${currentWorkingDirectory}`);
       
       // Refresh file tree to show new location
-      setTimeout(() => {
-        renderFileTree();
+      setTimeout(async () => {
+        await refreshCurrentDirectory();
       }, 100);
     } else {
       writeToTerminal(`❌ Directory not found: ${targetDir}`);
@@ -841,12 +892,14 @@ demo();`,
   });
 }
 
-// File system functions with mock data for testing
+// Enhanced file tree state management with proper typing
+let fileTreeState: Map<string, FileItem> = new Map();
+
 async function loadFileSystem(): Promise<FileItem[]> {
   try {
     console.log('Loading file system from:', currentWorkingDirectory);
     
-    // Try to get real files from current working directory
+    // Always try to get real files from current working directory
     if ((window as any).electronAPI?.getDirectoryContents) {
       const files = await (window as any).electronAPI.getDirectoryContents(currentWorkingDirectory);
       if (Array.isArray(files)) {
@@ -858,25 +911,35 @@ async function loadFileSystem(): Promise<FileItem[]> {
           return a.name.localeCompare(b.name);
         });
         
-        console.log(`Loaded ${sortedFiles.length} items from file system`);
+        // Preserve expansion state for directories
+        sortedFiles.forEach(item => {
+          const existingItem = fileTreeState.get(item.path);
+          if (existingItem && item.type === 'directory') {
+            item.isExpanded = existingItem.isExpanded;
+            item.children = existingItem.children;
+          }
+        });
+        
+        // Update state
+        sortedFiles.forEach(item => {
+          fileTreeState.set(item.path, item);
+        });
+        
+        console.log(`✅ Loaded ${sortedFiles.length} items from file system`);
         return sortedFiles;
       }
     }
+    
+    // If we get here, the API failed
+    console.error('❌ File system API not available or failed');
+    writeToTerminal('❌ Could not load file system - API not available');
+    return [];
+    
   } catch (error) {
-    console.error('Failed to load file system:', error);
+    console.error('❌ Failed to load file system:', error);
+    writeToTerminal(`❌ Failed to load file system: ${error}`);
+    return [];
   }
-  
-  // Return mock data if API fails
-  console.log('Using mock file system data');
-  return [
-    { name: 'src', path: './src', type: 'directory', children: undefined },
-    { name: 'dist', path: './dist', type: 'directory', children: undefined },
-    { name: 'node_modules', path: './node_modules', type: 'directory', children: undefined },
-    { name: 'package.json', path: './package.json', type: 'file' },
-    { name: 'README.md', path: './README.md', type: 'file' },
-    { name: 'index.html', path: './index.html', type: 'file' },
-    { name: 'tsconfig.json', path: './tsconfig.json', type: 'file' }
-  ];
 }
 
 function createFileElement(item: FileItem, depth: number): HTMLElement {
@@ -887,6 +950,25 @@ function createFileElement(item: FileItem, depth: number): HTMLElement {
   // Add data attributes for easier styling and interaction
   element.setAttribute('data-type', item.type);
   element.setAttribute('data-path', item.path);
+  element.setAttribute('data-depth', depth.toString());
+  
+  // Expansion arrow for directories (like VS Code)
+  if (item.type === 'directory') {
+    const arrow = document.createElement('span');
+    arrow.className = 'expansion-arrow';
+    arrow.textContent = item.isExpanded ? '▼' : '▶';
+    arrow.style.marginRight = '4px';
+    arrow.style.fontSize = '10px';
+    arrow.style.color = '#cccccc';
+    arrow.style.cursor = 'pointer';
+    element.appendChild(arrow);
+  } else {
+    // Add spacing for files to align with directories that have arrows
+    const spacer = document.createElement('span');
+    spacer.style.width = '14px';
+    spacer.style.display = 'inline-block';
+    element.appendChild(spacer);
+  }
   
   const icon = document.createElement('span');
   icon.className = 'file-icon';
@@ -903,8 +985,13 @@ function createFileElement(item: FileItem, depth: number): HTMLElement {
     const extension = item.name.split('.').pop()?.toLowerCase();
     switch (extension) {
       case 'js':
+        icon.textContent = '🟨';
+        break;
       case 'ts':
-        icon.textContent = '📄';
+        icon.textContent = '🔷';
+        break;
+      case 'tsx':
+        icon.textContent = '⚛️';
         break;
       case 'json':
         icon.textContent = '📋';
@@ -926,6 +1013,9 @@ function createFileElement(item: FileItem, depth: number): HTMLElement {
         break;
       case 'pdf':
         icon.textContent = '📕';
+        break;
+      case 'txt':
+        icon.textContent = '📄';
         break;
       default:
         icon.textContent = '📄';
@@ -1153,20 +1243,14 @@ async function toggleDirectory(item: FileItem) {
             }
             return a.name.localeCompare(b.name);
           });
-          console.log(`Loaded ${item.children.length} items for ${item.path}`);
+          console.log(`✅ Loaded ${item.children.length} items for ${item.path}`);
         } else {
           item.children = [];
+          console.log('No items found in directory');
         }
       } else {
-        // Mock children for demo
-        const mockChildren = [
-          { name: 'components', path: `${item.path}/components`, type: 'directory' as const },
-          { name: 'utils', path: `${item.path}/utils`, type: 'directory' as const },
-          { name: 'example.js', path: `${item.path}/example.js`, type: 'file' as const },
-          { name: 'styles.css', path: `${item.path}/styles.css`, type: 'file' as const },
-          { name: 'README.md', path: `${item.path}/README.md`, type: 'file' as const }
-        ];
-        item.children = mockChildren;
+        console.log('File system API not available');
+        item.children = [];
       }
     } catch (error) {
       console.error('Failed to load directory contents:', error);
@@ -1177,7 +1261,32 @@ async function toggleDirectory(item: FileItem) {
     }
   }
   
+  // Re-render the entire file tree to show/hide the expanded content
   await renderFileTree();
+  
+  // Log to terminal for feedback
+  if (terminalVisible) {
+    if (item.isExpanded) {
+      writeToTerminal(`📂 Expanded folder: ${item.name} (${item.children?.length || 0} items)`);
+    } else {
+      writeToTerminal(`📁 Collapsed folder: ${item.name}`);
+    }
+  }
+}
+
+// Enhanced directory refresh function
+async function refreshCurrentDirectory() {
+  console.log('🔄 Refreshing current directory:', currentWorkingDirectory);
+  
+  // Clear the file tree state for current directory to force reload
+  fileTreeState.clear();
+  
+  // Re-render the file tree
+  await renderFileTree();
+  
+  if (terminalVisible) {
+    writeToTerminal(`🔄 Refreshed directory: ${currentWorkingDirectory}`);
+  }
 }
 
 async function renderFileTree() {
@@ -1201,14 +1310,15 @@ async function renderFileTree() {
         fileTree.appendChild(element);
       }
       
-      if (item.type === 'directory' && item.isExpanded && item.children) {
+      // Recursively render children if directory is expanded
+      if (item.type === 'directory' && item.isExpanded && item.children && item.children.length > 0) {
         renderItems(item.children, depth + 1);
       }
     });
   }
   
   renderItems(files);
-  console.log('File tree rendered successfully');
+  console.log('✅ File tree rendered successfully');
 }
 
 function getLanguageFromExtension(extension: string): string {
