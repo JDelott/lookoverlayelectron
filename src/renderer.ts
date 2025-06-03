@@ -17,6 +17,18 @@ let terminalHeight: number = 200;
 let isResizing: boolean = false;
 let currentWorkingDirectory: string = '/Users/jacobdelott/Downloads/lookoverlayelectron-main'; // Default fallback
 
+// Tab management state
+interface OpenTab {
+  path: string;
+  name: string;
+  content: string;
+  language: string;
+  isDirty: boolean; // for future save functionality
+}
+
+let openTabs: Map<string, OpenTab> = new Map();
+let activeTabPath: string = '';
+
 // Global styles for VS Code-like layout with resizable terminal
 const globalStyles = `
   * {
@@ -176,6 +188,98 @@ const globalStyles = `
     background: #1177bb;
   }
   
+  .editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  
+  .tab-bar {
+    background-color: #2d2d30;
+    border-bottom: 1px solid #3c3c3c;
+    display: none; /* Hidden when no tabs */
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 35px;
+    align-items: flex-end;
+  }
+  
+  .tab {
+    background-color: #2d2d30;
+    border-right: 1px solid #3c3c3c;
+    min-width: 120px;
+    max-width: 200px;
+    height: 35px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    position: relative;
+    flex-shrink: 0;
+  }
+  
+  .tab:hover {
+    background-color: #3c3c3c;
+  }
+  
+  .tab.active {
+    background-color: #1e1e1e;
+    border-bottom: 2px solid #0e639c;
+  }
+  
+  .tab-content {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  .tab-icon {
+    margin-right: 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  
+  .tab-name {
+    flex: 1;
+    font-size: 13px;
+    color: #cccccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .tab.active .tab-name {
+    color: #ffffff;
+  }
+  
+  .tab-close {
+    margin-left: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #cccccc;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    flex-shrink: 0;
+  }
+  
+  .tab:hover .tab-close {
+    opacity: 1;
+  }
+  
+  .tab-close:hover {
+    background-color: #e81123;
+    color: #ffffff;
+  }
+  
   .editor-container {
     flex: 1;
     position: relative;
@@ -317,6 +421,24 @@ const globalStyles = `
   body.resizing * {
     user-select: none !important;
   }
+  
+  /* Scrollbar for tab bar */
+  .tab-bar::-webkit-scrollbar {
+    height: 3px;
+  }
+  
+  .tab-bar::-webkit-scrollbar-track {
+    background: #2d2d30;
+  }
+  
+  .tab-bar::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 2px;
+  }
+  
+  .tab-bar::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 // DOM content loaded handler
@@ -368,17 +490,12 @@ function createLayout() {
       <div class="toolbar">
         <button id="terminal-toggle">Toggle Terminal</button>
         <button id="clear-terminal">Clear Terminal</button>
-        <button id="refresh-files" style="
-          background: #0e639c;
-          color: white;
-          border: none;
-          padding: 4px 8px;
-          border-radius: 3px;
-          font-size: 11px;
-          cursor: pointer;
-        ">🔄 Refresh Files</button>
+        <button id="refresh-files">🔄 Refresh Files</button>
       </div>
-      <div class="editor-container" id="editor-container"></div>
+      <div class="editor-area">
+        <div class="tab-bar" id="tab-bar"></div>
+        <div class="editor-container" id="editor-container"></div>
+      </div>
       <div class="terminal-container" id="terminal-container">
         <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
         <div class="terminal-header">
@@ -849,43 +966,23 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-      });
+    });
       
-      (window as any).require(['vs/editor/editor.main'], () => {
-        console.log('Monaco modules loaded');
-        
+    (window as any).require(['vs/editor/editor.main'], () => {
+      console.log('Monaco modules loaded');
+      
       monacoEditor = (window as any).monaco.editor.create(container, {
-        value: `// Welcome to your VS Code-like IDE!
-// 
-// Features:
-// 📁 File Explorer - Click files to open them
-// 🖥️  Resizable Terminal - Drag the terminal border to resize
-// 📝 Monaco Editor - Full VS Code editor experience
-//
-// Try these terminal commands:
-// - help (show all commands)
-// - resize 300 (set terminal to 300px height)
-// - ls (list files)
-// - date (show current time)
-
-console.log("Hello from Monaco Editor!");
-
-function demo() {
-  console.log("This is a demo function");
-  return "VS Code-like experience in Electron!";
-}
-
-demo();`,
-              language: 'javascript',
-              theme: 'vs-dark',
-              automaticLayout: true,
+        value: getWelcomeContent(),
+        language: 'markdown',
+        theme: 'vs-dark',
+        automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              wordWrap: 'on'
-            });
-            
+        scrollBeyondLastLine: false,
+        wordWrap: 'on'
+      });
+      
       console.log('Monaco Editor created successfully!');
       resolve();
     });
@@ -1060,6 +1157,13 @@ function selectFileItem(element: HTMLElement) {
 async function openFile(filePath: string) {
   try {
     console.log('Opening file:', filePath);
+    
+    // Check if file is already open
+    if (openTabs.has(filePath)) {
+      switchToTab(filePath);
+      return;
+    }
+    
     let content = '';
     
     // Try to read real file
@@ -1072,156 +1176,217 @@ async function openFile(filePath: string) {
       }
     } else {
       // Mock content for demo based on file type
-      const fileName = filePath.split('/').pop() || 'file';
-      content = generateMockContent(fileName, filePath);
+      const mockFileName = filePath.split('/').pop() || 'file';
+      content = `// Mock content for ${mockFileName}
+// This is a demo file
+// Real file access is not available`;
     }
     
-    if (monacoEditor && content !== null) {
-      monacoEditor.setValue(content);
-      currentFile = filePath;
-      
-      // Set language based on file extension
-      const extension = filePath.split('.').pop();
-      const language = getLanguageFromExtension(extension || '');
-      (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), language);
-      
-      console.log(`✅ Opened file: ${filePath}`);
-      
-      // Update window title or add a tab indicator
-      updateEditorTitle(filePath);
-      
-      // Also log to terminal if visible
-      if (terminalVisible) {
-        writeToTerminal(`📄 Opened: ${filePath}`);
-      }
+    // Get file name and language
+    const fileName = filePath.split('/').pop() || 'untitled';
+    const extension = filePath.split('.').pop();
+    const language = getLanguageFromExtension(extension || '');
+    
+    // Create new tab
+    const newTab: OpenTab = {
+      path: filePath,
+      name: fileName,
+      content: content,
+      language: language,
+      isDirty: false
+    };
+    
+    // Add to open tabs
+    openTabs.set(filePath, newTab);
+    
+    // Switch to the new tab
+    switchToTab(filePath);
+    
+    // Render tabs
+    renderTabs();
+    
+    console.log(`✅ Opened file: ${filePath}`);
+    
+    // Log to terminal if visible
+    if (terminalVisible) {
+      writeToTerminal(`📄 Opened: ${fileName}`);
     }
+    
   } catch (error) {
     console.error('Failed to open file:', error);
     writeToTerminal(`❌ Error opening ${filePath}: ${error}`);
   }
 }
 
-function updateEditorTitle(filePath: string) {
-  // Update the toolbar to show current file
-  const toolbar = document.querySelector('.toolbar');
-  if (toolbar) {
-    let titleElement = toolbar.querySelector('.current-file-title') as HTMLElement;
-    if (!titleElement) {
-      titleElement = document.createElement('span');
-      titleElement.className = 'current-file-title';
-      titleElement.style.marginLeft = 'auto';
-      titleElement.style.fontSize = '12px';
-      titleElement.style.color = '#cccccc';
-      toolbar.appendChild(titleElement);
+function switchToTab(filePath: string) {
+  const tab = openTabs.get(filePath);
+  if (!tab) return;
+  
+  activeTabPath = filePath;
+  
+  // Update Monaco editor content and language
+  if (monacoEditor) {
+    monacoEditor.setValue(tab.content);
+    (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), tab.language);
+  }
+  
+  // Update active tab styling
+  updateActiveTabStyling();
+  
+  console.log(`Switched to tab: ${tab.name}`);
+}
+
+function closeTab(filePath: string, event?: Event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  
+  const tab = openTabs.get(filePath);
+  if (!tab) return;
+  
+  // Remove tab
+  openTabs.delete(filePath);
+  
+  // If this was the active tab, switch to another tab
+  if (activeTabPath === filePath) {
+    const remainingTabs = Array.from(openTabs.keys());
+    if (remainingTabs.length > 0) {
+      switchToTab(remainingTabs[remainingTabs.length - 1]);
+    } else {
+      // No tabs left, show welcome message
+      activeTabPath = '';
+      if (monacoEditor) {
+        monacoEditor.setValue(getWelcomeContent());
+        (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), 'markdown');
+      }
     }
-    
-    const fileName = filePath.split('/').pop() || filePath;
-    titleElement.textContent = `📄 ${fileName}`;
-    titleElement.title = filePath; // Full path on hover
+  }
+  
+  // Re-render tabs
+  renderTabs();
+  
+  console.log(`Closed tab: ${tab.name}`);
+  
+  if (terminalVisible) {
+    writeToTerminal(`❌ Closed: ${tab.name}`);
   }
 }
 
-function generateMockContent(fileName: string, filePath: string): string {
-  if (fileName.endsWith('.json')) {
-    return `{
-  "name": "lookoverlayelectron",
-  "version": "1.0.0",
-  "description": "VS Code-like IDE with file explorer",
-  "main": "dist/main.js",
-  "scripts": {
-    "build": "npm run build:main && npm run build:renderer",
-    "start": "npm run build && electron ./dist/main.js"
-  },
-  "dependencies": {
-    "electron": "^latest",
-    "monaco-editor": "^0.44.0"
+function renderTabs() {
+  const tabBar = document.getElementById('tab-bar');
+  if (!tabBar) return;
+  
+  tabBar.innerHTML = '';
+  
+  // Create tabs for each open file
+  openTabs.forEach((tab, filePath) => {
+    const tabElement = document.createElement('div');
+    tabElement.className = `tab ${filePath === activeTabPath ? 'active' : ''}`;
+    tabElement.setAttribute('data-path', filePath);
+    
+    // Tab content
+    const tabContent = document.createElement('div');
+    tabContent.className = 'tab-content';
+    
+    // File icon
+    const icon = document.createElement('span');
+    icon.className = 'tab-icon';
+    const extension = tab.name.split('.').pop()?.toLowerCase();
+    icon.textContent = getFileIcon(extension || '');
+    
+    // File name
+    const name = document.createElement('span');
+    name.className = 'tab-name';
+    name.textContent = tab.name;
+    
+    // Close button
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'tab-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close';
+    
+    tabContent.appendChild(icon);
+    tabContent.appendChild(name);
+    tabContent.appendChild(closeBtn);
+    tabElement.appendChild(tabContent);
+    
+    // Event listeners
+    tabContent.addEventListener('click', (e) => {
+      if (e.target !== closeBtn) {
+        switchToTab(filePath);
+      }
+    });
+    
+    closeBtn.addEventListener('click', (e) => {
+      closeTab(filePath, e);
+    });
+    
+    tabBar.appendChild(tabElement);
+  });
+  
+  // Show/hide tab bar based on open tabs
+  if (openTabs.size > 0) {
+    tabBar.style.display = 'flex';
+  } else {
+    tabBar.style.display = 'none';
   }
-}`;
-  } else if (fileName.endsWith('.md')) {
-    return `# ${fileName}
+}
 
-This file was opened from the **VS Code-like file explorer**!
+function updateActiveTabStyling() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  
+  const activeTab = document.querySelector(`[data-path="${activeTabPath}"]`);
+  if (activeTab) {
+    activeTab.classList.add('active');
+  }
+}
 
-## Path
-\`${filePath}\`
+function getFileIcon(extension: string): string {
+  switch (extension) {
+    case 'js': return '🟨';
+    case 'ts': return '🔷';
+    case 'tsx': return '⚛️';
+    case 'jsx': return '⚛️';
+    case 'json': return '📋';
+    case 'css': return '🎨';
+    case 'html': return '🌐';
+    case 'md': return '📝';
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif': return '🖼️';
+    case 'pdf': return '📕';
+    case 'txt': return '📄';
+    default: return '📄';
+  }
+}
+
+function getWelcomeContent(): string {
+  return `# Welcome to VS Code-like IDE!
 
 ## Features
 
-- ✅ **Click folders** to expand/collapse
-- ✅ **Click files** to open them
-- ✅ **Proper file icons** based on file type
-- ✅ **Selection highlighting**
-- ✅ **Real file reading** when available
+- 📁 **File Explorer** - Click folders to expand, files to open
+- 📑 **Multiple Tabs** - Open multiple files at once
+- 🖥️  **Resizable Terminal** - Drag to resize (100-600px)
+- 📝 **Monaco Editor** - Full VS Code editor experience
 
-## File Types Supported
+## Getting Started
 
-- 📄 JavaScript/TypeScript (\`.js\`, \`.ts\`)
-- 📋 JSON files (\`.json\`)
-- 🎨 CSS files (\`.css\`)
-- 🌐 HTML files (\`.html\`)
-- 📝 Markdown files (\`.md\`)
-- 🖼️ Images (\`.png\`, \`.jpg\`, etc.)
+1. **Open Files**: Click any file in the explorer to open it in a new tab
+2. **Switch Tabs**: Click tab headers to switch between open files
+3. **Close Tabs**: Click the × button on any tab to close it
+4. **Terminal**: Use the terminal for file operations and commands
 
-Enjoy browsing your files! 🎉`;
-  } else if (fileName.endsWith('.html')) {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${fileName}</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #1e1e1e;
-      color: #cccccc;
-      padding: 20px;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>File Explorer Demo</h1>
-    <p>This file was opened from: <code>${filePath}</code></p>
-    <p>Click folders in the explorer to expand them!</p>
-  </div>
-  
-  <script>
-    console.log('File opened from VS Code-like explorer!');
-    console.log('Path: ${filePath}');
-  </script>
-</body>
-</html>`;
-  } else {
-    return `// File: ${filePath}
-// Opened from VS Code-like file explorer
+## Keyboard Shortcuts (coming soon!)
 
-console.log('Hello from ${fileName}!');
+- \`Ctrl+W\` - Close current tab
+- \`Ctrl+T\` - Open new tab
+- \`Ctrl+Tab\` - Switch between tabs
 
-/**
- * This file was opened by clicking it in the file explorer
- * Path: ${filePath}
- */
-function demo() {
-  console.log('File explorer features:');
-  console.log('- Click folders to expand/collapse');
-  console.log('- Click files to open them');
-  console.log('- Proper file type icons');
-  console.log('- Selection highlighting');
-  
-  return 'VS Code-like file browsing experience!';
-}
-
-// Export the demo function
-export default demo;
-
-// Try the demo
-demo();`;
-  }
+Start by opening some files from the explorer! 🎉`;
 }
 
 async function toggleDirectory(item: FileItem) {
