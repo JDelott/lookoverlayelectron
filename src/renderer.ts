@@ -72,6 +72,10 @@ const globalStyles = `
     padding: 2px 8px;
     cursor: pointer;
     font-size: 13px;
+    line-height: 20px;
+    user-select: none;
+    border-radius: 3px;
+    margin: 1px 4px;
   }
   
   .file-item:hover {
@@ -80,6 +84,11 @@ const globalStyles = `
   
   .file-item.selected {
     background-color: #094771;
+    color: #ffffff;
+  }
+  
+  .file-item.selected:hover {
+    background-color: #0e639c;
   }
   
   .file-icon {
@@ -90,6 +99,23 @@ const globalStyles = `
     align-items: center;
     justify-content: center;
     font-size: 12px;
+    flex-shrink: 0;
+  }
+  
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .current-file-title {
+    font-size: 12px;
+    color: #cccccc;
+    margin-left: auto;
+    padding: 4px 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
   }
   
   .main-content {
@@ -818,11 +844,22 @@ demo();`,
 // File system functions with mock data for testing
 async function loadFileSystem(): Promise<FileItem[]> {
   try {
-    // Try to get real files
+    console.log('Loading file system from:', currentWorkingDirectory);
+    
+    // Try to get real files from current working directory
     if ((window as any).electronAPI?.getDirectoryContents) {
-      const files = await (window as any).electronAPI.getDirectoryContents();
+      const files = await (window as any).electronAPI.getDirectoryContents(currentWorkingDirectory);
       if (Array.isArray(files)) {
-        return files;
+        // Sort: directories first, then files, both alphabetically
+        const sortedFiles = files.sort((a, b) => {
+          if (a.type !== b.type) {
+            return a.type === 'directory' ? -1 : 1;
+          }
+          return a.name.localeCompare(b.name);
+        });
+        
+        console.log(`Loaded ${sortedFiles.length} items from file system`);
+        return sortedFiles;
       }
     }
   } catch (error) {
@@ -830,13 +867,11 @@ async function loadFileSystem(): Promise<FileItem[]> {
   }
   
   // Return mock data if API fails
+  console.log('Using mock file system data');
   return [
-    { name: 'src', path: './src', type: 'directory', children: [
-      { name: 'main.ts', path: './src/main.ts', type: 'file' },
-      { name: 'renderer.ts', path: './src/renderer.ts', type: 'file' },
-      { name: 'preload.ts', path: './src/preload.ts', type: 'file' },
-      { name: 'styles.css', path: './src/styles.css', type: 'file' }
-    ]},
+    { name: 'src', path: './src', type: 'directory', children: undefined },
+    { name: 'dist', path: './dist', type: 'directory', children: undefined },
+    { name: 'node_modules', path: './node_modules', type: 'directory', children: undefined },
     { name: 'package.json', path: './package.json', type: 'file' },
     { name: 'README.md', path: './README.md', type: 'file' },
     { name: 'index.html', path: './index.html', type: 'file' },
@@ -849,116 +884,106 @@ function createFileElement(item: FileItem, depth: number): HTMLElement {
   element.className = 'file-item';
   element.style.paddingLeft = `${8 + depth * 16}px`;
   
+  // Add data attributes for easier styling and interaction
+  element.setAttribute('data-type', item.type);
+  element.setAttribute('data-path', item.path);
+  
   const icon = document.createElement('span');
   icon.className = 'file-icon';
-  icon.textContent = item.type === 'directory' ? '📁' : '📄';
+  
+  // Better icons based on file type and expansion state
+  if (item.type === 'directory') {
+    if (item.isExpanded) {
+      icon.textContent = '📂'; // Open folder
+    } else {
+      icon.textContent = '📁'; // Closed folder
+    }
+  } else {
+    // File icons based on extension
+    const extension = item.name.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case 'js':
+      case 'ts':
+        icon.textContent = '📄';
+        break;
+      case 'json':
+        icon.textContent = '📋';
+        break;
+      case 'css':
+        icon.textContent = '🎨';
+        break;
+      case 'html':
+        icon.textContent = '🌐';
+        break;
+      case 'md':
+        icon.textContent = '📝';
+        break;
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'gif':
+        icon.textContent = '🖼️';
+        break;
+      case 'pdf':
+        icon.textContent = '📕';
+        break;
+      default:
+        icon.textContent = '📄';
+    }
+  }
   
   const name = document.createElement('span');
+  name.className = 'file-name';
   name.textContent = item.name;
   
   element.appendChild(icon);
   element.appendChild(name);
   
+  // Click handlers
   if (item.type === 'file') {
-    element.addEventListener('click', () => openFile(item.path));
+    element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectFileItem(element);
+      openFile(item.path);
+    });
   } else {
-    element.addEventListener('click', () => toggleDirectory(item));
+    element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectFileItem(element);
+      toggleDirectory(item);
+    });
   }
   
   return element;
 }
 
+function selectFileItem(element: HTMLElement) {
+  // Remove previous selection
+  document.querySelectorAll('.file-item.selected').forEach(item => {
+    item.classList.remove('selected');
+  });
+  
+  // Add selection to current item
+  element.classList.add('selected');
+}
+
 async function openFile(filePath: string) {
   try {
+    console.log('Opening file:', filePath);
     let content = '';
     
     // Try to read real file
     if ((window as any).electronAPI?.readFile) {
       content = await (window as any).electronAPI.readFile(filePath);
+      
+      if (content === null) {
+        writeToTerminal(`❌ Could not read file: ${filePath}`);
+        return;
+      }
     } else {
       // Mock content for demo based on file type
       const fileName = filePath.split('/').pop() || 'file';
-      if (fileName.endsWith('.json')) {
-        content = `{
-  "name": "lookoverlayelectron",
-  "version": "1.0.0",
-  "description": "VS Code-like IDE with resizable terminal",
-  "main": "dist/main.js",
-  "scripts": {
-    "build": "npm run build:main && npm run build:renderer",
-    "start": "npm run build && electron ./dist/main.js",
-    "dev": "npm run watch"
-  },
-  "devDependencies": {
-    "electron": "^latest",
-    "typescript": "^latest"
-  }
-}`;
-      } else if (fileName.endsWith('.md')) {
-        content = `# ${fileName}
-
-This is a **VS Code-like IDE** built with Electron!
-
-## Features
-
-- 📁 **File Explorer** - Browse and open files
-- 🖥️  **Resizable Terminal** - Drag to resize height (100-600px)
-- 📝 **Monaco Editor** - Full VS Code editor experience  
-- 🎨 **Dark Theme** - Professional look and feel
-
-## Terminal Commands
-
-- \`help\` - Show all available commands
-- \`resize <height>\` - Set terminal height
-- \`clear\` - Clear terminal output
-- \`ls\` - List directory contents
-- \`date\` - Show current date/time
-
-## Usage
-
-1. Click files in the explorer to open them
-2. Use the terminal with drag-to-resize functionality
-3. Edit code with full syntax highlighting
-
-Enjoy coding! 🎉`;
-      } else if (fileName.endsWith('.html')) {
-        content = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${fileName}</title>
-</head>
-<body>
-  <h1>VS Code-like IDE</h1>
-  <p>Resizable terminal content for ${fileName}</p>
-  <script>
-    console.log('Hello from ${fileName}');
-  </script>
-</body>
-</html>`;
-      } else {
-        content = `// File: ${filePath}
-// This is mock content with resizable terminal support
-
-console.log('Hello from ${fileName}');
-
-/**
- * Demo function for ${fileName}
- * Try resizing the terminal by dragging its top border!
- */
-function demo() {
-  console.log('This is a demo function');
-  console.log('Terminal can be resized from 100px to 600px');
-  return 'VS Code-like experience with resizable terminal!';
-}
-
-// You can edit this content in Monaco Editor
-const message = "Welcome to your resizable terminal IDE!";
-console.log(message);
-
-export default demo;`;
-      }
+      content = generateMockContent(fileName, filePath);
     }
     
     if (monacoEditor && content !== null) {
@@ -970,55 +995,185 @@ export default demo;`;
       const language = getLanguageFromExtension(extension || '');
       (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), language);
       
-      console.log(`Opened file: ${filePath}`);
+      console.log(`✅ Opened file: ${filePath}`);
+      
+      // Update window title or add a tab indicator
+      updateEditorTitle(filePath);
       
       // Also log to terminal if visible
       if (terminalVisible) {
-        writeToTerminal(`📄 Opened file: ${filePath}`);
+        writeToTerminal(`📄 Opened: ${filePath}`);
       }
     }
-          } catch (error) {
+  } catch (error) {
     console.error('Failed to open file:', error);
+    writeToTerminal(`❌ Error opening ${filePath}: ${error}`);
   }
 }
 
-function getLanguageFromExtension(extension: string): string {
-  const languageMap: { [key: string]: string } = {
-    'js': 'javascript',
-    'ts': 'typescript',
-    'html': 'html',
-    'css': 'css',
-    'json': 'json',
-    'md': 'markdown',
-    'py': 'python',
-    'txt': 'plaintext'
-  };
-  return languageMap[extension.toLowerCase()] || 'plaintext';
+function updateEditorTitle(filePath: string) {
+  // Update the toolbar to show current file
+  const toolbar = document.querySelector('.toolbar');
+  if (toolbar) {
+    let titleElement = toolbar.querySelector('.current-file-title') as HTMLElement;
+    if (!titleElement) {
+      titleElement = document.createElement('span');
+      titleElement.className = 'current-file-title';
+      titleElement.style.marginLeft = 'auto';
+      titleElement.style.fontSize = '12px';
+      titleElement.style.color = '#cccccc';
+      toolbar.appendChild(titleElement);
+    }
+    
+    const fileName = filePath.split('/').pop() || filePath;
+    titleElement.textContent = `📄 ${fileName}`;
+    titleElement.title = filePath; // Full path on hover
+  }
+}
+
+function generateMockContent(fileName: string, filePath: string): string {
+  if (fileName.endsWith('.json')) {
+    return `{
+  "name": "lookoverlayelectron",
+  "version": "1.0.0",
+  "description": "VS Code-like IDE with file explorer",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron ./dist/main.js"
+  },
+  "dependencies": {
+    "electron": "^latest",
+    "monaco-editor": "^0.44.0"
+  }
+}`;
+  } else if (fileName.endsWith('.md')) {
+    return `# ${fileName}
+
+This file was opened from the **VS Code-like file explorer**!
+
+## Path
+\`${filePath}\`
+
+## Features
+
+- ✅ **Click folders** to expand/collapse
+- ✅ **Click files** to open them
+- ✅ **Proper file icons** based on file type
+- ✅ **Selection highlighting**
+- ✅ **Real file reading** when available
+
+## File Types Supported
+
+- 📄 JavaScript/TypeScript (\`.js\`, \`.ts\`)
+- 📋 JSON files (\`.json\`)
+- 🎨 CSS files (\`.css\`)
+- 🌐 HTML files (\`.html\`)
+- 📝 Markdown files (\`.md\`)
+- 🖼️ Images (\`.png\`, \`.jpg\`, etc.)
+
+Enjoy browsing your files! 🎉`;
+  } else if (fileName.endsWith('.html')) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1e1e1e;
+      color: #cccccc;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>File Explorer Demo</h1>
+    <p>This file was opened from: <code>${filePath}</code></p>
+    <p>Click folders in the explorer to expand them!</p>
+  </div>
+  
+  <script>
+    console.log('File opened from VS Code-like explorer!');
+    console.log('Path: ${filePath}');
+  </script>
+</body>
+</html>`;
+  } else {
+    return `// File: ${filePath}
+// Opened from VS Code-like file explorer
+
+console.log('Hello from ${fileName}!');
+
+/**
+ * This file was opened by clicking it in the file explorer
+ * Path: ${filePath}
+ */
+function demo() {
+  console.log('File explorer features:');
+  console.log('- Click folders to expand/collapse');
+  console.log('- Click files to open them');
+  console.log('- Proper file type icons');
+  console.log('- Selection highlighting');
+  
+  return 'VS Code-like file browsing experience!';
+}
+
+// Export the demo function
+export default demo;
+
+// Try the demo
+demo();`;
+  }
 }
 
 async function toggleDirectory(item: FileItem) {
+  console.log('Toggling directory:', item.path, 'currently expanded:', item.isExpanded);
+  
   item.isExpanded = !item.isExpanded;
   
   if (item.isExpanded && !item.children) {
+    console.log('Loading directory contents for:', item.path);
+    
     try {
       if ((window as any).electronAPI?.getDirectoryContents) {
         const children = await (window as any).electronAPI.getDirectoryContents(item.path);
         if (Array.isArray(children)) {
-          item.children = children;
+          // Sort: directories first, then files, both alphabetically
+          item.children = children.sort((a, b) => {
+            if (a.type !== b.type) {
+              return a.type === 'directory' ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+          });
+          console.log(`Loaded ${item.children.length} items for ${item.path}`);
         } else {
           item.children = [];
         }
-  } else {
+      } else {
         // Mock children for demo
-        item.children = [
-          { name: 'example.js', path: `${item.path}/example.js`, type: 'file' },
-          { name: 'styles.css', path: `${item.path}/styles.css`, type: 'file' },
-          { name: 'utils.ts', path: `${item.path}/utils.ts`, type: 'file' }
+        const mockChildren = [
+          { name: 'components', path: `${item.path}/components`, type: 'directory' as const },
+          { name: 'utils', path: `${item.path}/utils`, type: 'directory' as const },
+          { name: 'example.js', path: `${item.path}/example.js`, type: 'file' as const },
+          { name: 'styles.css', path: `${item.path}/styles.css`, type: 'file' as const },
+          { name: 'README.md', path: `${item.path}/README.md`, type: 'file' as const }
         ];
+        item.children = mockChildren;
       }
     } catch (error) {
       console.error('Failed to load directory contents:', error);
       item.children = [];
+      if (terminalVisible) {
+        writeToTerminal(`❌ Failed to load directory: ${item.path}`);
+      }
     }
   }
   
@@ -1029,6 +1184,7 @@ async function renderFileTree() {
   const fileTree = document.querySelector('.file-tree');
   if (!fileTree) return;
   
+  console.log('Rendering file tree...');
   fileTree.innerHTML = '';
   
   const files = await loadFileSystem();
@@ -1052,4 +1208,19 @@ async function renderFileTree() {
   }
   
   renderItems(files);
+  console.log('File tree rendered successfully');
+}
+
+function getLanguageFromExtension(extension: string): string {
+  const languageMap: { [key: string]: string } = {
+    'js': 'javascript',
+    'ts': 'typescript',
+    'html': 'html',
+    'css': 'css',
+    'json': 'json',
+    'md': 'markdown',
+    'py': 'python',
+    'txt': 'plaintext'
+  };
+  return languageMap[extension.toLowerCase()] || 'plaintext';
 }
