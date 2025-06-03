@@ -750,32 +750,37 @@ const globalStyles = `
   /* Messages - more compact */
   .ai-chat-messages {
     flex: 1;
-    overflow-y: auto;
-    padding: 8px; /* Reduced padding */
-    display: flex;
-    flex-direction: column;
-    gap: 12px; /* Reduced gap */
-  }
-
-  .message-bubble {
-    background-color: #1e1e1e;
-    border-radius: 6px; /* Smaller radius */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
     padding: 8px 10px; /* Reduced padding */
+    background-color: #1e1e1e;
+    scroll-behavior: smooth;
+    max-height: calc(100vh - 200px); /* Ensure it doesn't exceed viewport */
+    }
+
+    .message-bubble {
+    margin-bottom: 12px; /* Reduced margin */
+    padding: 8px 10px; /* Reduced padding */
+    border-radius: 8px;
+    background-color: #2d2d30;
     border: 1px solid #3c3c3c;
-    max-width: 100%; /* Use full width */
+    font-size: 12px; /* Smaller font */
+    line-height: 1.4;
+    max-width: 100%; /* Prevent overflow */
     word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .message-bubble.user {
     background-color: #0e639c;
-    align-self: flex-end;
-    max-width: 95%;
+    color: white;
+    margin-left: 20px; /* Reduced margin */
   }
 
   .message-bubble.assistant {
     background-color: #2d2d30;
-    align-self: flex-start;
-    max-width: 100%;
+    color: #cccccc;
+    margin-right: 20px; /* Reduced margin */
   }
 
   .message-header {
@@ -824,59 +829,97 @@ const globalStyles = `
   /* Code Blocks - more compact */
   .code-block-container {
     margin: 8px 0; /* Reduced margin */
-    background-color: #1e1e1e;
-    border-radius: 4px; /* Smaller radius */
-    border: 1px solid #3c3c3c;
+    border-radius: 4px;
     overflow: hidden;
+    background-color: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    max-width: 100% !important;
+    max-height: 300px !important; /* Limit height */
+    overflow-y: auto !important; /* Add scrolling for long code */
   }
 
   .code-block-header {
-    background-color: #2d2d30;
+    background-color: #3c3c3c;
     padding: 4px 8px; /* Reduced padding */
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 10px; /* Smaller font */
-    gap: 4px; /* Add gap for better spacing */
+    border-bottom: 1px solid #555;
   }
 
   .code-language {
     color: #569cd6;
     font-weight: 600;
-    flex: 1; /* Take available space */
   }
 
-  .insert-code-btn,
-  .copy-code-btn {
-    background: #0e639c;
-    color: white;
-    border: none;
-    padding: 2px 6px; /* Reduced padding */
+  .copy-code-btn, .insert-code-btn {
+    background: transparent;
+    border: 1px solid #569cd6;
+    color: #569cd6;
+    padding: 2px 6px; /* Smaller padding */
     border-radius: 3px;
     cursor: pointer;
     font-size: 9px; /* Smaller font */
-    white-space: nowrap;
+    margin-left: 4px; /* Reduced margin */
   }
 
-  .insert-code-btn:hover,
-  .copy-code-btn:hover {
-    background: #1177bb;
+  .copy-code-btn:hover, .insert-code-btn:hover {
+    background-color: #569cd6;
+    color: white;
   }
 
+  /* Code content - prevent overflow */
   .code-block-container pre {
-    margin: 0;
-    padding: 8px; /* Reduced padding */
-    overflow-x: auto;
-    background-color: #1e1e1e;
+    margin: 0 !important;
+    padding: 8px !important; /* Reduced padding */
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    max-height: 250px !important; /* Limit code block height */
+    background-color: #1e1e1e !important;
+    color: #d4d4d4 !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    font-size: 11px !important; /* Smaller code font */
+    line-height: 1.3 !important;
+    white-space: pre !important;
+    word-wrap: normal !important;
   }
 
   .code-block-container code {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 11px; /* Smaller font */
-    line-height: 1.3; /* Tighter line height */
-    color: #d4d4d4;
-    background: none;
-    padding: 0;
+    background-color: transparent !important;
+    color: inherit !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+  }
+
+  /* Inline code */
+  code {
+    background-color: #3c3c3c !important;
+    color: #d7ba7d !important;
+    padding: 1px 4px !important; /* Reduced padding */
+    border-radius: 3px !important;
+    font-family: 'Consolas', monospace !important;
+    font-size: 11px !important; /* Smaller font */
+  }
+
+  /* Fix scrolling */
+  .ai-chat-messages::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-track {
+    background: #1e1e1e;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb {
+    background: #3c3c3c;
+    border-radius: 4px;
+  }
+
+  .ai-chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #569cd6;
   }
 
   /* Chat Input - more compact */
@@ -1520,30 +1563,37 @@ function createLayout() {
     /* Messages */
     .ai-chat-messages {
       flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      padding: 8px 10px; /* Reduced padding */
+      background-color: #1e1e1e;
+      scroll-behavior: smooth;
+      max-height: calc(100vh - 200px); /* Ensure it doesn't exceed viewport */
     }
 
     .message-bubble {
-      background-color: #1e1e1e;
+      margin-bottom: 12px; /* Reduced margin */
+      padding: 8px 10px; /* Reduced padding */
       border-radius: 8px;
-      padding: 12px;
+      background-color: #2d2d30;
       border: 1px solid #3c3c3c;
+      font-size: 12px; /* Smaller font */
+      line-height: 1.4;
+      max-width: 100%; /* Prevent overflow */
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     .message-bubble.user {
       background-color: #0e639c;
-      align-self: flex-end;
-      max-width: 90%;
+      color: white;
+      margin-left: 20px; /* Reduced margin */
     }
 
     .message-bubble.assistant {
       background-color: #2d2d30;
-      align-self: flex-start;
-      max-width: 95%;
+      color: #cccccc;
+      margin-right: 20px; /* Reduced margin */
     }
 
     .message-header {
@@ -3618,34 +3668,77 @@ function updateLayoutForAIChat() {
   }
 }
 
-// Add the render function for AI chat
+// Replace the renderAIChat function with this improved version:
 function renderAIChat() {
   const aiChatPanel = document.getElementById('ai-chat-panel');
   if (!aiChatPanel) return;
 
   if (aiChatVisible) {
-    aiChatPanel.innerHTML = `
-      <div class="ai-chat-container">
-        <div class="ai-chat-header">
-          <div class="ai-chat-title">
-            <span class="ai-icon">🤖</span>
-            <span>AI Assistant</span>
-          </div>
-          <div class="ai-chat-controls">
-            <button onclick="clearAIChat()" class="chat-control-btn" title="Clear Chat">🗑️</button>
-            <button onclick="toggleAIChat()" class="chat-control-btn" title="Close">✕</button>
-          </div>
+    // Clear the panel completely first
+    aiChatPanel.innerHTML = '';
+    
+    // Create the container structure
+    const container = document.createElement('div');
+    container.className = 'ai-chat-container';
+    
+    // Add header
+    container.innerHTML = `
+      <div class="ai-chat-header">
+        <div class="ai-chat-title">
+          <span class="ai-icon">🤖</span>
+          <span>AI Assistant</span>
         </div>
-        
-        ${!aiService ? renderAPIKeySetup() : renderChatInterface()}
+        <div class="ai-chat-controls">
+          <button onclick="clearAIChat()" class="chat-control-btn" title="Clear Chat">🗑️</button>
+          <button onclick="toggleAIChat()" class="chat-control-btn" title="Close">✕</button>
+        </div>
       </div>
     `;
+    
+    // Add content based on AI service status
+    if (!aiService) {
+      container.innerHTML += renderAPIKeySetup();
+    } else {
+      container.innerHTML += renderChatInterface();
+    }
+    
+    // Append the container to the panel
+    aiChatPanel.appendChild(container);
     
     // Add event listeners after rendering
     setupAIChatEventListeners();
   }
   
   updateLayoutForAIChat();
+}
+
+// Also, let's create a separate function to update just the messages
+function updateChatMessages() {
+  const messagesContainer = document.getElementById('ai-chat-messages');
+  if (!messagesContainer) return;
+  
+  // Clear and re-render just the messages
+  messagesContainer.innerHTML = '';
+  
+  // Add each message as a separate element
+  aiChatMessages.forEach(msg => {
+    const messageElement = document.createElement('div');
+    messageElement.innerHTML = renderMessage(msg);
+    messagesContainer.appendChild(messageElement.firstElementChild as HTMLElement);
+  });
+  
+  // Add loading indicator if needed
+  if (isAILoading) {
+    const loadingElement = document.createElement('div');
+    loadingElement.className = 'typing-indicator';
+    loadingElement.innerHTML = '<span>AI is thinking</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+    messagesContainer.appendChild(loadingElement);
+  }
+  
+  // Scroll to bottom
+  setTimeout(() => {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }, 50);
 }
 
 function renderAPIKeySetup(): string {
@@ -3981,7 +4074,7 @@ async function sendChatMessage(event?: Event) {
   
   // Set loading state
   isAILoading = true;
-  renderAIChat();
+  updateChatMessages(); // Changed from renderAIChat()
   
   try {
     // Build context-aware message if needed
@@ -4029,7 +4122,11 @@ async function sendChatMessage(event?: Event) {
     
     let errorContent = 'Failed to get response';
     if (error instanceof Error) {
-      if (error.message.includes('too large') || error.message.includes('token')) {
+      if (error.message.includes('529') || error.message.includes('overloaded_error') || error.message.includes('Overloaded')) {
+        errorContent = '🔄 Anthropic API is temporarily overloaded. Please try again in a few minutes.';
+      } else if (error.message.includes('JSON') || error.message.includes('parse') || error.message.includes('Invalid')) {
+        errorContent = '❌ Code contains characters that break the API. Try simplifying or removing special characters.';
+      } else if (error.message.includes('too large') || error.message.includes('token')) {
         errorContent = 'Message too large for AI processing. Try a shorter message or break it into parts.';
       } else if (error.message.includes('rate limit')) {
         errorContent = 'Rate limit reached. Please wait before sending another message.';
@@ -4049,7 +4146,7 @@ async function sendChatMessage(event?: Event) {
     
   } finally {
     isAILoading = false;
-    renderAIChat();
+    updateChatMessages(); // Changed from renderAIChat()
     
     // Scroll to bottom
     setTimeout(() => {
