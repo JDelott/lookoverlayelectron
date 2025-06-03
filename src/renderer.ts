@@ -446,9 +446,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM loaded, initializing Monaco Editor');
   
   // Add styles
-const styleElement = document.createElement('style');
-styleElement.textContent = globalStyles;
-document.head.appendChild(styleElement);
+  const styleElement = document.createElement('style');
+  styleElement.textContent = globalStyles;
+  document.head.appendChild(styleElement);
 
   // Create layout
   createLayout();
@@ -461,6 +461,9 @@ document.head.appendChild(styleElement);
   
   // Setup resize functionality
   setupTerminalResize();
+  
+  // Setup streaming output listener
+  setupCommandStreaming();
   
   console.log('Application initialized successfully');
 });
@@ -494,7 +497,7 @@ function createLayout() {
       </div>
       <div class="editor-area">
         <div class="tab-bar" id="tab-bar"></div>
-        <div class="editor-container" id="editor-container"></div>
+      <div class="editor-container" id="editor-container"></div>
       </div>
       <div class="terminal-container" id="terminal-container">
         <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
@@ -718,7 +721,7 @@ function handleTerminalInput(event: KeyboardEvent) {
       executeRealCommand(command.trim());
       
       input.value = '';
-      
+    
       // Add to history
       terminalHistory.unshift(command.trim());
       if (terminalHistory.length > 100) {
@@ -766,6 +769,12 @@ async function executeRealCommand(command: string) {
       return;
     }
     
+    // Handle package manager commands with better feedback
+    if (cmd === 'npm' || cmd === 'yarn' || cmd === 'pnpm' || cmd === 'bun') {
+      await handlePackageManagerCommand(command);
+      return;
+    }
+    
     // Show a loading indicator
     const loadingMsg = '⏳ Executing...';
     writeToTerminal(loadingMsg);
@@ -794,7 +803,7 @@ async function executeRealCommand(command: string) {
     }
     
     // Commands that modify the file system should refresh the explorer
-    const fileModifyingCommands = ['mkdir', 'rmdir', 'rm', 'mv', 'cp', 'touch', 'ln'];
+    const fileModifyingCommands = ['mkdir', 'rmdir', 'rm', 'mv', 'cp', 'touch', 'ln', 'git'];
     if (fileModifyingCommands.includes(cmd) && result.success) {
       setTimeout(async () => {
         await refreshCurrentDirectory();
@@ -811,59 +820,122 @@ async function executeRealCommand(command: string) {
   }
 }
 
-async function handleCdCommand(args: string[]) {
+async function handlePackageManagerCommand(command: string) {
+  const args = command.split(' ');
+  const packageManager = args[0];
+  const subCommand = args[1];
+  const script = args[2];
+  
+  writeToTerminal(`🔧 Running ${packageManager} command...`);
+  
+  // Provide helpful feedback for common commands
+  if (subCommand === 'install' || subCommand === 'i') {
+    writeToTerminal('📦 Installing dependencies...');
+    if (args.length > 2) {
+      writeToTerminal(`➕ Adding packages: ${args.slice(2).join(', ')}`);
+    }
+  } else if (subCommand === 'init') {
+    writeToTerminal('🚀 Initializing new project...');
+  } else if (subCommand === 'start') {
+    writeToTerminal('▶️ Starting development server...');
+    writeToTerminal('🌐 Will attempt to open browser when ready...');
+  } else if (subCommand === 'build') {
+    writeToTerminal('🔨 Building project...');
+  } else if (subCommand === 'test') {
+    writeToTerminal('🧪 Running tests...');
+  } else if (subCommand === 'run') {
+    writeToTerminal(`🏃 Running script: ${script || 'unknown'}`);
+    
+    // Special handling for dev servers
+    if (script === 'dev' || script === 'start' || script === 'serve') {
+      writeToTerminal('🌐 Development server starting...');
+      writeToTerminal('⏳ Waiting for server to be ready...');
+    }
+  }
+  
   try {
-    let targetDir = '';
+    const result = await (window as any).electronAPI.executeCommand(command, currentWorkingDirectory);
     
-    if (args.length === 1) {
-      // cd with no arguments - go to home directory
-      const homeResult = await (window as any).electronAPI.executeCommand('echo $HOME');
-      if (homeResult.success && homeResult.output) {
-        targetDir = homeResult.output.trim();
-      } else {
-        targetDir = '/'; // Fallback
-      }
-    } else {
-      targetDir = args.slice(1).join(' ');
+    if (result.output && result.output.trim()) {
+      const output = result.output.trim();
+      writeToTerminal(output);
       
-      // Handle relative paths
-      if (!targetDir.startsWith('/') && !targetDir.match(/^[A-Za-z]:/)) {
-        // Relative path
-        if (targetDir === '..') {
-          const parts = currentWorkingDirectory.split('/');
-          parts.pop(); // Remove last directory
-          targetDir = parts.join('/') || '/';
-        } else if (targetDir === '.') {
-          targetDir = currentWorkingDirectory;
-        } else {
-          targetDir = `${currentWorkingDirectory}/${targetDir}`;
-        }
+      // Check for development server URLs and offer to open them
+      const urlRegex = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/g;
+      const urls = output.match(urlRegex);
+      
+      if (urls && (script === 'dev' || script === 'start' || subCommand === 'start')) {
+        urls.forEach((url: string) => {
+          writeToTerminal(`🌐 Server running at: ${url}`);
+          writeToTerminal(`💻 Click to open: ${url}`);
+          
+          // Add clickable link functionality
+          setTimeout(() => {
+            addClickableLink(url);
+          }, 100);
+        });
       }
     }
     
-    // Clean up the path (remove double slashes, etc.)
-    targetDir = targetDir.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
-    
-    // Test if directory exists by trying to list it
-    const testResult = await (window as any).electronAPI.executeCommand('ls', targetDir);
-    
-    if (testResult.success) {
-      currentWorkingDirectory = targetDir;
-      writeToTerminal(`📁 Changed to: ${currentWorkingDirectory}`);
-      
-      // Refresh file tree to show new location
-      setTimeout(async () => {
-        await refreshCurrentDirectory();
-      }, 100);
+    if (result.success) {
+      // Provide success feedback
+      if (subCommand === 'install' || subCommand === 'i') {
+        writeToTerminal('✅ Dependencies installed successfully!');
+        setTimeout(async () => {
+          await refreshCurrentDirectory();
+        }, 1000);
+      } else if (subCommand === 'init') {
+        writeToTerminal('✅ Project initialized successfully!');
+        setTimeout(async () => {
+          await refreshCurrentDirectory();
+        }, 500);
+      }
     } else {
-      writeToTerminal(`❌ Directory not found: ${targetDir}`);
+      writeToTerminal(`❌ ${packageManager} command failed (Exit code: ${result.code})`);
+      
+      // Provide helpful suggestions for common errors
+      if (result.output?.includes('ERESOLVE')) {
+        writeToTerminal('💡 Try one of these solutions:');
+        writeToTerminal(`   ${packageManager} install --legacy-peer-deps`);
+        writeToTerminal(`   ${packageManager} install --force`);
+        writeToTerminal('   yarn install  # Often handles conflicts better');
+      } else if (result.output?.includes('permission denied') || result.output?.includes('EACCES')) {
+        writeToTerminal('💡 Permission issue - try:');
+        writeToTerminal('   sudo npm install  # Use with caution');
+        writeToTerminal('   npm config set prefix ~/.npm-global');
+      } else if (result.output?.includes('not found')) {
+        writeToTerminal(`💡 Make sure ${packageManager} is installed globally`);
+        writeToTerminal('   Visit: https://nodejs.org to install Node.js and npm');
+      }
     }
-    
   } catch (error) {
-    writeToTerminal(`❌ cd error: ${error}`);
+    writeToTerminal(`❌ Error running ${packageManager}: ${error}`);
   }
   
   writeToTerminal('');
+}
+
+function addClickableLink(url: string) {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  
+  // Create a clickable link element
+  const linkElement = document.createElement('div');
+  linkElement.style.color = '#569cd6';
+  linkElement.style.textDecoration = 'underline';
+  linkElement.style.cursor = 'pointer';
+  linkElement.style.margin = '4px 0';
+  linkElement.textContent = `🔗 Open ${url} in browser`;
+  
+  linkElement.addEventListener('click', () => {
+    // Use Electron's shell to open URL in default browser
+    (window as any).electronAPI?.openExternal?.(url) || 
+    window.open(url, '_blank');
+    
+    writeToTerminal(`🌐 Opened ${url} in browser`);
+  });
+  
+  output.appendChild(linkElement);
 }
 
 function clearTerminal() {
@@ -900,20 +972,42 @@ async function executeCommand(command: string) {
     return;
   }
   
-  // Fall back to built-in commands
+  // Built-in commands
   switch (cmd) {
     case 'help':
       writeToTerminal('Available commands:');
-      writeToTerminal('  help         - Show this help message');
-      writeToTerminal('  clear        - Clear the terminal');
-      writeToTerminal('  date         - Show current date and time');
-      writeToTerminal('  echo <text>  - Echo text back');
-      writeToTerminal('  resize <h>   - Set terminal height (100-600px)');
+      writeToTerminal('');
+      writeToTerminal('📁 File Operations:');
       writeToTerminal('  pwd          - Show current directory');
       writeToTerminal('  cd <dir>     - Change directory');
+      writeToTerminal('  ls           - List files');
       writeToTerminal('  mkdir <dir>  - Create directory');
+      writeToTerminal('  touch <file> - Create file');
+      writeToTerminal('  rm <file>    - Remove file');
+      writeToTerminal('  cp <src> <dest> - Copy file');
+      writeToTerminal('  mv <src> <dest> - Move/rename file');
       writeToTerminal('');
-      writeToTerminal('Real commands: ls, pwd, cd, git, npm, node, etc.');
+      writeToTerminal('📦 Package Management:');
+      writeToTerminal('  npm install [package]     - Install dependencies');
+      writeToTerminal('  npm install --legacy-peer-deps - Fix dependency conflicts');
+      writeToTerminal('  npm init                  - Initialize package.json');
+      writeToTerminal('  npm start                 - Start development server');
+      writeToTerminal('  npm run <script>          - Run npm script');
+      writeToTerminal('  yarn install              - Install with Yarn');
+      writeToTerminal('  pnpm install              - Install with pnpm');
+      writeToTerminal('');
+      writeToTerminal('🔧 Git Commands:');
+      writeToTerminal('  git init       - Initialize repository');
+      writeToTerminal('  git status     - Check status');
+      writeToTerminal('  git add .      - Stage all files');
+      writeToTerminal('  git commit -m "message" - Commit changes');
+      writeToTerminal('  git push       - Push to remote');
+      writeToTerminal('  git pull       - Pull from remote');
+      writeToTerminal('');
+      writeToTerminal('🖥️ Terminal:');
+      writeToTerminal('  clear        - Clear terminal');
+      writeToTerminal('  resize <h>   - Set terminal height');
+      writeToTerminal('');
       break;
       
     case 'clear':
@@ -966,23 +1060,23 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-    });
+      });
       
-    (window as any).require(['vs/editor/editor.main'], () => {
-      console.log('Monaco modules loaded');
-      
+      (window as any).require(['vs/editor/editor.main'], () => {
+        console.log('Monaco modules loaded');
+        
       monacoEditor = (window as any).monaco.editor.create(container, {
         value: getWelcomeContent(),
         language: 'markdown',
-        theme: 'vs-dark',
-        automaticLayout: true,
+              theme: 'vs-dark',
+              automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on'
-      });
-      
+              scrollBeyondLastLine: false,
+              wordWrap: 'on'
+            });
+            
       console.log('Monaco Editor created successfully!');
       resolve();
     });
@@ -1267,7 +1361,7 @@ function closeTab(filePath: string, event?: Event) {
   
   console.log(`Closed tab: ${tab.name}`);
   
-  if (terminalVisible) {
+      if (terminalVisible) {
     writeToTerminal(`❌ Closed: ${tab.name}`);
   }
 }
@@ -1413,7 +1507,7 @@ async function toggleDirectory(item: FileItem) {
           item.children = [];
           console.log('No items found in directory');
         }
-      } else {
+  } else {
         console.log('File system API not available');
         item.children = [];
       }
@@ -1498,4 +1592,88 @@ function getLanguageFromExtension(extension: string): string {
     'txt': 'plaintext'
   };
   return languageMap[extension.toLowerCase()] || 'plaintext';
+}
+
+async function handleCdCommand(args: string[]) {
+  try {
+    let targetDir = '';
+    
+    if (args.length === 1) {
+      // cd with no arguments - go to home directory
+      const homeResult = await (window as any).electronAPI.executeCommand('echo $HOME');
+      if (homeResult.success && homeResult.output) {
+        targetDir = homeResult.output.trim();
+      } else {
+        targetDir = '/'; // Fallback
+      }
+    } else {
+      targetDir = args.slice(1).join(' ');
+      
+      // Handle relative paths
+      if (!targetDir.startsWith('/') && !targetDir.match(/^[A-Za-z]:/)) {
+        // Relative path
+        if (targetDir === '..') {
+          const parts = currentWorkingDirectory.split('/');
+          parts.pop(); // Remove last directory
+          targetDir = parts.join('/') || '/';
+        } else if (targetDir === '.') {
+          targetDir = currentWorkingDirectory;
+        } else {
+          targetDir = `${currentWorkingDirectory}/${targetDir}`;
+        }
+      }
+    }
+    
+    // Clean up the path (remove double slashes, etc.)
+    targetDir = targetDir.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+    
+    // Test if directory exists by trying to list it
+    const testResult = await (window as any).electronAPI.executeCommand('ls', targetDir);
+    
+    if (testResult.success) {
+      currentWorkingDirectory = targetDir;
+      writeToTerminal(`📁 Changed to: ${currentWorkingDirectory}`);
+      
+      // Refresh file tree to show new location
+      setTimeout(async () => {
+        await refreshCurrentDirectory();
+      }, 100);
+    } else {
+      writeToTerminal(`❌ Directory not found: ${targetDir}`);
+    }
+    
+  } catch (error) {
+    writeToTerminal(`❌ cd error: ${error}`);
+  }
+  
+  writeToTerminal('');
+}
+
+function setupCommandStreaming() {
+  // Listen for streaming command output
+  (window as any).electronAPI.onCommandOutputStream((data: string) => {
+    console.log('Streaming output received:', data);
+    
+    // Append directly to terminal
+    const output = document.getElementById('terminal-output');
+    if (output) {
+      output.textContent += data;
+      output.scrollTop = output.scrollHeight;
+      
+      // Check for development server URLs
+      const urlRegex = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/g;
+      const urls = data.match(urlRegex);
+      
+      if (urls) {
+        urls.forEach((url: string) => {
+          writeToTerminal(`🌐 Server running at: ${url}`);
+          writeToTerminal(`💻 Click to open: ${url}`);
+          
+          setTimeout(() => {
+            addClickableLink(url);
+          }, 100);
+        });
+      }
+    }
+  });
 }

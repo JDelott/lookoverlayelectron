@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -66,7 +66,7 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
-// Execute single commands with working directory support
+// Execute single commands with streaming output support
 ipcMain.handle('execute-command', async (event, command: string, workingDir?: string) => {
   try {
     return new Promise((resolve) => {
@@ -86,13 +86,29 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
 
       let output = '';
       let error = '';
+      let hasOutput = false;
 
+      // For long-running processes, send output as it comes
       childProcess.stdout?.on('data', (data) => {
-        output += data.toString();
+        const chunk = data.toString();
+        output += chunk;
+        hasOutput = true;
+        
+        // Send streaming output to renderer for long-running processes
+        if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+          mainWindow?.webContents.send('command-output-stream', chunk);
+        }
       });
 
       childProcess.stderr?.on('data', (data) => {
-        error += data.toString();
+        const chunk = data.toString();
+        error += chunk;
+        hasOutput = true;
+        
+        // Send streaming output to renderer for long-running processes
+        if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+          mainWindow?.webContents.send('command-output-stream', chunk);
+        }
       });
 
       childProcess.on('close', (code) => {
@@ -103,6 +119,21 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
           workingDir: cwd
         });
       });
+
+      // For long-running processes, resolve immediately after a short delay if we get output
+      if (command.includes('dev') || command.includes('start') || command.includes('serve')) {
+        setTimeout(() => {
+          if (hasOutput) {
+            resolve({
+              success: true,
+              output: output + error,
+              code: 0,
+              workingDir: cwd,
+              isLongRunning: true
+            });
+          }
+        }, 3000); // Wait 3 seconds for initial output
+      }
     });
   } catch (error) {
     return {
@@ -268,6 +299,17 @@ ipcMain.handle('get-current-directory', async (event) => {
       success: false,
       error: (error as Error).message
     };
+  }
+});
+
+// Open external URLs
+ipcMain.handle('open-external', async (event, url: string) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open external URL:', error);
+    return { success: false, error: (error as Error).message };
   }
 });
 

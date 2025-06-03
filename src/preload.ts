@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Single command execution with working directory support
   executeCommand: (command: string, workingDir?: string) => ipcRenderer.invoke('execute-command', command, workingDir),
   
+  // External URL opening
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  
   // Persistent terminal operations
   createTerminal: () => ipcRenderer.invoke('create-terminal'),
   writeTerminal: (data: string) => ipcRenderer.invoke('write-terminal', data),
@@ -20,6 +23,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTerminalClosed: (callback: (code: number) => void) => {
     ipcRenderer.on('terminal-closed', (event, code) => callback(code));
+  },
+  
+  // Command output streaming
+  onCommandOutputStream: (callback: (data: string) => void) => {
+    ipcRenderer.on('command-output-stream', (event, data) => callback(data));
   },
   
   // Screen capture operations
