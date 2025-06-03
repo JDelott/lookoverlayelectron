@@ -66,15 +66,20 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
-// Execute single commands
-ipcMain.handle('execute-command', async (event, command: string) => {
+// Execute single commands with working directory support
+ipcMain.handle('execute-command', async (event, command: string, workingDir?: string) => {
   try {
     return new Promise((resolve) => {
       const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['/c', command] : ['-c', command];
       
+      // Use provided working directory or default to current
+      const cwd = workingDir || process.cwd();
+      
+      console.log(`Executing command: ${command} in directory: ${cwd}`);
+      
       const childProcess = spawn(shell, args, {
-        cwd: process.cwd(),
+        cwd: cwd,
         env: process.env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -94,7 +99,8 @@ ipcMain.handle('execute-command', async (event, command: string) => {
         resolve({
           success: code === 0,
           output: output + error,
-          code
+          code,
+          workingDir: cwd
         });
       });
     });
@@ -102,7 +108,8 @@ ipcMain.handle('execute-command', async (event, command: string) => {
     return {
       success: false,
       output: `Error: ${(error as Error).message}`,
-      code: -1
+      code: -1,
+      workingDir: workingDir || process.cwd()
     };
   }
 });
@@ -246,6 +253,21 @@ ipcMain.handle('get-screen-info', async () => {
   } catch (error) {
     console.error('Error getting screen info:', error);
     return null;
+  }
+});
+
+// Get current working directory
+ipcMain.handle('get-current-directory', async (event) => {
+  try {
+    return {
+      success: true,
+      directory: process.cwd()
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    };
   }
 });
 

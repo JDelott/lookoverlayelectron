@@ -4,9 +4,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system operations
   getDirectoryContents: (path?: string) => ipcRenderer.invoke('get-directory-contents', path),
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+  getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
   
-  // Single command execution
-  executeCommand: (command: string) => ipcRenderer.invoke('execute-command', command),
+  // Single command execution with working directory support
+  executeCommand: (command: string, workingDir?: string) => ipcRenderer.invoke('execute-command', command, workingDir),
   
   // Persistent terminal operations
   createTerminal: () => ipcRenderer.invoke('create-terminal'),

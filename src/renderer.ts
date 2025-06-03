@@ -15,6 +15,7 @@ let terminalHistory: string[] = [];
 let historyIndex: number = -1;
 let terminalHeight: number = 200;
 let isResizing: boolean = false;
+let currentWorkingDirectory: string = '/Users/jacobdelott/Downloads/lookoverlayelectron-main'; // Default fallback
 
 // Global styles for VS Code-like layout with resizable terminal
 const globalStyles = `
@@ -452,7 +453,22 @@ async function startRealTerminal() {
   
   console.log('🔧 Starting command-based terminal...');
   writeToTerminal('✅ Terminal ready! Type commands below.');
-  writeToTerminal('Using command execution mode.');
+  writeToTerminal('📁 Directory navigation and file operations supported.');
+  
+  // Get initial working directory from main process
+  try {
+    const dirResult = await (window as any).electronAPI.getCurrentDirectory();
+    if (dirResult.success) {
+      currentWorkingDirectory = dirResult.directory;
+      writeToTerminal(`📍 Current directory: ${currentWorkingDirectory}`);
+    } else {
+      writeToTerminal(`📍 Using default directory: ${currentWorkingDirectory}`);
+    }
+  } catch (error) {
+    console.log('Could not get initial directory');
+    writeToTerminal(`📍 Using default directory: ${currentWorkingDirectory}`);
+  }
+  
   writeToTerminal('');
 }
 
@@ -545,13 +561,23 @@ function handleTerminalInput(event: KeyboardEvent) {
 
 async function executeRealCommand(command: string) {
   try {
-    console.log('Executing command via executeCommand API:', command);
+    console.log('Executing command:', command, 'in directory:', currentWorkingDirectory);
+    
+    // Parse command
+    const args = command.trim().split(/\s+/);
+    const cmd = args[0].toLowerCase();
+    
+    // Handle special commands that affect directory state
+    if (cmd === 'cd') {
+      await handleCdCommand(args);
+      return;
+    }
     
     // Show a loading indicator
     const loadingMsg = '⏳ Executing...';
     writeToTerminal(loadingMsg);
     
-    const result = await (window as any).electronAPI.executeCommand(command);
+    const result = await (window as any).electronAPI.executeCommand(command, currentWorkingDirectory);
     console.log('Command result:', result);
     
     // Remove loading message
@@ -574,6 +600,13 @@ async function executeRealCommand(command: string) {
       writeToTerminal(`(Exit code: ${result.code})`);
     }
     
+    // If this was mkdir, refresh the file tree
+    if (cmd === 'mkdir' && result.success) {
+      setTimeout(() => {
+        renderFileTree();
+      }, 100);
+    }
+    
     writeToTerminal(''); // Empty line for spacing
     
   } catch (error) {
@@ -581,6 +614,62 @@ async function executeRealCommand(command: string) {
     writeToTerminal(`Error: ${error}`);
     writeToTerminal('');
   }
+}
+
+async function handleCdCommand(args: string[]) {
+  try {
+    let targetDir = '';
+    
+    if (args.length === 1) {
+      // cd with no arguments - go to home directory
+      // Get home directory from environment
+      const homeResult = await (window as any).electronAPI.executeCommand('echo $HOME');
+      if (homeResult.success && homeResult.output) {
+        targetDir = homeResult.output.trim();
+      } else {
+        targetDir = '/'; // Fallback
+      }
+    } else {
+      targetDir = args.slice(1).join(' ');
+      
+      // Handle relative paths
+      if (!targetDir.startsWith('/') && !targetDir.match(/^[A-Za-z]:/)) {
+        // Relative path
+        if (targetDir === '..') {
+          const parts = currentWorkingDirectory.split('/');
+          parts.pop(); // Remove last directory
+          targetDir = parts.join('/') || '/';
+        } else if (targetDir === '.') {
+          targetDir = currentWorkingDirectory;
+        } else {
+          targetDir = `${currentWorkingDirectory}/${targetDir}`;
+        }
+      }
+    }
+    
+    // Clean up the path (remove double slashes, etc.)
+    targetDir = targetDir.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+    
+    // Test if directory exists by trying to list it
+    const testResult = await (window as any).electronAPI.executeCommand('ls', targetDir);
+    
+    if (testResult.success) {
+      currentWorkingDirectory = targetDir;
+      writeToTerminal(`📁 Changed to: ${currentWorkingDirectory}`);
+      
+      // Refresh file tree to show new location
+      setTimeout(() => {
+        renderFileTree();
+      }, 100);
+    } else {
+      writeToTerminal(`❌ Directory not found: ${targetDir}`);
+    }
+    
+  } catch (error) {
+    writeToTerminal(`❌ cd error: ${error}`);
+  }
+  
+  writeToTerminal('');
 }
 
 function clearTerminal() {
@@ -607,18 +696,14 @@ async function executeCommand(command: string) {
   
   // Try real command first
   if ((window as any).electronAPI?.executeCommand) {
-    try {
-      const result = await (window as any).electronAPI.executeCommand(command);
-      if (result.output) {
-        writeToTerminal(result.output);
-        writeToTerminal('');
-        return;
-      }
-    } catch (error) {
-      writeToTerminal(`Error executing command: ${error}`);
+    if (cmd === 'pwd') {
+      writeToTerminal(currentWorkingDirectory);
       writeToTerminal('');
       return;
     }
+    
+    await executeRealCommand(command);
+    return;
   }
   
   // Fall back to built-in commands
@@ -630,6 +715,9 @@ async function executeCommand(command: string) {
       writeToTerminal('  date         - Show current date and time');
       writeToTerminal('  echo <text>  - Echo text back');
       writeToTerminal('  resize <h>   - Set terminal height (100-600px)');
+      writeToTerminal('  pwd          - Show current directory');
+      writeToTerminal('  cd <dir>     - Change directory');
+      writeToTerminal('  mkdir <dir>  - Create directory');
       writeToTerminal('');
       writeToTerminal('Real commands: ls, pwd, cd, git, npm, node, etc.');
       break;
@@ -644,6 +732,10 @@ async function executeCommand(command: string) {
       
     case 'echo':
       writeToTerminal(args.slice(1).join(' '));
+      break;
+      
+    case 'pwd':
+      writeToTerminal(currentWorkingDirectory);
       break;
       
     case 'resize':
