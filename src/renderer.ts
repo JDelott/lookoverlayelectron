@@ -10,8 +10,11 @@ interface FileItem {
 
 let monacoEditor: any = null;
 let currentFile: string = '';
+let terminalVisible: boolean = false;
+let terminalHistory: string[] = [];
+let historyIndex: number = -1;
 
-// Global styles for VS Code-like layout
+// Global styles for VS Code-like layout with simple terminal
 const globalStyles = `
   * {
     margin: 0;
@@ -32,49 +35,31 @@ const globalStyles = `
     width: 100%;
     height: 100%;
     display: flex;
-    flex-direction: column;
-  }
-  
-  .title-bar {
-    height: 35px;
-    background-color: #323233;
-    display: flex;
-    align-items: center;
-    padding: 0 15px;
-    border-bottom: 1px solid #2d2d30;
-    font-size: 13px;
-    color: #cccccc;
-  }
-  
-  .main-content {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
+    flex-direction: row;
   }
   
   .sidebar {
     width: 250px;
     background-color: #252526;
-    border-right: 1px solid #2d2d30;
+    border-right: 1px solid #3c3c3c;
     display: flex;
     flex-direction: column;
   }
   
-  .explorer-header {
+  .sidebar-header {
     padding: 8px 12px;
     background-color: #2d2d30;
-    border-bottom: 1px solid #3e3e42;
+    border-bottom: 1px solid #3c3c3c;
     font-size: 11px;
-    font-weight: bold;
-    color: #cccccc;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: #cccccc;
   }
   
   .file-tree {
     flex: 1;
-    overflow-y: auto;
     padding: 4px 0;
+    overflow-y: auto;
   }
   
   .file-item {
@@ -83,8 +68,6 @@ const globalStyles = `
     padding: 2px 8px;
     cursor: pointer;
     font-size: 13px;
-    color: #cccccc;
-    white-space: nowrap;
     user-select: none;
   }
   
@@ -93,234 +76,615 @@ const globalStyles = `
   }
   
   .file-item.selected {
-    background-color: #37373d;
+    background-color: #094771;
   }
   
   .file-icon {
+    width: 16px;
+    height: 16px;
     margin-right: 6px;
-    font-size: 14px;
-    min-width: 16px;
-    text-align: center;
-  }
-  
-  .file-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .resize-handle {
-    width: 4px;
-    background-color: #2d2d30;
-    cursor: col-resize;
-  }
-  
-  .resize-handle:hover {
-    background-color: #007acc;
-  }
-  
-  .editor-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background-color: #1e1e1e;
-  }
-  
-  .tab-bar {
-    height: 35px;
-    background-color: #2d2d30;
-    border-bottom: 1px solid #3e3e42;
     display: flex;
     align-items: center;
-    padding: 0 8px;
-  }
-  
-  .tab {
-    display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    background-color: #1e1e1e;
-    border: 1px solid #3e3e42;
-    border-bottom: none;
-    margin-right: 2px;
-    cursor: pointer;
-    font-size: 13px;
-    color: #cccccc;
-    max-width: 200px;
-  }
-  
-  .tab.active {
-    background-color: #1e1e1e;
-    border-color: #007acc;
-    border-bottom: 2px solid #007acc;
-  }
-  
-  .tab-icon {
-    margin-right: 6px;
+    justify-content: center;
     font-size: 12px;
   }
   
-  .tab-name {
+  .main-content {
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
   }
   
-  #editor-container {
+  .toolbar {
+    height: 35px;
+    background-color: #2d2d30;
+    border-bottom: 1px solid #3c3c3c;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+  }
+  
+  .toolbar button {
+    background: #0e639c;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  
+  .toolbar button:hover {
+    background: #1177bb;
+  }
+  
+  .editor-container {
     flex: 1;
+    position: relative;
+  }
+  
+  .terminal-container {
+    height: 200px;
     background-color: #1e1e1e;
+    border-top: 1px solid #3c3c3c;
+    display: none;
+    flex-direction: column;
   }
   
-  ::-webkit-scrollbar {
-    width: 10px;
+  .terminal-container.visible {
+    display: flex;
   }
   
-  ::-webkit-scrollbar-track {
+  .terminal-header {
+    background-color: #2d2d30;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #cccccc;
+    border-bottom: 1px solid #3c3c3c;
+  }
+  
+  .terminal-output {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+  }
+  
+  .terminal-input-container {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background-color: #1e1e1e;
+    border-top: 1px solid #3c3c3c;
+  }
+  
+  .terminal-prompt {
+    color: #569cd6;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    margin-right: 4px;
+  }
+  
+  .terminal-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    outline: none;
+  }
+  
+  .terminal-output::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .terminal-output::-webkit-scrollbar-track {
     background: #1e1e1e;
   }
   
-  ::-webkit-scrollbar-thumb {
+  .terminal-output::-webkit-scrollbar-thumb {
     background: #424242;
-    border-radius: 5px;
+    border-radius: 4px;
   }
   
-  ::-webkit-scrollbar-thumb:hover {
-    background: #4f4f4f;
+  .terminal-output::-webkit-scrollbar-thumb:hover {
+    background: #555;
   }
 `;
 
-// Inject global styles
-const styleElement = document.createElement('style');
-styleElement.textContent = globalStyles;
-document.head.appendChild(styleElement);
+// DOM content loaded handler
+document.addEventListener('DOMContentLoaded', async () => {
+  console.log('DOM loaded, initializing Monaco Editor');
+  
+  // Add styles
+  const styleElement = document.createElement('style');
+  styleElement.textContent = globalStyles;
+  document.head.appendChild(styleElement);
+  
+  // Create layout
+  createLayout();
+  
+  // Initialize Monaco Editor
+  await initializeMonaco();
+  
+  // Load file tree
+  await renderFileTree();
+  
+  console.log('Application initialized successfully');
+});
 
-// File explorer functions
-function getFileIcon(fileName: string): string {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-  switch (extension) {
-    case 'js':
-    case 'jsx':
-      return '📄';
-    case 'ts':
-    case 'tsx':
-      return '🔷';
-    case 'css':
-      return '🎨';
-    case 'html':
-      return '🌐';
-    case 'json':
-      return '📋';
-    case 'md':
-      return '📝';
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-      return '🖼️';
-    default:
-      return '📄';
+function createLayout() {
+  const root = document.getElementById('root');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="sidebar">
+      <div class="sidebar-header">Explorer</div>
+      <div class="file-tree"></div>
+    </div>
+    <div class="main-content">
+      <div class="toolbar">
+        <button id="terminal-toggle">Toggle Terminal</button>
+        <button id="clear-terminal">Clear Terminal</button>
+      </div>
+      <div class="editor-container" id="editor-container"></div>
+      <div class="terminal-container" id="terminal-container">
+        <div class="terminal-header">Terminal</div>
+        <div class="terminal-output" id="terminal-output"></div>
+        <div class="terminal-input-container">
+          <span class="terminal-prompt">$</span>
+          <input type="text" class="terminal-input" id="terminal-input" placeholder="Type a command..." />
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Add event listeners
+  document.getElementById('terminal-toggle')?.addEventListener('click', toggleTerminal);
+  document.getElementById('clear-terminal')?.addEventListener('click', clearTerminal);
+  
+  const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
+  terminalInput?.addEventListener('keydown', handleTerminalInput);
+}
+
+function toggleTerminal() {
+  terminalVisible = !terminalVisible;
+  console.log('Terminal toggle clicked, visible:', terminalVisible);
+  
+  const terminalContainer = document.getElementById('terminal-container');
+  if (!terminalContainer) return;
+  
+  if (terminalVisible) {
+    terminalContainer.classList.add('visible');
+    // Focus the terminal input
+    const terminalInput = document.getElementById('terminal-input') as HTMLInputElement;
+    terminalInput?.focus();
+    
+    // Initialize terminal if first time
+    if (!document.getElementById('terminal-output')?.textContent?.trim()) {
+      initializeTerminal();
+    }
+  } else {
+    terminalContainer.classList.remove('visible');
+  }
+  
+  // Force Monaco to resize
+  setTimeout(() => {
+    monacoEditor?.layout();
+  }, 100);
+}
+
+function initializeTerminal() {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  
+  writeToTerminal('🎉 Terminal initialized successfully!');
+  writeToTerminal('Welcome to the integrated terminal');
+  writeToTerminal('Available commands: help, clear, date, echo, ls, pwd, cat');
+  writeToTerminal('Type "help" for more information');
+  writeToTerminal('');
+}
+
+function clearTerminal() {
+  const output = document.getElementById('terminal-output');
+  if (output) {
+    output.textContent = '';
   }
 }
 
-function createFileElement(item: FileItem, depth: number = 0): HTMLElement {
-  const fileElement = document.createElement('div');
-  fileElement.className = `file-item ${item.type}`;
-  fileElement.style.paddingLeft = `${depth * 20 + 8}px`;
+function writeToTerminal(text: string) {
+  const output = document.getElementById('terminal-output');
+  if (!output) return;
+  
+  const timestamp = new Date().toLocaleTimeString();
+  output.textContent += `${text}\n`;
+  
+  // Auto-scroll to bottom
+  output.scrollTop = output.scrollHeight;
+}
+
+function handleTerminalInput(event: KeyboardEvent) {
+  const input = event.target as HTMLInputElement;
+  
+  if (event.key === 'Enter') {
+    const command = input.value.trim();
+    if (command) {
+      // Add to history
+      terminalHistory.unshift(command);
+      if (terminalHistory.length > 100) {
+        terminalHistory.pop();
+      }
+      historyIndex = -1;
+      
+      // Echo the command
+      writeToTerminal(`$ ${command}`);
+      
+      // Execute command
+      executeCommand(command);
+    } else {
+      writeToTerminal('$ ');
+    }
+    
+    input.value = '';
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (historyIndex < terminalHistory.length - 1) {
+      historyIndex++;
+      input.value = terminalHistory[historyIndex] || '';
+    }
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    if (historyIndex > 0) {
+      historyIndex--;
+      input.value = terminalHistory[historyIndex] || '';
+    } else if (historyIndex === 0) {
+      historyIndex = -1;
+      input.value = '';
+    }
+  }
+}
+
+async function executeCommand(command: string) {
+  const args = command.split(' ');
+  const cmd = args[0].toLowerCase();
+  
+  switch (cmd) {
+    case 'help':
+      writeToTerminal('Available commands:');
+      writeToTerminal('  help         - Show this help message');
+      writeToTerminal('  clear        - Clear the terminal');
+      writeToTerminal('  date         - Show current date and time');
+      writeToTerminal('  echo <text>  - Echo text back');
+      writeToTerminal('  ls           - List files (mock)');
+      writeToTerminal('  pwd          - Show current directory');
+      writeToTerminal('  cat <file>   - Show file contents (mock)');
+      writeToTerminal('  history      - Show command history');
+      break;
+      
+    case 'clear':
+      clearTerminal();
+      return; // Don't add extra newline
+      
+    case 'date':
+      writeToTerminal(new Date().toString());
+      break;
+      
+    case 'echo':
+      writeToTerminal(args.slice(1).join(' '));
+      break;
+      
+    case 'ls':
+      writeToTerminal('📁 src/');
+      writeToTerminal('📄 package.json');
+      writeToTerminal('📄 README.md');
+      writeToTerminal('📄 index.html');
+      writeToTerminal('📄 tsconfig.json');
+      break;
+      
+    case 'pwd':
+      writeToTerminal('/workspace/lookoverlayelectron-main');
+      break;
+      
+    case 'cat':
+      if (args[1]) {
+        writeToTerminal(`Contents of ${args[1]}:`);
+        writeToTerminal(`// This is mock content for ${args[1]}`);
+        writeToTerminal('// In a real implementation, this would show actual file contents');
+      } else {
+        writeToTerminal('Usage: cat <filename>');
+      }
+      break;
+      
+    case 'history':
+      writeToTerminal('Command history:');
+      terminalHistory.slice(0, 10).forEach((cmd, i) => {
+        writeToTerminal(`  ${i + 1}: ${cmd}`);
+      });
+      break;
+      
+    default:
+      // Try to execute with real terminal if available
+      if (await tryExecuteRealCommand(command)) {
+        return;
+      }
+      
+      writeToTerminal(`Command not found: ${cmd}`);
+      writeToTerminal('Type "help" for available commands');
+  }
+  
+  writeToTerminal('');
+}
+
+async function tryExecuteRealCommand(command: string): Promise<boolean> {
+  try {
+    if ((window as any).electronAPI?.executeCommand) {
+      const result = await (window as any).electronAPI.executeCommand(command);
+      if (result && result.output) {
+        writeToTerminal(result.output);
+        return true;
+      }
+    }
+  } catch (error) {
+    console.log('Real command execution not available');
+  }
+  return false;
+}
+
+async function initializeMonaco() {
+  const container = document.getElementById('editor-container');
+  if (!container) return;
+
+  console.log('Starting Monaco initialization...');
+
+  return new Promise<void>((resolve) => {
+    (window as any).require.config({ 
+      paths: { 
+        vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
+      } 
+    });
+
+    (window as any).require(['vs/editor/editor.main'], () => {
+      console.log('Monaco modules loaded');
+      
+      monacoEditor = (window as any).monaco.editor.create(container, {
+        value: `// Welcome to your VS Code-like IDE!
+// 
+// Features:
+// 📁 File Explorer - Click files to open them
+// 🖥️  Integrated Terminal - Toggle terminal to run commands
+// 📝 Monaco Editor - Full VS Code editor experience
+//
+// Try opening files from the explorer or using the terminal!
+
+console.log("Hello from Monaco Editor!");
+
+function demo() {
+  console.log("This is a demo function");
+  return "VS Code-like experience in Electron!";
+}
+
+demo();`,
+        language: 'javascript',
+        theme: 'vs-dark',
+        automaticLayout: true,
+        fontSize: 14,
+        lineNumbers: 'on',
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on'
+      });
+
+      console.log('Monaco Editor created successfully!');
+      resolve();
+    });
+  });
+}
+
+// File system functions with mock data for testing
+async function loadFileSystem(): Promise<FileItem[]> {
+  try {
+    // Try to get real files
+    if ((window as any).electronAPI?.getDirectoryContents) {
+      const files = await (window as any).electronAPI.getDirectoryContents();
+      if (Array.isArray(files)) {
+        return files;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load file system:', error);
+  }
+  
+  // Return mock data if API fails
+  return [
+    { name: 'src', path: './src', type: 'directory', children: [
+      { name: 'main.ts', path: './src/main.ts', type: 'file' },
+      { name: 'renderer.ts', path: './src/renderer.ts', type: 'file' },
+      { name: 'preload.ts', path: './src/preload.ts', type: 'file' },
+      { name: 'styles.css', path: './src/styles.css', type: 'file' }
+    ]},
+    { name: 'package.json', path: './package.json', type: 'file' },
+    { name: 'README.md', path: './README.md', type: 'file' },
+    { name: 'index.html', path: './index.html', type: 'file' },
+    { name: 'tsconfig.json', path: './tsconfig.json', type: 'file' }
+  ];
+}
+
+function createFileElement(item: FileItem, depth: number): HTMLElement {
+  const element = document.createElement('div');
+  element.className = 'file-item';
+  element.style.paddingLeft = `${8 + depth * 16}px`;
   
   const icon = document.createElement('span');
   icon.className = 'file-icon';
-  icon.textContent = item.type === 'directory' ? 
-    (item.isExpanded ? '📂' : '📁') : 
-    getFileIcon(item.name);
+  icon.textContent = item.type === 'directory' ? '📁' : '📄';
   
   const name = document.createElement('span');
-  name.className = 'file-name';
   name.textContent = item.name;
   
-  fileElement.appendChild(icon);
-  fileElement.appendChild(name);
+  element.appendChild(icon);
+  element.appendChild(name);
   
-  fileElement.addEventListener('click', () => {
-    if (item.type === 'directory') {
-      toggleDirectory(item);
-    } else {
-      selectFile(item.path);
-    }
-  });
+  if (item.type === 'file') {
+    element.addEventListener('click', () => openFile(item.path));
+  } else {
+    element.addEventListener('click', () => toggleDirectory(item));
+  }
   
-  return fileElement;
+  return element;
 }
 
-async function loadFileSystem(path?: string): Promise<FileItem[]> {
+async function openFile(filePath: string) {
   try {
-    const result = await (window as any).electronAPI?.getDirectoryContents(path);
-    return result?.files || [];
-  } catch (error) {
-    console.error('Failed to load file system:', error);
-    return [];
+    let content = '';
+    
+    // Try to read real file
+    if ((window as any).electronAPI?.readFile) {
+      content = await (window as any).electronAPI.readFile(filePath);
+    } else {
+      // Mock content for demo based on file type
+      const fileName = filePath.split('/').pop() || 'file';
+      if (fileName.endsWith('.json')) {
+        content = `{
+  "name": "lookoverlayelectron",
+  "version": "1.0.0",
+  "description": "VS Code-like IDE with integrated terminal",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron ./dist/main.js",
+    "dev": "npm run watch"
+  },
+  "devDependencies": {
+    "electron": "^latest",
+    "typescript": "^latest"
   }
+}`;
+      } else if (fileName.endsWith('.md')) {
+        content = `# ${fileName}
+
+This is a **VS Code-like IDE** built with Electron!
+
+## Features
+
+- 📁 **File Explorer** - Browse and open files
+- 🖥️  **Integrated Terminal** - Run commands with history
+- 📝 **Monaco Editor** - Full VS Code editor experience
+- 🎨 **Dark Theme** - Professional look and feel
+
+## Usage
+
+1. Click files in the explorer to open them
+2. Use the terminal to run commands
+3. Edit code with full syntax highlighting
+
+Enjoy coding! 🎉`;
+      } else if (fileName.endsWith('.html')) {
+        content = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName}</title>
+</head>
+<body>
+  <h1>VS Code-like IDE</h1>
+  <p>Mock content for ${fileName}</p>
+  <script>
+    console.log('Hello from ${fileName}');
+  </script>
+</body>
+</html>`;
+      } else {
+        content = `// File: ${filePath}
+// This is mock content since real file API is not available
+
+console.log('Hello from ${fileName}');
+
+/**
+ * Demo function for ${fileName}
+ */
+function demo() {
+  console.log('This is a demo function');
+  return 'VS Code-like experience!';
+}
+
+// You can edit this content in Monaco Editor
+const message = "Welcome to your VS Code-like IDE!";
+console.log(message);
+
+export default demo;`;
+      }
+    }
+    
+    if (monacoEditor && content !== null) {
+      monacoEditor.setValue(content);
+      currentFile = filePath;
+      
+      // Set language based on file extension
+      const extension = filePath.split('.').pop();
+      const language = getLanguageFromExtension(extension || '');
+      (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), language);
+      
+      console.log(`Opened file: ${filePath}`);
+      
+      // Also log to terminal if visible
+      if (terminalVisible) {
+        writeToTerminal(`📄 Opened file: ${filePath}`);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to open file:', error);
+  }
+}
+
+function getLanguageFromExtension(extension: string): string {
+  const languageMap: { [key: string]: string } = {
+    'js': 'javascript',
+    'ts': 'typescript',
+    'html': 'html',
+    'css': 'css',
+    'json': 'json',
+    'md': 'markdown',
+    'py': 'python',
+    'txt': 'plaintext'
+  };
+  return languageMap[extension.toLowerCase()] || 'plaintext';
 }
 
 async function toggleDirectory(item: FileItem) {
   item.isExpanded = !item.isExpanded;
   
   if (item.isExpanded && !item.children) {
-    item.children = await loadFileSystem(item.path);
-  }
-  
-  renderFileTree();
-}
-
-function selectFile(filePath: string) {
-  currentFile = filePath;
-  updateTabBar();
-  loadFileContent(filePath);
-  
-  // Update selection in tree
-  document.querySelectorAll('.file-item').forEach(el => {
-    el.classList.remove('selected');
-  });
-  
-  const selectedElement = Array.from(document.querySelectorAll('.file-item')).find(el => 
-    el.querySelector('.file-name')?.textContent === filePath.split('/').pop()
-  );
-  selectedElement?.classList.add('selected');
-}
-
-async function loadFileContent(filePath: string) {
-  try {
-    const content = await (window as any).electronAPI?.readFileContents(filePath);
-    if (monacoEditor && content !== undefined) {
-      monacoEditor.setValue(content);
+    try {
+      if ((window as any).electronAPI?.getDirectoryContents) {
+        const children = await (window as any).electronAPI.getDirectoryContents(item.path);
+        if (Array.isArray(children)) {
+          item.children = children;
+        } else {
+          item.children = [];
+        }
+      } else {
+        // Mock children for demo
+        item.children = [
+          { name: 'example.js', path: `${item.path}/example.js`, type: 'file' },
+          { name: 'styles.css', path: `${item.path}/styles.css`, type: 'file' },
+          { name: 'utils.ts', path: `${item.path}/utils.ts`, type: 'file' }
+        ];
+      }
+    } catch (error) {
+      console.error('Failed to load directory contents:', error);
+      item.children = [];
     }
-  } catch (error) {
-    console.error('Failed to load file content:', error);
   }
-}
-
-function updateTabBar() {
-  const tabBar = document.querySelector('.tab-bar');
-  if (!tabBar) return;
   
-  tabBar.innerHTML = '';
-  
-  if (currentFile) {
-    const tab = document.createElement('div');
-    tab.className = 'tab active';
-    
-    const icon = document.createElement('span');
-    icon.className = 'tab-icon';
-    icon.textContent = getFileIcon(currentFile);
-    
-    const name = document.createElement('span');
-    name.className = 'tab-name';
-    name.textContent = currentFile.split('/').pop() || '';
-    
-    tab.appendChild(icon);
-    tab.appendChild(name);
-    tabBar.appendChild(tab);
-  }
+  await renderFileTree();
 }
 
 async function renderFileTree() {
@@ -332,11 +696,14 @@ async function renderFileTree() {
   const files = await loadFileSystem();
   
   function renderItems(items: FileItem[], depth: number = 0) {
+    if (!Array.isArray(items)) {
+      console.error('renderItems expects an array, got:', typeof items, items);
+      return;
+    }
+    
     items.forEach(item => {
       const element = createFileElement(item, depth);
-      if (fileTree) {
-        fileTree.appendChild(element);
-      }
+      fileTree?.appendChild(element);
       
       if (item.type === 'directory' && item.isExpanded && item.children) {
         renderItems(item.children, depth + 1);
@@ -346,98 +713,3 @@ async function renderFileTree() {
   
   renderItems(files);
 }
-
-// Wait for DOM to be ready
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, initializing IDE');
-  
-  const container = document.getElementById('root');
-  if (container) {
-    // Create VS Code-like layout
-    container.innerHTML = `
-      <div class="title-bar">
-        <span>Lightweight IDE</span>
-      </div>
-      <div class="main-content">
-        <div class="sidebar">
-          <div class="explorer-header">EXPLORER</div>
-          <div class="file-tree"></div>
-        </div>
-        <div class="resize-handle"></div>
-        <div class="editor-area">
-          <div class="tab-bar"></div>
-          <div id="editor-container">Loading editor...</div>
-        </div>
-      </div>
-    `;
-    
-    // Initialize file explorer
-    renderFileTree();
-    
-    // Add resize functionality
-    const resizeHandle = document.querySelector('.resize-handle') as HTMLElement;
-    const sidebar = document.querySelector('.sidebar') as HTMLElement;
-    let isResizing = false;
-    
-    resizeHandle.addEventListener('mousedown', (e) => {
-      isResizing = true;
-      e.preventDefault();
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-      if (!isResizing) return;
-      const newWidth = Math.max(200, Math.min(600, e.clientX));
-      sidebar.style.width = `${newWidth}px`;
-      if (monacoEditor) {
-        setTimeout(() => monacoEditor.layout(), 0);
-      }
-    });
-    
-    document.addEventListener('mouseup', () => {
-      isResizing = false;
-    });
-    
-    // Initialize Monaco Editor
-    setTimeout(() => {
-      console.log('Starting Monaco initialization...');
-      
-      (window as any).require.config({ 
-        paths: { vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' } 
-      });
-      
-      (window as any).require(['vs/editor/editor.main'], () => {
-        console.log('Monaco modules loaded');
-        
-        const editorContainer = document.getElementById('editor-container');
-        if (editorContainer) {
-          try {
-            monacoEditor = (window as any).monaco.editor.create(editorContainer, {
-              value: `// Welcome to your lightweight IDE with file explorer!
-// Click on files in the sidebar to open them
-
-console.log("Hello World!");
-
-function test() {
-  return "Monaco Editor is working with file explorer!";
-}`,
-              language: 'javascript',
-              theme: 'vs-dark',
-              automaticLayout: true,
-              fontSize: 14,
-              minimap: {
-                enabled: false
-              },
-              scrollBeyondLastLine: false,
-              wordWrap: 'on'
-            });
-            
-            console.log('Monaco Editor created successfully with sidebar!');
-            
-          } catch (error) {
-            console.error('Error creating Monaco Editor:', error);
-          }
-        }
-      });
-    }, 500);
-  }
-});

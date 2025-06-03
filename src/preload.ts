@@ -18,5 +18,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDirectoryContents: (directoryPath?: string) => 
     ipcRenderer.invoke('get-directory-contents', directoryPath),
   readFileContents: (filePath: string) => 
-    ipcRenderer.invoke('read-file-contents', filePath)
+    ipcRenderer.invoke('read-file-contents', filePath),
+  writeFileContents: (filePath: string, content: string) => 
+    ipcRenderer.invoke('write-file-contents', filePath, content),
+  
+  // Terminal operations
+  terminalStart: () => ipcRenderer.invoke('terminal-start'),
+  terminalWrite: (data: string) => ipcRenderer.invoke('terminal-write', data),
+  terminalResize: (cols: number, rows: number) => ipcRenderer.invoke('terminal-resize', cols, rows),
+  terminalKill: () => ipcRenderer.invoke('terminal-kill'),
+  
+  // Terminal event listeners
+  onTerminalData: (callback: (data: string) => void) => 
+    ipcRenderer.on('terminal-data', (event, data) => callback(data)),
+  onTerminalExit: (callback: (code: number) => void) => 
+    ipcRenderer.on('terminal-exit', (event, code) => callback(code)),
+  
+  // Remove listeners
+  removeAllListeners: (channel: string) => ipcRenderer.removeAllListeners(channel)
 });

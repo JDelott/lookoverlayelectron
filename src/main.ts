@@ -1,8 +1,11 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen, NativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { spawn } from 'child_process';
+import * as os from 'os';
 
 let mainWindow: BrowserWindow | null;
+let terminalProcess: any = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -27,20 +30,139 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // Clean up terminal process
+    if (terminalProcess) {
+      terminalProcess.kill();
+      terminalProcess = null;
+    }
   });
 }
 
-app.whenReady().then(createWindow);
+// Terminal operations
+ipcMain.handle('terminal-start', async () => {
+  try {
+    const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
+    const cwd = process.cwd();
+    
+    terminalProcess = spawn(shell, [], {
+      cwd,
+      env: process.env,
+    });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+    terminalProcess.stdout.on('data', (data: Buffer) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('terminal-data', data.toString());
+      }
+    });
+
+    terminalProcess.stderr.on('data', (data: Buffer) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('terminal-data', data.toString());
+      }
+    });
+
+    terminalProcess.on('exit', (code: number) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('terminal-exit', code);
+      }
+      terminalProcess = null;
+    });
+
+    return { success: true, shell };
+  } catch (error: unknown) {
+    console.error('Failed to start terminal:', error);
+    if (error instanceof Error) {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: 'An unknown error occurred' };
   }
 });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+ipcMain.handle('terminal-write', async (event, data: string) => {
+  if (terminalProcess && terminalProcess.stdin) {
+    terminalProcess.stdin.write(data);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('terminal-resize', async (event, cols: number, rows: number) => {
+  if (terminalProcess && terminalProcess.resize) {
+    terminalProcess.resize(cols, rows);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('terminal-kill', async () => {
+  if (terminalProcess) {
+    terminalProcess.kill();
+    terminalProcess = null;
+    return true;
+  }
+  return false;
+});
+
+// Handle file system operations
+ipcMain.handle('get-directory-contents', async (event, directoryPath?: string) => {
+  try {
+    const targetPath = directoryPath || process.cwd();
+    
+    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const files = await Promise.all(
+      items
+        .filter(item => !item.name.startsWith('.')) // Hide hidden files
+        .map(async (item) => {
+          const fullPath = path.join(targetPath, item.name);
+          const stats = await fs.promises.stat(fullPath);
+          
+          return {
+            name: item.name,
+            path: fullPath,
+            type: item.isDirectory() ? 'directory' : 'file',
+            size: stats.size,
+            modified: stats.mtime
+          };
+        })
+    );
+    
+    // Sort: directories first, then files, both alphabetically
+    files.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    return {
+      files,
+      rootPath: targetPath
+    };
+  } catch (error) {
+    console.error('Error reading directory:', error);
+    throw error;
+  }
+});
+
+// Handle reading file contents
+ipcMain.handle('read-file-contents', async (event, filePath: string) => {
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return content;
+  } catch (error) {
+    console.error('Error reading file:', error);
+    throw error;
+  }
+});
+
+// Handle writing file contents
+ipcMain.handle('write-file-contents', async (event, filePath: string, content: string) => {
+  try {
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Error writing file:', error);
+    throw error;
   }
 });
 
@@ -136,75 +258,16 @@ ipcMain.handle('minimize-window', () => {
   }
 });
 
-// Add this function to main.ts
-function getContentBounds(windowBounds: Electron.Rectangle, displayBounds: Electron.Rectangle, scaleFactor: number): Electron.Rectangle {
-  // Calculate content area, accounting for any window chrome/decorations
-  // This is a simple calculation - adjust if your window has specific padding or borders
-  return {
-    x: Math.round((windowBounds.x - displayBounds.x) * scaleFactor),
-    y: Math.round((windowBounds.y - displayBounds.y) * scaleFactor),
-    width: Math.round(windowBounds.width * scaleFactor),
-    height: Math.round(windowBounds.height * scaleFactor)
-  };
-}
+app.whenReady().then(createWindow);
 
-// Handle file system operations
-ipcMain.handle('get-directory-contents', async (event, directoryPath?: string) => {
-  try {
-    const targetPath = directoryPath || process.cwd();
-    
-    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
-    const files = await Promise.all(
-      items.map(async (item) => {
-        const fullPath = path.join(targetPath, item.name);
-        const stats = await fs.promises.stat(fullPath);
-        
-        return {
-          name: item.name,
-          path: fullPath,
-          type: item.isDirectory() ? 'directory' : 'file',
-          size: stats.size,
-          modified: stats.mtime
-        };
-      })
-    );
-    
-    // Sort: directories first, then files, both alphabetically
-    files.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === 'directory' ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
-    
-    return {
-      files,
-      rootPath: targetPath
-    };
-  } catch (error) {
-    console.error('Error reading directory:', error);
-    throw error;
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
   }
 });
 
-// Handle reading file contents
-ipcMain.handle('read-file-contents', async (event, filePath: string) => {
-  try {
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    return content;
-  } catch (error) {
-    console.error('Error reading file:', error);
-    throw error;
-  }
-});
-
-// Handle writing file contents
-ipcMain.handle('write-file-contents', async (event, filePath: string, content: string) => {
-  try {
-    await fs.promises.writeFile(filePath, content, 'utf-8');
-    return true;
-  } catch (error) {
-    console.error('Error writing file:', error);
-    throw error;
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
   }
 });
