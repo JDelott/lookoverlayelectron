@@ -9,6 +9,7 @@ export interface ChatMessage {
     codeContext?: string;
     filePath?: string;
     selectedText?: string;
+    projectPath?: string;
   };
 }
 

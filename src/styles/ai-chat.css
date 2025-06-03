@@ -439,10 +439,13 @@
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 13px;
-  font-family: inherit;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   resize: none;
   min-height: 36px;
-  max-height: 120px;
+  max-height: 200px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .chat-textarea:focus {
@@ -523,4 +526,37 @@
 
 .ai-chat-messages::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* Character count indicator */
+.character-count {
+  font-size: 11px;
+  text-align: right;
+  margin-top: 4px;
+  color: #888;
+}
+
+.character-count .near-limit {
+  color: #ff9800;
+}
+
+.character-count .over-limit {
+  color: #f44336;
+  font-weight: 600;
+}
+
+/* Textarea state indicators */
+.chat-textarea.near-limit {
+  border-color: #ff9800;
+}
+
+.chat-textarea.over-limit {
+  border-color: #f44336;
+}
+
+/* Improved quick actions grid */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }

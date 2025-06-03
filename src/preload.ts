@@ -48,5 +48,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Add secure AI API call
   callAnthropicAPI: (messages: any[], systemPrompt?: string) => 
-    ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt)
+    ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt),
+  
+  // Project management
+  setCurrentDirectory: (directoryPath: string) => ipcRenderer.invoke('set-current-directory', directoryPath),
+  selectProjectDirectory: () => ipcRenderer.invoke('select-project-directory'),
+  getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
+  saveRecentProject: (projectPath: string) => ipcRenderer.invoke('save-recent-project', projectPath)
 });

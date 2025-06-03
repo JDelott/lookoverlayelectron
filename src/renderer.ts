@@ -1,4 +1,6 @@
 console.log('Renderer loaded');
+console.log('Renderer loaded');
+console.log('Renderer loaded');
 
 interface FileItem {
   name: string;
@@ -16,6 +18,7 @@ let historyIndex: number = -1;
 let terminalHeight: number = 200;
 let isResizing: boolean = false;
 let currentWorkingDirectory: string = '/Users/jacobdelott/Downloads/lookoverlayelectron-main'; // Default fallback
+let showProjectSelector: boolean = true; // Add this line
 
 // Tab management state
 interface OpenTab {
@@ -1054,29 +1057,16 @@ const globalStyles = `
 
 // DOM content loaded handler
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('DOM loaded, initializing Monaco Editor');
+  console.log('🚀 Starting IDE initialization...');
   
-  // Add styles
-const styleElement = document.createElement('style');
-styleElement.textContent = globalStyles;
-document.head.appendChild(styleElement);
-
-  // Create layout
-  createLayout();
+  // Show project selector first if needed
+  if (showProjectSelector) {
+    showProjectSelection();
+    return; // Don't initialize anything else until project is selected
+  }
   
-  // Initialize Monaco Editor
-  await initializeMonaco();
-  
-  // Load file tree
-  await renderFileTree();
-  
-  // Setup resize functionality
-  setupTerminalResize();
-  
-  // Setup streaming output listener
-  setupCommandStreaming();
-  
-  console.log('Application initialized successfully');
+  // Normal initialization
+  await initializeEverything();
 });
 
 // Add auto-save functionality
@@ -1098,14 +1088,354 @@ let aiChatMessages: Array<{
 let aiService: any = null;
 let isAILoading: boolean = false;
 
+// Add this after the existing state variables (around line 60):
+interface Project {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
 
+  // Add main app CSS
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Main Layout Styles */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #1e1e1e;
+      color: #cccccc;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .main-layout {
+      display: flex;
+      height: 100vh;
+      background-color: #1e1e1e;
+    }
+
+    #main-ide {
+      flex: 1;
+      display: flex;
+      min-width: 0;
+    }
+
+    .sidebar {
+      width: 250px;
+      background-color: #252526;
+      border-right: 1px solid #2d2d30;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-header {
+      padding: 8px 12px;
+      background-color: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      font-size: 11px;
+      font-weight: bold;
+      color: #cccccc;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #cccccc;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .file-item:hover {
+      background-color: #2a2d2e;
+    }
+
+    .file-item.selected {
+      background-color: #37373d;
+    }
+
+    .expansion-arrow {
+      margin-right: 4px;
+      font-size: 10px;
+      color: #cccccc;
+      cursor: pointer;
+    }
+
+    .file-icon {
+      margin-right: 6px;
+      font-size: 14px;
+      min-width: 16px;
+      text-align: center;
+    }
+
+    .file-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: #1e1e1e;
+    }
+
+    .toolbar {
+      height: 35px;
+      background-color: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      gap: 4px;
+    }
+
+    .toolbar button {
+      background-color: #0e639c;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover {
+      background-color: #1177bb;
+    }
+
+    .editor-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-bar {
+      height: 35px;
+      background-color: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      padding: 6px 12px;
+      background-color: #1e1e1e;
+      border: 1px solid #3e3e42;
+      border-bottom: none;
+      margin-right: 2px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #cccccc;
+      max-width: 200px;
+    }
+
+    .tab.active {
+      background-color: #1e1e1e;
+      border-color: #007acc;
+      border-bottom: 2px solid #007acc;
+    }
+
+    .tab-icon {
+      margin-right: 6px;
+      font-size: 12px;
+    }
+
+    .tab-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tab-close {
+      margin-left: 6px;
+      padding: 2px 4px;
+      border-radius: 2px;
+      font-size: 14px;
+      line-height: 1;
+      opacity: 0.6;
+    }
+
+    .tab-close:hover {
+      background-color: #3e3e42;
+      opacity: 1;
+    }
+
+    .editor-container {
+      flex: 1;
+      background-color: #1e1e1e;
+    }
+
+    .terminal-container {
+      height: 200px;
+      background-color: #0c0c0c;
+      border-top: 1px solid #3e3e42;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .terminal-resize-handle {
+      height: 4px;
+      background-color: #2d2d30;
+      cursor: row-resize;
+    }
+
+    .terminal-resize-handle:hover {
+      background-color: #007acc;
+    }
+
+    .terminal-header {
+      background-color: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      padding: 4px 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    .terminal-header-left {
+      display: flex;
+      align-items: center;
+    }
+
+    .terminal-tabs {
+      display: flex;
+      gap: 2px;
+      margin-right: 8px;
+    }
+
+    .terminal-tab {
+      background-color: #1e1e1e;
+      border: 1px solid #3e3e42;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #cccccc;
+      border-radius: 3px 3px 0 0;
+    }
+
+    .terminal-tab.active {
+      background-color: #0c0c0c;
+      border-bottom-color: #0c0c0c;
+    }
+
+    .terminal-output {
+      flex: 1;
+      background-color: #0c0c0c;
+      color: #ffffff;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      padding: 8px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    .terminal-input-container {
+      background-color: #1e1e1e;
+      border-top: 1px solid #3e3e42;
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+    }
+
+    .terminal-prompt {
+      color: #569cd6;
+      margin-right: 8px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+
+    .terminal-input {
+      flex: 1;
+      background-color: transparent;
+      border: none;
+      color: #ffffff;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      outline: none;
+    }
+
+    /* AI Chat Panel */
+    #ai-chat-panel {
+      width: 0;
+      overflow: hidden;
+      transition: width 0.3s ease;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    /* Utility classes */
+    .hidden {
+      display: none !important;
+    }
+
+    .text-success {
+      color: #28a745 !important;
+    }
+
+    .text-error {
+      color: #dc3545 !important;
+    }
+
+    .text-warning {
+      color: #ffc107 !important;
+    }
+
+    .text-info {
+      color: #17a2b8 !important;
+    }
+  `;
+  
+  // Add CSS to head if not already present
+  if (!document.head.querySelector('style[data-main-app-styles]')) {
+    style.setAttribute('data-main-app-styles', 'true');
+    document.head.appendChild(style);
+  }
+
   // Create main layout wrapper
   root.innerHTML = `
     <div class="main-layout">
-      <div id="main-ide" style="flex: 1; display: flex; min-width: 0;">
+      <div id="main-ide">
         <div class="sidebar">
           <div class="sidebar-header">
             Explorer
@@ -1117,7 +1447,6 @@ function createLayout() {
               border-radius: 3px;
               font-size: 10px;
               cursor: pointer;
-              margin-left: 8px;
             ">🔄</button>
           </div>
           <div class="file-tree"></div>
@@ -1135,7 +1464,6 @@ function createLayout() {
               border-radius: 3px;
               font-size: 11px;
               cursor: pointer;
-              margin-left: 8px;
             ">🤖 AI Assistant</button>
             <button id="save-file" style="
               background: #0e639c;
@@ -1145,7 +1473,6 @@ function createLayout() {
               border-radius: 3px;
               font-size: 11px;
               cursor: pointer;
-              margin-left: 8px;
             ">💾 Save (Ctrl+S)</button>
             <button id="toggle-autosave" style="
               background: #28a745;
@@ -1155,7 +1482,6 @@ function createLayout() {
               border-radius: 3px;
               font-size: 11px;
               cursor: pointer;
-              margin-left: 4px;
             ">🔄 Auto-Save: ON</button>
             <button id="stop-processes" style="
               background: #dc3545;
@@ -1165,9 +1491,8 @@ function createLayout() {
               border-radius: 3px;
               font-size: 11px;
               cursor: pointer;
-              margin-left: 8px;
               display: none;
-            ">🛑 Stop Server (Ctrl+C)</button>
+            ">🛑 Stop Server</button>
           </div>
           <div class="editor-area">
             <div class="tab-bar" id="tab-bar"></div>
@@ -1186,12 +1511,10 @@ function createLayout() {
                   border-radius: 3px;
                   font-size: 10px;
                   cursor: pointer;
-                  margin-left: 8px;
                 ">+ New Terminal</button>
               </div>
               <div class="terminal-header-right">
                 <span id="process-indicator" style="
-                  margin-right: 8px;
                   font-size: 11px;
                   color: #28a745;
                   display: none;
@@ -3229,11 +3552,23 @@ async function sendChatMessage(event?: Event) {
   const message = textarea.value.trim();
   const includeContext = includeContextCheckbox?.checked || false;
   
+  // Character limit check (Claude has ~200k token limit, roughly 150k characters)
+  const MAX_MESSAGE_LENGTH = 100000;
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    writeToTerminal(`❌ Message too long! Maximum ${MAX_MESSAGE_LENGTH} characters. Current: ${message.length}`);
+    return;
+  }
+  
+  // Sanitize message to prevent JSON parsing issues
+  const sanitizedMessage = message
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+    .replace(/\u0000/g, ''); // Remove null characters
+  
   // Add user message
   const userMessage = {
     id: Date.now().toString(),
     role: 'user' as const,
-    content: message,
+    content: sanitizedMessage,
     timestamp: new Date()
   };
   
@@ -3247,41 +3582,68 @@ async function sendChatMessage(event?: Event) {
   
   try {
     // Build context-aware message if needed
-    let enhancedMessage = message;
+    let enhancedMessage = sanitizedMessage;
     if (includeContext) {
       const currentFile = monacoEditor?.getValue();
       const selectedText = monacoEditor?.getModel()?.getValueInRange(monacoEditor.getSelection());
       
-      if (currentFile || selectedText) {
-        enhancedMessage += '\n\nContext:\n';
+      if (currentFile || selectedText || currentWorkingDirectory) {
+        enhancedMessage += '\n\n**Context:**\n';
+        if (currentWorkingDirectory) {
+          enhancedMessage += `Project: ${currentWorkingDirectory}\n`;
+        }
         if (activeTabPath) {
           enhancedMessage += `Current file: ${activeTabPath}\n`;
         }
         if (selectedText) {
-          enhancedMessage += `Selected text:\n\`\`\`\n${selectedText}\n\`\`\`\n`;
+          enhancedMessage += `Selected text:\n\`\`\`\n${selectedText.substring(0, 5000)}\n\`\`\`\n`; // Limit selected text
         }
-        if (currentFile && !selectedText) {
+        if (currentFile && !selectedText && currentFile.length < 10000) { // Only include full file if it's small
           enhancedMessage += `Full file content:\n\`\`\`\n${currentFile}\n\`\`\`\n`;
+        } else if (currentFile && !selectedText) {
+          enhancedMessage += `File is too large to include in full (${currentFile.length} characters). Please select specific code sections.\n`;
         }
       }
     }
     
-    // Send to AI service via IPC
+    // Limit enhanced message size
+    if (enhancedMessage.length > MAX_MESSAGE_LENGTH) {
+      enhancedMessage = enhancedMessage.substring(0, MAX_MESSAGE_LENGTH - 100) + '\n\n[Message truncated due to length]';
+    }
+    
+    // Send to AI service via IPC - limit message history to prevent overflow
     const messageForAI = { ...userMessage, content: enhancedMessage };
-    const response = await aiService.sendMessage([...aiChatMessages.slice(0, -1), messageForAI], getSystemPrompt());
+    const recentMessages = [...aiChatMessages.slice(-5), messageForAI]; // Keep only last 5 messages for context
+    
+    const response = await aiService.sendMessage(recentMessages, getSystemPrompt());
     
     // Convert timestamp string back to Date object
     response.timestamp = new Date(response.timestamp);
     aiChatMessages.push(response);
     
   } catch (error) {
+    console.error('AI chat error:', error);
+    
+    let errorContent = 'Failed to get response';
+    if (error instanceof Error) {
+      if (error.message.includes('too large') || error.message.includes('token')) {
+        errorContent = 'Message too large for AI processing. Try a shorter message or break it into parts.';
+      } else if (error.message.includes('rate limit')) {
+        errorContent = 'Rate limit reached. Please wait before sending another message.';
+      } else {
+        errorContent = `Error: ${error.message}`;
+      }
+    }
+    
     const errorMessage = {
       id: Date.now().toString(),
       role: 'assistant' as const,
-      content: `❌ Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
+      content: `❌ ${errorContent}`,
       timestamp: new Date()
     };
     aiChatMessages.push(errorMessage);
+    writeToTerminal(`❌ AI Chat Error: ${errorContent}`);
+    
   } finally {
     isAILoading = false;
     renderAIChat();
@@ -3383,3 +3745,182 @@ function insertCodeIntoEditor(encodedCode: string) {
 (window as any).sendQuickAction = sendQuickAction;
 (window as any).copyCodeToClipboard = copyCodeToClipboard;
 (window as any).insertCodeIntoEditor = insertCodeIntoEditor;
+
+// Project interface - only define once
+interface Project {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
+// Simple project selection
+function showProjectSelection() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .project-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      background: rgba(0, 0, 0, 0.9) !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+      z-index: 10000 !important;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    }
+    .project-modal {
+      background: #252526 !important;
+      border-radius: 8px !important;
+      width: 500px !important;
+      max-width: 90vw !important;
+      border: 1px solid #3c3c3c !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    }
+    .project-header {
+      background: #2d2d30 !important;
+      padding: 20px !important;
+      border-bottom: 1px solid #3c3c3c !important;
+    }
+    .project-header h2 { 
+      margin: 0 !important; 
+      color: #cccccc !important; 
+      font-size: 18px !important;
+      font-weight: 600 !important;
+    }
+    .project-content { 
+      padding: 20px !important; 
+    }
+    .project-buttons { 
+      display: flex !important; 
+      gap: 10px !important; 
+      margin-bottom: 20px !important; 
+    }
+    .project-btn {
+      flex: 1 !important;
+      padding: 12px 16px !important;
+      border: none !important;
+      border-radius: 4px !important;
+      cursor: pointer !important;
+      font-size: 14px !important;
+      font-family: inherit !important;
+      transition: background-color 0.2s !important;
+    }
+    .project-btn.primary { 
+      background: #0e639c !important; 
+      color: white !important; 
+    }
+    .project-btn.primary:hover { 
+      background: #1177bb !important; 
+    }
+    .project-btn.secondary { 
+      background: #3c3c3c !important; 
+      color: #cccccc !important; 
+      border: 1px solid #555 !important; 
+    }
+    .project-btn.secondary:hover { 
+      background: #4c4c4c !important; 
+    }
+    .project-info { 
+      color: #888 !important; 
+      text-align: center !important; 
+      font-size: 14px !important; 
+      line-height: 1.4 !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'project-overlay';
+  overlay.innerHTML = `
+    <div class="project-modal">
+      <div class="project-header">
+        <h2>🚀 Select Project Directory</h2>
+      </div>
+      <div class="project-content">
+        <div class="project-buttons">
+          <button id="browse-btn" class="project-btn primary">📁 Browse for Project</button>
+          <button id="current-btn" class="project-btn secondary">📂 Use Current Directory</button>
+        </div>
+        <div class="project-info">Choose a directory to work with. This will be your project root for the AI assistant context.</div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+
+  document.getElementById('browse-btn')?.addEventListener('click', async () => {
+    try {
+      const path = await (window as any).electronAPI?.selectProjectDirectory?.();
+      if (path) await setProject(path);
+    } catch (error) {
+      console.error('Browse error:', error);
+      await setProject(currentWorkingDirectory);
+    }
+  });
+
+  document.getElementById('current-btn')?.addEventListener('click', async () => {
+    try {
+      const path = await (window as any).electronAPI?.getCurrentDirectory?.() || currentWorkingDirectory;
+      await setProject(path);
+    } catch (error) {
+      console.error('Current dir error:', error);
+      await setProject(currentWorkingDirectory);
+    }
+  });
+}
+
+async function setProject(projectPath: string) {
+  try {
+    // Save to recent projects
+    if ((window as any).electronAPI?.saveRecentProject) {
+      await (window as any).electronAPI.saveRecentProject(projectPath);
+    }
+    
+    // Set working directory
+    if ((window as any).electronAPI?.setCurrentDirectory) {
+      const result = await (window as any).electronAPI.setCurrentDirectory(projectPath);
+      if (result?.success) {
+        currentWorkingDirectory = projectPath;
+      }
+    } else {
+      currentWorkingDirectory = projectPath;
+    }
+    
+    console.log(`📁 Project set to: ${projectPath}`);
+    
+    // Remove overlay
+    const overlay = document.querySelector('.project-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+    
+    showProjectSelector = false;
+    
+    // Continue with normal initialization
+    await initializeEverything();
+    
+  } catch (error) {
+    console.error('Project setup error:', error);
+    // Remove overlay and continue anyway
+    const overlay = document.querySelector('.project-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+    showProjectSelector = false;
+    await initializeEverything();
+  }
+}
+
+async function initializeEverything() {
+  createLayout();
+  setupCommandStreaming();
+  await initializeMonaco();
+  await renderFileTree();
+  setupTerminalResize();
+  initializeTerminal();
+  setupAutoSave();
+  
+  console.log('✅ IDE initialization complete');
+}

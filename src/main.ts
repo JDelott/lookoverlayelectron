@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -24,6 +24,13 @@ interface AnthropicResponse {
     input_tokens: number;
     output_tokens: number;
   };
+}
+
+// Add this interface near the top of the file, after the AnthropicResponse interface
+interface Project {
+  path: string;
+  name: string;
+  lastOpened: string;
 }
 
 let mainWindow: BrowserWindow | null;
@@ -360,18 +367,8 @@ ipcMain.handle('get-screen-info', async () => {
 });
 
 // Get current working directory
-ipcMain.handle('get-current-directory', async (event) => {
-  try {
-    return {
-      success: true,
-      directory: process.cwd()
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: (error as Error).message
-    };
-  }
+ipcMain.handle('get-current-directory', async () => {
+  return process.cwd();
 });
 
 // Open external URLs
@@ -470,6 +467,82 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   } catch (error) {
     console.error('Anthropic API Error:', error);
     throw error;
+  }
+});
+
+// Project management handlers
+ipcMain.handle('set-current-directory', async (event, directoryPath: string) => {
+  try {
+    process.chdir(directoryPath);
+    return { success: true, currentDirectory: process.cwd() };
+  } catch (error) {
+    console.error('Error setting current directory:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('select-project-directory', async () => {
+  try {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openDirectory'],
+      title: 'Select Project Directory'
+    }) as { canceled: boolean; filePaths: string[] };
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  } catch (error) {
+    console.error('Error selecting project directory:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('get-recent-projects', async (): Promise<Project[]> => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const recentProjectsPath = path.join(userDataPath, 'recent-projects.json');
+    
+    const data = await fs.promises.readFile(recentProjectsPath, 'utf-8');
+    return JSON.parse(data) as Project[];
+  } catch (error) {
+    // File doesn't exist or error reading, return empty array
+    return [];
+  }
+});
+
+ipcMain.handle('save-recent-project', async (event, projectPath: string) => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const recentProjectsPath = path.join(userDataPath, 'recent-projects.json');
+    
+    let recentProjects: Project[] = [];
+    try {
+      const data = await fs.promises.readFile(recentProjectsPath, 'utf-8');
+      recentProjects = JSON.parse(data) as Project[];
+    } catch (error) {
+      // File doesn't exist, start with empty array
+    }
+    
+    // Remove if already exists
+    recentProjects = recentProjects.filter((p: Project) => p.path !== projectPath);
+    
+    // Add to beginning
+    recentProjects.unshift({
+      path: projectPath,
+      name: path.basename(projectPath),
+      lastOpened: new Date().toISOString()
+    });
+    
+    // Keep only last 10 projects
+    recentProjects = recentProjects.slice(0, 10);
+    
+    await fs.promises.writeFile(recentProjectsPath, JSON.stringify(recentProjects, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving recent project:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 });
 

@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import FileExplorer from './components/FileExplorer';
+import { ProjectSelector } from './components/ProjectSelector';
+import '../styles/project-selector.css';
 
 const App: React.FC = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [sidebarWidth, setSidebarWidth] = useState(250);
   const [isResizing, setIsResizing] = useState(false);
+  const [currentProject, setCurrentProject] = useState<string>('');
+  const [showProjectSelector, setShowProjectSelector] = useState(true);
 
   useEffect(() => {
     console.log('React App loaded successfully');
@@ -48,11 +52,56 @@ const App: React.FC = () => {
     }
   }, [isResizing]);
 
+  const handleProjectSelected = async (projectPath: string) => {
+    try {
+      const result = await (window as any).electronAPI.setCurrentDirectory(projectPath);
+      if (result.success) {
+        setCurrentProject(projectPath);
+        setShowProjectSelector(false);
+        console.log('Project selected:', projectPath);
+      } else {
+        console.error('Failed to set project directory:', result.error);
+        alert('Failed to set project directory: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error setting project:', error);
+      alert('Error setting project: ' + error);
+    }
+  };
+
   return (
     <div className="app-container">
+      {showProjectSelector && (
+        <ProjectSelector
+          onProjectSelected={handleProjectSelected}
+          onClose={() => setShowProjectSelector(false)}
+        />
+      )}
+      
       {/* Title Bar */}
       <div className="title-bar">
         <span className="title-text">Lightweight IDE</span>
+        {currentProject && (
+          <span className="current-project" style={{ marginLeft: '10px', color: '#569cd6' }}>
+            📁 {currentProject.split('/').pop()}
+          </span>
+        )}
+        <button 
+          onClick={() => setShowProjectSelector(true)}
+          className="project-switch-btn"
+          title="Switch Project"
+          style={{
+            marginLeft: 'auto',
+            background: 'transparent',
+            border: '1px solid #3c3c3c',
+            color: '#cccccc',
+            padding: '4px 8px',
+            borderRadius: '3px',
+            cursor: 'pointer'
+          }}
+        >
+          📁
+        </button>
       </div>
       
       {/* Main Content */}

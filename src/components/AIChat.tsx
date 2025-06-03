@@ -10,6 +10,7 @@ interface AIChatProps {
   currentFile?: string;
   selectedText?: string;
   monacoEditor?: any;
+  currentProject: string;
 }
 
 export const AIChat: React.FC<AIChatProps> = ({
@@ -17,7 +18,8 @@ export const AIChat: React.FC<AIChatProps> = ({
   onToggle,
   currentFile,
   selectedText,
-  monacoEditor
+  monacoEditor,
+  currentProject
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,14 +69,18 @@ Feel free to ask questions about your code or request new functionality!`,
   const sendMessage = async (content: string, includeContext: boolean = false) => {
     if (!aiService || !content.trim()) return;
 
+    // Sanitize content to prevent issues
+    const sanitizedContent = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // Remove control characters
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content,
+      content: sanitizedContent,
       timestamp: new Date(),
       metadata: includeContext ? {
         codeContext: currentFile,
-        selectedText: selectedText
+        selectedText: selectedText,
+        projectPath: currentProject
       } : undefined
     };
 
@@ -83,13 +89,30 @@ Feel free to ask questions about your code or request new functionality!`,
 
     try {
       const allMessages = [...messages, userMessage];
-      const response = await aiService.sendMessage(allMessages);
+      
+      // Limit message history to prevent token overflow
+      const recentMessages = allMessages.slice(-10); // Keep last 10 messages for context
+      
+      const response = await aiService.sendMessage(recentMessages);
       setMessages(prev => [...prev, response]);
     } catch (error) {
+      console.error('AI service error:', error);
+      
+      let errorContent = 'Failed to get response';
+      if (error instanceof Error) {
+        if (error.message.includes('tokens')) {
+          errorContent = 'Message too long for AI processing. Please try a shorter message or break it into parts.';
+        } else if (error.message.includes('rate limit')) {
+          errorContent = 'Rate limit reached. Please wait a moment before sending another message.';
+        } else {
+          errorContent = `Error: ${error.message}`;
+        }
+      }
+      
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `❌ Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
+        content: `❌ ${errorContent}`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);

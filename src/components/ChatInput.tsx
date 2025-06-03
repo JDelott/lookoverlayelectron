@@ -18,12 +18,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [showQuickActions, setShowQuickActions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Character limit for messages (Claude has token limits)
+  const MAX_MESSAGE_LENGTH = 50000; // Roughly 12-15k tokens
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !isLoading) {
-      onSendMessage(message.trim(), includeContext);
-      setMessage('');
-      setIncludeContext(false);
+      // Check message length
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        alert(`Message too long! Please keep messages under ${MAX_MESSAGE_LENGTH} characters. Current length: ${message.length}`);
+        return;
+      }
+
+      try {
+        onSendMessage(message.trim(), includeContext);
+        setMessage('');
+        setIncludeContext(false);
+      } catch (error) {
+        console.error('Error sending message:', error);
+        alert('Error sending message. Please try again or use a shorter message.');
+      }
     }
   };
 
@@ -31,6 +45,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pastedText = e.clipboardData.getData('text');
+    const currentText = message;
+    const newLength = currentText.length + pastedText.length;
+    
+    if (newLength > MAX_MESSAGE_LENGTH) {
+      e.preventDefault();
+      alert(`Pasted content would make message too long! Maximum length is ${MAX_MESSAGE_LENGTH} characters. Current: ${currentText.length}, Pasting: ${pastedText.length}`);
+      return;
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    
+    // Prevent setting values that are too long
+    if (newValue.length <= MAX_MESSAGE_LENGTH) {
+      setMessage(newValue);
     }
   };
 
@@ -56,11 +91,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       action: () => onSendMessage('Please create unit tests for this code.', true)
     },
     {
+      label: 'Refactor code',
+      action: () => onSendMessage('Please refactor this code to improve readability and maintainability.', true)
+    },
+    {
       label: 'Generate component',
       action: () => {
         const componentName = prompt('What component would you like to create?');
         if (componentName) {
           onGenerateCode(`Create a React component called ${componentName}`);
+        }
+      }
+    },
+    {
+      label: 'Format as snippet',
+      action: () => {
+        if (message.trim()) {
+          const formattedMessage = `Please help me with this code:\n\n\`\`\`\n${message.trim()}\n\`\`\`\n\nWhat would you like me to help you with regarding this code?`;
+          setMessage(formattedMessage);
         }
       }
     }
@@ -70,13 +118,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'; // Increased max height
     }
   };
 
   React.useEffect(() => {
     adjustTextareaHeight();
   }, [message]);
+
+  const characterCount = message.length;
+  const isNearLimit = characterCount > MAX_MESSAGE_LENGTH * 0.8;
+  const isOverLimit = characterCount > MAX_MESSAGE_LENGTH;
 
   return (
     <div className="chat-input-container">
@@ -109,13 +161,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <textarea
             ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your code or request new functionality..."
-            className="chat-textarea"
+            onPaste={handlePaste}
+            placeholder="Ask about your code, paste code snippets, or request new functionality..."
+            className={`chat-textarea ${isOverLimit ? 'over-limit' : isNearLimit ? 'near-limit' : ''}`}
             disabled={isLoading}
             rows={1}
           />
+          
+          {/* Character count indicator */}
+          <div className="character-count">
+            <span className={isOverLimit ? 'over-limit' : isNearLimit ? 'near-limit' : ''}>
+              {characterCount.toLocaleString()} / {MAX_MESSAGE_LENGTH.toLocaleString()}
+            </span>
+          </div>
           
           <div className="input-controls">
             <button
@@ -141,7 +201,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="submit"
               className="send-button"
-              disabled={!message.trim() || isLoading}
+              disabled={!message.trim() || isLoading || isOverLimit}
+              title={isOverLimit ? 'Message too long' : 'Send message'}
             >
               {isLoading ? '⏳' : '📤'}
             </button>
