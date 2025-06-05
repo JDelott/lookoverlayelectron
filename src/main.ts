@@ -441,8 +441,8 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-sonnet-20240229',
-        max_tokens: 4096,
+        model: 'claude-3-5-sonnet-20241022', // Upgraded to Claude 3.5 Sonnet
+        max_tokens: 8192, // Increased token limit
         system: systemPrompt,
         messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
           role: m.role,

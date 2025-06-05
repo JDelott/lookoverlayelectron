@@ -1,8 +1,5 @@
 console.log('Renderer loaded');
 console.log('Renderer loaded');
-console.log('Renderer loaded');
-console.log('Renderer loaded');
-console.log('Renderer loaded');
 
 interface FileItem {
   name: string;
@@ -10,6 +7,69 @@ interface FileItem {
   type: 'file' | 'directory';
   children?: FileItem[];
   isExpanded?: boolean;
+}
+
+interface OpenTab {
+  path: string;
+  name: string;
+  content: string;
+  language: string;
+  isDirty: boolean;
+}
+
+interface Terminal {
+  id: string;
+  name: string;
+  workingDirectory: string;
+  output: string;
+  history: string[];
+  isActive: boolean;
+  runningProcesses: Set<string>;
+  currentProcess: string;
+  shell: string;
+}
+
+interface CodebaseIndex {
+  files: Map<string, CodeFile>;
+  dependencies: Map<string, string[]>;
+  exports: Map<string, string[]>;
+  projectStructure: ProjectStructure;
+  lastIndexed: Date;
+}
+
+interface CodeFile {
+  path: string;
+  content: string;
+  language: string;
+  size: number;
+  lastModified: Date;
+  imports: ImportInfo[];
+  exports: string[];
+  functions: string[];
+  classes: string[];
+  types: string[];
+}
+
+interface ImportInfo {
+  source: string;
+  imports: string[];
+  isDefault: boolean;
+  isNamespace: boolean;
+}
+
+interface ProjectStructure {
+  packageJson?: any;
+  tsConfig?: any;
+  gitInfo?: GitInfo;
+  frameworks: string[];
+  languages: string[];
+}
+
+interface GitInfo {
+  branch: string;
+  hasUncommittedChanges: boolean;
+  lastCommit: string;
+  remoteUrl?: string;
 }
 
 let monacoEditor: any = null;
@@ -4075,68 +4135,7 @@ function renderChatInterface(): string {
   `;
 }
 
-function renderCodeContext(): string {
-  const currentFileName = activeTabPath ? activeTabPath.split('/').pop() : null;
-  const selectedText = monacoEditor ? monacoEditor.getModel()?.getValueInRange(monacoEditor.getSelection()) : null;
-  
-  // Get enhanced context from codebase index
-  const codebaseContext = getEnhancedCodeContext();
-  
-  if (!currentFileName && !selectedText && !codebaseContext) {
-    return '';
-  }
-  
-  return `
-    <div class="code-context">
-      <div class="context-header">
-        <span class="context-title">📁 Project Context</span>
-        <button onclick="refreshCodebase()" style="
-          background: transparent;
-          border: 1px solid #3c3c3c;
-          color: #cccccc;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 10px;
-          cursor: pointer;
-        " title="Refresh codebase analysis">🔄</button>
-      </div>
-      <div class="context-content">
-        ${codebaseIndex ? `
-          <div class="context-item">
-            <span class="context-label">Files:</span>
-            <span class="context-value">${codebaseIndex.files.size} indexed</span>
-          </div>
-          ${codebaseIndex.projectStructure.frameworks.length > 0 ? `
-            <div class="context-item">
-              <span class="context-label">Stack:</span>
-              <span class="context-value">${codebaseIndex.projectStructure.frameworks.join(', ')}</span>
-            </div>
-          ` : ''}
-          ${codebaseIndex.projectStructure.gitInfo ? `
-            <div class="context-item">
-              <span class="context-label">Branch:</span>
-              <span class="context-value">${codebaseIndex.projectStructure.gitInfo.branch}</span>
-            </div>
-          ` : ''}
-        ` : '<div class="context-item">⏳ Indexing codebase...</div>'}
-        
-        ${currentFileName ? `
-          <div class="context-item">
-            <span class="context-label">File:</span>
-            <span class="context-value">${currentFileName}</span>
-          </div>
-        ` : ''}
-        
-        ${selectedText ? `
-          <div class="context-item">
-            <span class="context-label">Selected:</span>
-            <div class="selected-text-preview">${selectedText.length > 100 ? selectedText.substring(0, 100) + '...' : selectedText}</div>
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
+
 
 function renderMessage(message: any): string {
   const formattedContent = formatMessageContent(message.content);
@@ -4364,134 +4363,7 @@ Get your API key from [Anthropic Console](https://console.anthropic.com/)`,
 
 
 
-async function sendChatMessage(event?: Event) {
-  if (event) {
-    event.preventDefault();
-  }
-  
-  const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
-  const includeContextCheckbox = document.getElementById('include-context') as HTMLInputElement;
-  
-  if (!textarea || !aiService || !textarea.value.trim() || isAILoading) {
-    return;
-  }
-  
-  const message = textarea.value.trim();
-  const includeContext = includeContextCheckbox?.checked || false;
-  
-  // Character limit check (Claude has ~200k token limit, roughly 150k characters)
-  const MAX_MESSAGE_LENGTH = 100000;
-  if (message.length > MAX_MESSAGE_LENGTH) {
-    writeToTerminal(`❌ Message too long! Maximum ${MAX_MESSAGE_LENGTH} characters. Current: ${message.length}`);
-    return;
-  }
-  
-  // Sanitize message to prevent JSON parsing issues
-  const sanitizedMessage = message
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
-    .replace(/\u0000/g, ''); // Remove null characters
-  
-  // Add user message
-  const userMessage = {
-    id: Date.now().toString(),
-    role: 'user' as const,
-    content: sanitizedMessage,
-    timestamp: new Date()
-  };
-  
-  aiChatMessages.push(userMessage);
-  textarea.value = '';
-  adjustTextareaHeight();
-  
-  // Set loading state
-  isAILoading = true;
-  
-  // Update messages and maintain layout
-  updateChatMessages();
-  updateLayoutForAIChat(); // Ensure layout stays consistent
-  
-  try {
-    // Build context-aware message if needed
-    let enhancedMessage = sanitizedMessage;
-    if (includeContext) {
-      const currentFile = monacoEditor?.getValue();
-      const selectedText = monacoEditor?.getModel()?.getValueInRange(monacoEditor.getSelection());
-      
-      if (currentFile || selectedText || currentWorkingDirectory) {
-        enhancedMessage += '\n\n**Context:**\n';
-        if (currentWorkingDirectory) {
-          enhancedMessage += `Project: ${currentWorkingDirectory}\n`;
-        }
-        if (activeTabPath) {
-          enhancedMessage += `Current file: ${activeTabPath}\n`;
-        }
-        if (selectedText) {
-          enhancedMessage += `Selected text:\n\`\`\`\n${selectedText.substring(0, 5000)}\n\`\`\`\n`; // Limit selected text
-        }
-        if (currentFile && !selectedText && currentFile.length < 10000) { // Only include full file if it's small
-          enhancedMessage += `Full file content:\n\`\`\`\n${currentFile}\n\`\`\`\n`;
-        } else if (currentFile && !selectedText) {
-          enhancedMessage += `File is too large to include in full (${currentFile.length} characters). Please select specific code sections.\n`;
-        }
-      }
-    }
-    
-    // Limit enhanced message size
-    if (enhancedMessage.length > MAX_MESSAGE_LENGTH) {
-      enhancedMessage = enhancedMessage.substring(0, MAX_MESSAGE_LENGTH - 100) + '\n\n[Message truncated due to length]';
-    }
-    
-    // Send to AI service via IPC - limit message history to prevent overflow
-    const messageForAI = { ...userMessage, content: enhancedMessage };
-    const recentMessages = [...aiChatMessages.slice(-5), messageForAI]; // Keep only last 5 messages for context
-    
-    const response = await aiService.sendMessage(recentMessages, getSystemPrompt());
-    
-    // Convert timestamp string back to Date object
-    response.timestamp = new Date(response.timestamp);
-    aiChatMessages.push(response);
-    
-  } catch (error) {
-    console.error('AI chat error:', error);
-    
-    let errorContent = 'Failed to get response';
-    if (error instanceof Error) {
-      if (error.message.includes('529') || error.message.includes('overloaded_error') || error.message.includes('Overloaded')) {
-        errorContent = '🔄 Anthropic API is temporarily overloaded. Please try again in a few minutes.';
-      } else if (error.message.includes('JSON') || error.message.includes('parse') || error.message.includes('Invalid')) {
-        errorContent = '❌ Code contains characters that break the API. Try simplifying or removing special characters.';
-      } else if (error.message.includes('too large') || error.message.includes('token')) {
-        errorContent = 'Message too large for AI processing. Try a shorter message or break it into parts.';
-      } else if (error.message.includes('rate limit')) {
-        errorContent = 'Rate limit reached. Please wait before sending another message.';
-      } else {
-        errorContent = `Error: ${error.message}`;
-      }
-    }
-    
-    const errorMessage = {
-      id: Date.now().toString(),
-      role: 'assistant' as const,
-      content: `❌ ${errorContent}`,
-      timestamp: new Date()
-    };
-    aiChatMessages.push(errorMessage);
-    writeToTerminal(`❌ AI Chat Error: ${errorContent}`);
-    
-  } finally {
-    isAILoading = false;
-    updateChatMessages();
-    updateLayoutForAIChat(); // Ensure layout stays consistent after response
-    
-    // Scroll to bottom
-    setTimeout(() => {
-      const messagesContainer = document.getElementById('ai-chat-messages');
-      if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }
-    }, 100);
-  }
-}
+
 
 function toggleQuickActions() {
   const quickActions = document.getElementById('quick-actions');
@@ -4855,18 +4727,26 @@ async function indexCodebase() {
   
   console.log('🔍 Starting codebase indexing...');
   isIndexing = true;
-  writeToTerminal('🔍 Analyzing codebase for AI context...');
+  writeToTerminal('🔍 Analyzing entire codebase for AI context...');
   
   try {
     const files = new Map<string, CodeFile>();
     const dependencies = new Map<string, string[]>();
     const exports = new Map<string, string[]>();
     
-    // Get project structure
-    const projectStructure = await analyzeProjectStructure();
+    // Find project root
+    const projectRoot = await findProjectRoot(currentWorkingDirectory);
+    console.log(`📁 Project root detected: ${projectRoot}`);
+    writeToTerminal(`📁 Project root: ${projectRoot}`);
     
-    // Index all files recursively
-    await indexDirectory(currentWorkingDirectory, files, dependencies, exports);
+    // Get project structure first
+    const projectStructure = await analyzeProjectStructure(projectRoot);
+    
+    // Index all files recursively from project root
+    await indexDirectory(projectRoot, files, dependencies, exports);
+    
+    // Index important config files separately
+    await indexConfigFiles(projectRoot, files);
     
     codebaseIndex = {
       files,
@@ -4876,8 +4756,9 @@ async function indexCodebase() {
       lastIndexed: new Date()
     };
     
-    console.log(`✅ Indexed ${files.size} files`);
+    console.log(`✅ Indexed ${files.size} files from entire project`);
     writeToTerminal(`✅ Codebase indexed: ${files.size} files analyzed`);
+    writeToTerminal(`📊 Project overview: ${projectStructure.frameworks.join(', ') || 'No frameworks detected'}`);
     
     // Update AI context
     updateAISystemPrompt();
@@ -4890,7 +4771,57 @@ async function indexCodebase() {
   }
 }
 
-async function analyzeProjectStructure(): Promise<ProjectStructure> {
+async function findProjectRoot(startPath: string): Promise<string> {
+  let currentPath = startPath;
+  const maxDepth = 10; // Prevent infinite loops
+  let depth = 0;
+  
+  while (depth < maxDepth) {
+    try {
+      // Check for project root indicators
+      const indicators = ['package.json', '.git', 'yarn.lock', 'pnpm-lock.yaml', 'Cargo.toml', 'pyproject.toml', 'go.mod'];
+      
+      for (const indicator of indicators) {
+        const indicatorPath = `${currentPath}/${indicator}`;
+        try {
+          const content = await (window as any).electronAPI.readFile(indicatorPath);
+          if (content !== null) {
+            console.log(`Found project indicator: ${indicator} at ${currentPath}`);
+            return currentPath;
+          }
+        } catch (e) {
+          // Try checking if directory exists
+          try {
+            const items = await (window as any).electronAPI.getDirectoryContents(currentPath);
+            if (items && items.some((item: any) => item.name === indicator)) {
+              console.log(`Found project indicator: ${indicator} at ${currentPath}`);
+              return currentPath;
+            }
+          } catch (e2) {
+            // Continue checking
+          }
+        }
+      }
+      
+      // Move up one directory
+      const parentPath = currentPath.split('/').slice(0, -1).join('/');
+      if (parentPath === currentPath || parentPath === '') {
+        break; // Reached root
+      }
+      currentPath = parentPath;
+      depth++;
+    } catch (error) {
+      console.error('Error finding project root:', error);
+      break;
+    }
+  }
+  
+  // Fall back to current working directory
+  console.log(`No project root found, using: ${startPath}`);
+  return startPath;
+}
+
+async function analyzeProjectStructure(projectRoot: string): Promise<ProjectStructure> {
   const structure: ProjectStructure = {
     frameworks: [],
     languages: []
@@ -4898,29 +4829,56 @@ async function analyzeProjectStructure(): Promise<ProjectStructure> {
   
   try {
     // Read package.json
-    const packageJsonPath = `${currentWorkingDirectory}/package.json`;
+    const packageJsonPath = `${projectRoot}/package.json`;
     try {
       const packageContent = await (window as any).electronAPI.readFile(packageJsonPath);
       if (packageContent) {
         structure.packageJson = JSON.parse(packageContent);
         
-        // Detect frameworks
-        const deps = { ...structure.packageJson.dependencies, ...structure.packageJson.devDependencies };
+        // Detect frameworks and tools
+        const deps = { 
+          ...structure.packageJson.dependencies, 
+          ...structure.packageJson.devDependencies 
+        };
+        
+        // Frontend frameworks
         if (deps.react) structure.frameworks.push('React');
         if (deps.vue) structure.frameworks.push('Vue');
         if (deps.angular) structure.frameworks.push('Angular');
         if (deps.svelte) structure.frameworks.push('Svelte');
-        if (deps.electron) structure.frameworks.push('Electron');
+        
+        // Backend frameworks
         if (deps.express) structure.frameworks.push('Express');
+        if (deps.fastify) structure.frameworks.push('Fastify');
+        if (deps.koa) structure.frameworks.push('Koa');
+        
+        // Full-stack frameworks
         if (deps.nextjs || deps.next) structure.frameworks.push('Next.js');
         if (deps.nuxt) structure.frameworks.push('Nuxt.js');
+        if (deps.remix) structure.frameworks.push('Remix');
+        if (deps.sveltekit) structure.frameworks.push('SvelteKit');
+        
+        // Desktop frameworks
+        if (deps.electron) structure.frameworks.push('Electron');
+        if (deps.tauri) structure.frameworks.push('Tauri');
+        
+        // Build tools
+        if (deps.vite) structure.frameworks.push('Vite');
+        if (deps.webpack) structure.frameworks.push('Webpack');
+        if (deps.parcel) structure.frameworks.push('Parcel');
+        
+        // Testing frameworks
+        if (deps.jest) structure.frameworks.push('Jest');
+        if (deps.vitest) structure.frameworks.push('Vitest');
+        if (deps.cypress) structure.frameworks.push('Cypress');
+        if (deps.playwright) structure.frameworks.push('Playwright');
       }
     } catch (e) {
       console.log('No package.json found');
     }
     
     // Read tsconfig.json
-    const tsconfigPath = `${currentWorkingDirectory}/tsconfig.json`;
+    const tsconfigPath = `${projectRoot}/tsconfig.json`;
     try {
       const tsconfigContent = await (window as any).electronAPI.readFile(tsconfigPath);
       if (tsconfigContent) {
@@ -4931,8 +4889,32 @@ async function analyzeProjectStructure(): Promise<ProjectStructure> {
       console.log('No tsconfig.json found');
     }
     
+    // Check for other language indicators
+    const languageFiles = [
+      { file: 'Cargo.toml', language: 'Rust' },
+      { file: 'go.mod', language: 'Go' },
+      { file: 'pyproject.toml', language: 'Python' },
+      { file: 'requirements.txt', language: 'Python' },
+      { file: 'Gemfile', language: 'Ruby' },
+      { file: 'composer.json', language: 'PHP' },
+      { file: 'pom.xml', language: 'Java' },
+      { file: 'build.gradle', language: 'Java' },
+      { file: 'Dockerfile', language: 'Docker' }
+    ];
+    
+    for (const { file, language } of languageFiles) {
+      try {
+        const content = await (window as any).electronAPI.readFile(`${projectRoot}/${file}`);
+        if (content) {
+          structure.languages.push(language);
+        }
+      } catch (e) {
+        // File doesn't exist
+      }
+    }
+    
     // Get git information
-    structure.gitInfo = await getGitInfo();
+    structure.gitInfo = await getGitInfo(projectRoot);
     
   } catch (error) {
     console.error('Error analyzing project structure:', error);
@@ -4941,26 +4923,187 @@ async function analyzeProjectStructure(): Promise<ProjectStructure> {
   return structure;
 }
 
-async function getGitInfo(): Promise<GitInfo | undefined> {
+async function indexConfigFiles(projectRoot: string, files: Map<string, CodeFile>) {
+  const configFiles = [
+    'package.json',
+    'tsconfig.json',
+    'tsconfig.*.json',
+    'vite.config.*',
+    'webpack.config.*',
+    'next.config.*',
+    'nuxt.config.*',
+    'svelte.config.*',
+    'tailwind.config.*',
+    'postcss.config.*',
+    'babel.config.*',
+    '.eslintrc*',
+    '.prettierrc*',
+    'README.md',
+    'CHANGELOG.md',
+    'LICENSE',
+    'Dockerfile',
+    'docker-compose.yml',
+    '.env.example',
+    '.gitignore',
+    '.gitattributes'
+  ];
+  
+  for (const configPattern of configFiles) {
+    try {
+      if (configPattern.includes('*')) {
+        // Handle glob patterns by checking directory contents
+        const dir = await (window as any).electronAPI.getDirectoryContents(projectRoot);
+        if (dir) {
+          const matchingFiles = dir.filter((item: any) => {
+            if (item.type !== 'file') return false;
+            const pattern = configPattern.replace(/\*/g, '.*');
+            return new RegExp(pattern).test(item.name);
+          });
+          
+          for (const file of matchingFiles) {
+            await indexSingleConfigFile(file.path, files);
+          }
+        }
+      } else {
+        await indexSingleConfigFile(`${projectRoot}/${configPattern}`, files);
+      }
+    } catch (error) {
+      // Config file doesn't exist, continue
+    }
+  }
+}
+
+async function indexSingleConfigFile(filePath: string, files: Map<string, CodeFile>) {
+  try {
+    const content = await (window as any).electronAPI.readFile(filePath);
+    if (!content) return;
+    
+    const fileName = filePath.split('/').pop() || '';
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    const language = getLanguageFromExtension(extension);
+    
+    const configFile: CodeFile = {
+      path: filePath,
+      content,
+      language,
+      size: content.length,
+      lastModified: new Date(),
+      imports: [],
+      exports: [],
+      functions: [],
+      classes: [],
+      types: []
+    };
+    
+    files.set(filePath, configFile);
+    console.log(`📄 Indexed config file: ${fileName}`);
+  } catch (error) {
+    // File doesn't exist or can't be read
+  }
+}
+
+function shouldIndexDirectory(dirName: string, depth: number = 0): boolean {
+  // Always exclude these directories
+  const alwaysExcluded = [
+    'node_modules', 
+    '.git', 
+    'dist', 
+    'build', 
+    'coverage', 
+    '.next', 
+    '.nuxt',
+    'target',  // Rust
+    '__pycache__',  // Python
+    '.pytest_cache',  // Python
+    'vendor',  // PHP/Go
+    '.gradle',  // Java
+    'bin',  // Various
+    'obj'  // C#
+  ];
+  
+  if (alwaysExcluded.includes(dirName)) return false;
+  
+  // Skip hidden directories but allow some important ones
+  if (dirName.startsWith('.')) {
+    const allowedHidden = ['.github', '.vscode', '.idea'];
+    return allowedHidden.includes(dirName);
+  }
+  
+  // Skip very deep nesting to prevent infinite loops
+  if (depth > 8) return false;
+  
+  return true;
+}
+
+async function indexDirectory(dirPath: string, files: Map<string, CodeFile>, dependencies: Map<string, string[]>, exports: Map<string, string[]>, depth: number = 0) {
+  try {
+    const items = await (window as any).electronAPI.getDirectoryContents(dirPath);
+    if (!Array.isArray(items)) return;
+    
+    for (const item of items) {
+      if (item.type === 'file') {
+        await indexFile(item.path, files, dependencies, exports);
+      } else if (item.type === 'directory' && shouldIndexDirectory(item.name, depth)) {
+        await indexDirectory(item.path, files, dependencies, exports, depth + 1);
+      }
+    }
+  } catch (error) {
+    console.error(`Error indexing directory ${dirPath}:`, error);
+  }
+}
+
+function shouldIndexFile(extension: string): boolean {
+  const codeExtensions = [
+    // Web technologies
+    'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 
+    'css', 'scss', 'sass', 'less', 'styl',
+    'html', 'htm', 'xml', 'svg',
+    
+    // Configuration and data
+    'json', 'yaml', 'yml', 'toml', 'ini', 'env',
+    
+    // Documentation
+    'md', 'mdx', 'txt', 'rst',
+    
+    // Backend languages
+    'py', 'rb', 'php', 'java', 'kt', 'scala',
+    'c', 'cpp', 'h', 'hpp', 'cc', 'cxx',
+    'cs', 'vb', 'fs',
+    'go', 'rs', 'swift',
+    
+    // Shell scripts
+    'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat',
+    
+    // Database
+    'sql', 'graphql', 'gql',
+    
+    // Other
+    'r', 'lua', 'dart', 'elm'
+  ];
+  
+  return codeExtensions.includes(extension);
+}
+
+async function getGitInfo(projectRoot: string): Promise<GitInfo | undefined> {
   try {
     // Check if it's a git repository
-    const gitCheck = await (window as any).electronAPI.executeCommand('git rev-parse --is-inside-work-tree', currentWorkingDirectory);
+    const gitCheck = await (window as any).electronAPI.executeCommand('git rev-parse --is-inside-work-tree', projectRoot);
     if (!gitCheck.success) return undefined;
     
     // Get current branch
-    const branchResult = await (window as any).electronAPI.executeCommand('git branch --show-current', currentWorkingDirectory);
+    const branchResult = await (window as any).electronAPI.executeCommand('git branch --show-current', projectRoot);
     const branch = branchResult.success ? branchResult.output.trim() : 'unknown';
     
     // Check for uncommitted changes
-    const statusResult = await (window as any).electronAPI.executeCommand('git status --porcelain', currentWorkingDirectory);
+    const statusResult = await (window as any).electronAPI.executeCommand('git status --porcelain', projectRoot);
     const hasUncommittedChanges = statusResult.success ? statusResult.output.trim().length > 0 : false;
     
     // Get last commit
-    const commitResult = await (window as any).electronAPI.executeCommand('git log -1 --pretty=format:"%h %s"', currentWorkingDirectory);
+    const commitResult = await (window as any).electronAPI.executeCommand('git log -1 --pretty=format:"%h %s"', projectRoot);
     const lastCommit = commitResult.success ? commitResult.output.trim() : 'unknown';
     
     // Get remote URL
-    const remoteResult = await (window as any).electronAPI.executeCommand('git remote get-url origin', currentWorkingDirectory);
+    const remoteResult = await (window as any).electronAPI.executeCommand('git remote get-url origin', projectRoot);
     const remoteUrl = remoteResult.success ? remoteResult.output.trim() : undefined;
     
     return {
@@ -4975,26 +5118,180 @@ async function getGitInfo(): Promise<GitInfo | undefined> {
   }
 }
 
-async function indexDirectory(dirPath: string, files: Map<string, CodeFile>, dependencies: Map<string, string[]>, exports: Map<string, string[]>) {
-  try {
-    const items = await (window as any).electronAPI.getDirectoryContents(dirPath);
-    if (!Array.isArray(items)) return;
-    
-    for (const item of items) {
-      if (item.type === 'file') {
-        await indexFile(item.path, files, dependencies, exports);
-      } else if (item.type === 'directory' && shouldIndexDirectory(item.name)) {
-        await indexDirectory(item.path, files, dependencies, exports);
-      }
-    }
-  } catch (error) {
-    console.error(`Error indexing directory ${dirPath}:`, error);
+// Enhanced context display
+function buildProjectContextString(): string {
+  if (!codebaseIndex) return '';
+  
+  const { projectStructure, files } = codebaseIndex;
+  let context = '\n\n**CODEBASE CONTEXT:**\n';
+  
+  // Project info
+  if (projectStructure.packageJson) {
+    context += `\n**Project:** ${projectStructure.packageJson.name || 'Unknown'}\n`;
+    context += `**Description:** ${projectStructure.packageJson.description || 'No description'}\n`;
+    context += `**Version:** ${projectStructure.packageJson.version || 'No version'}\n`;
   }
+  
+  // Tech stack
+  if (projectStructure.frameworks.length > 0) {
+    context += `**Tech Stack:** ${projectStructure.frameworks.join(', ')}\n`;
+  }
+  if (projectStructure.languages.length > 0) {
+    context += `**Languages:** ${projectStructure.languages.join(', ')}\n`;
+  }
+  
+  // Git info
+  if (projectStructure.gitInfo) {
+    context += `**Git Branch:** ${projectStructure.gitInfo.branch}\n`;
+    if (projectStructure.gitInfo.hasUncommittedChanges) {
+      context += `**Status:** Has uncommitted changes\n`;
+    }
+    if (projectStructure.gitInfo.lastCommit) {
+      context += `**Last Commit:** ${projectStructure.gitInfo.lastCommit}\n`;
+    }
+  }
+  
+  // File structure overview
+  context += `\n**Files Indexed:** ${files.size} files\n`;
+  
+  // File type breakdown
+  const fileTypes: { [key: string]: number } = {};
+  files.forEach(file => {
+    const ext = file.path.split('.').pop() || 'unknown';
+    fileTypes[ext] = (fileTypes[ext] || 0) + 1;
+  });
+  
+  const topTypes = Object.entries(fileTypes)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5)
+    .map(([ext, count]) => `${ext} (${count})`)
+    .join(', ');
+  
+  if (topTypes) {
+    context += `**File Types:** ${topTypes}\n`;
+  }
+  
+  return context;
 }
 
-function shouldIndexDirectory(dirName: string): boolean {
-  const excludedDirs = ['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.nuxt', 'public', 'assets'];
-  return !excludedDirs.includes(dirName) && !dirName.startsWith('.');
+// Update the getSystemPrompt function to include codebase context:
+function getSystemPrompt(): string {
+  const basePrompt = `You are Claude 3.5 Sonnet, an advanced AI coding assistant integrated into "Look Overlay Electron" - a VS Code-like IDE. You excel at providing intelligent, context-aware coding assistance.
+
+**CORE EXPERTISE:**
+1. **Advanced Code Analysis**: Deep understanding of code architecture, patterns, performance implications, and potential issues
+2. **Intelligent Code Generation**: Creating production-ready, well-structured code with proper error handling and modern best practices
+3. **Expert Debugging**: Identifying complex bugs, race conditions, memory leaks, and architectural problems
+4. **Sophisticated Refactoring**: Improving code quality, performance, maintainability, and applying design patterns
+5. **Comprehensive Documentation**: Generating detailed comments, API docs, and technical explanations
+6. **Architecture Guidance**: Suggesting better structures, patterns, and technical decisions
+
+**ENHANCED CAPABILITIES:**
+- **Context Awareness**: Deeply understand project structure, dependencies, and coding patterns
+- **Framework Expertise**: Expert knowledge in React, Node.js, TypeScript, Electron, and modern web technologies
+- **Performance Focus**: Optimize for both runtime performance and developer experience
+- **Security Mindset**: Consider security implications and suggest secure coding practices
+- **Modern Standards**: Use latest language features, patterns, and best practices
+
+**RESPONSE EXCELLENCE:**
+- Provide complete, working solutions with thorough explanations
+- Consider edge cases, error handling, and scalability from the start
+- Explain the reasoning behind technical decisions and trade-offs
+- Suggest file organization, naming conventions, and project structure improvements
+- Use proper TypeScript typing and modern JavaScript/React patterns
+- Format responses with clear code blocks and syntax highlighting
+- When suggesting changes, show both the current issue and the improved solution
+
+**PROJECT CONTEXT AWARENESS:**
+- Consider the current file's purpose and its role in the larger project
+- Understand import/export relationships and dependencies
+- Suggest improvements that align with existing project patterns
+- Recommend testing strategies and implementation approaches
+
+You have access to the user's current file, selected text, project structure, and codebase index. Use this context to provide highly relevant, specific, and actionable assistance that goes beyond generic solutions.`;
+
+  // Add codebase context if available
+  const codebaseContext = getEnhancedCodeContext();
+  
+  return basePrompt + codebaseContext;
+}
+
+// Add refresh codebase function
+
+function updateAISystemPrompt() {
+  if (!codebaseIndex) return;
+  
+  const projectInfo = buildProjectContextString();
+  console.log('📝 Updated AI system prompt with project context');
+  console.log(`🔍 Project info: ${projectInfo.slice(0, 200)}...`);
+}
+
+function getEnhancedCodeContext(): string {
+  if (!codebaseIndex) return '';
+  
+  let context = buildProjectContextString();
+  
+  // Add current file context
+  if (activeTabPath) {
+    const currentFile = codebaseIndex.files.get(activeTabPath);
+    if (currentFile) {
+      context += `\n**CURRENT FILE: ${activeTabPath}**\n`;
+      context += `Language: ${currentFile.language}\n`;
+      context += `Size: ${currentFile.size} chars\n`;
+      
+      if (currentFile.functions.length > 0) {
+        context += `Functions: ${currentFile.functions.slice(0, 10).join(', ')}${currentFile.functions.length > 10 ? '...' : ''}\n`;
+      }
+      
+      if (currentFile.classes.length > 0) {
+        context += `Classes: ${currentFile.classes.join(', ')}\n`;
+      }
+      
+      if (currentFile.types.length > 0) {
+        context += `Types: ${currentFile.types.slice(0, 5).join(', ')}${currentFile.types.length > 5 ? '...' : ''}\n`;
+      }
+      
+      if (currentFile.imports.length > 0) {
+        context += `Imports: ${currentFile.imports.slice(0, 5).map(imp => imp.source).join(', ')}${currentFile.imports.length > 5 ? '...' : ''}\n`;
+      }
+    }
+  }
+  
+  // Add related files context
+  if (activeTabPath && codebaseIndex.dependencies.has(activeTabPath)) {
+    const deps = codebaseIndex.dependencies.get(activeTabPath) || [];
+    if (deps.length > 0) {
+      context += `\n**RELATED FILES:**\n`;
+      deps.slice(0, 5).forEach(dep => {
+        const depFile = Array.from(codebaseIndex!.files.values()).find(f => 
+          f.path.includes(dep) || f.path.endsWith(`/${dep}`) || f.path.endsWith(`/${dep}.js`) || f.path.endsWith(`/${dep}.ts`)
+        );
+        if (depFile) {
+          context += `- ${depFile.path.split('/').pop()} (${depFile.language})\n`;
+        } else {
+          context += `- ${dep} (external)\n`;
+        }
+      });
+    }
+  }
+  
+  // Add directory structure context for current file
+  if (activeTabPath) {
+    const currentDir = activeTabPath.split('/').slice(0, -1).join('/');
+    const siblingFiles = Array.from(codebaseIndex.files.values())
+      .filter(f => f.path.startsWith(currentDir) && f.path !== activeTabPath)
+      .slice(0, 8);
+    
+    if (siblingFiles.length > 0) {
+      context += `\n**NEARBY FILES:**\n`;
+      siblingFiles.forEach(file => {
+        const fileName = file.path.split('/').pop();
+        context += `- ${fileName} (${file.language})\n`;
+      });
+    }
+  }
+  
+  return context;
 }
 
 async function indexFile(filePath: string, files: Map<string, CodeFile>, dependencies: Map<string, string[]>, exports: Map<string, string[]>) {
@@ -5008,8 +5305,11 @@ async function indexFile(filePath: string, files: Map<string, CodeFile>, depende
     const content = await (window as any).electronAPI.readFile(filePath);
     if (!content) return;
     
-    // Prevent indexing huge files
-    if (content.length > 100000) {
+    // Prevent indexing huge files (increased limit for config files)
+    const isConfigFile = ['json', 'yml', 'yaml', 'toml', 'xml'].includes(extension);
+    const maxSize = isConfigFile ? 200000 : 100000;
+    
+    if (content.length > maxSize) {
       console.log(`Skipping large file: ${filePath} (${content.length} chars)`);
       return;
     }
@@ -5035,62 +5335,271 @@ async function indexFile(filePath: string, files: Map<string, CodeFile>, depende
     dependencies.set(filePath, fileDeps);
     exports.set(filePath, codeFile.exports);
     
+    // Log progress for important files
+    if (isConfigFile || extension === 'md' || fileName.toLowerCase().includes('readme')) {
+      console.log(`📄 Indexed: ${fileName} (${language})`);
+    }
+    
   } catch (error) {
     console.error(`Error indexing file ${filePath}:`, error);
   }
 }
 
-function shouldIndexFile(extension: string): boolean {
-  const codeExtensions = ['js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'css', 'scss', 'less', 'json', 'md', 'html', 'py', 'java', 'c', 'cpp', 'cs', 'php', 'rb', 'go', 'rs'];
-  return codeExtensions.includes(extension);
+// Enhanced refresh function
+async function refreshCodebase() {
+  console.log('🔄 Refreshing codebase index...');
+  writeToTerminal('🔄 Refreshing codebase index...');
+  
+  // Clear existing index
+  codebaseIndex = null;
+  
+  // Start fresh indexing
+  await indexCodebase();
+  
+  // Update the AI context display
+  if (aiChatVisible) {
+    renderAIChat();
+  }
 }
 
-function extractImports(content: string, language: string): ImportInfo[] {
-  const imports: ImportInfo[] = [];
+// Enhanced context function for chat input
+function renderCodeContext(): string {
+  const currentFileName = activeTabPath ? activeTabPath.split('/').pop() : null;
+  const selectedText = monacoEditor ? monacoEditor.getModel()?.getValueInRange(monacoEditor.getSelection()) : null;
   
-  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
-    // ES6 imports
-    const importRegex = /import\s+(?:(.+?)\s+from\s+)?['"]([^'"]+)['"];?/g;
-    let match;
-    while ((match = importRegex.exec(content)) !== null) {
-      const importClause = match[1];
-      const source = match[2];
+  // Get enhanced context from codebase index
+  const codebaseContext = getEnhancedCodeContext();
+  
+  if (!currentFileName && !selectedText && !codebaseContext) {
+    return '';
+  }
+  
+  return `
+    <div class="code-context">
+      <div class="context-header">
+        <span class="context-title">📁 Project Context</span>
+        <button onclick="refreshCodebase()" style="
+          background: transparent;
+          border: 1px solid #3c3c3c;
+          color: #cccccc;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
+        " title="Refresh codebase analysis">🔄</button>
+      </div>
+      <div class="context-content">
+        ${codebaseIndex ? `
+          <div class="context-item">
+            <span class="context-label">Files:</span>
+            <span class="context-value">${codebaseIndex.files.size} indexed</span>
+          </div>
+          ${codebaseIndex.projectStructure.frameworks.length > 0 ? `
+            <div class="context-item">
+              <span class="context-label">Stack:</span>
+              <span class="context-value">${codebaseIndex.projectStructure.frameworks.slice(0, 3).join(', ')}</span>
+            </div>
+          ` : ''}
+          ${codebaseIndex.projectStructure.gitInfo ? `
+            <div class="context-item">
+              <span class="context-label">Branch:</span>
+              <span class="context-value">${codebaseIndex.projectStructure.gitInfo.branch}</span>
+            </div>
+          ` : ''}
+          ${codebaseIndex.projectStructure.gitInfo?.hasUncommittedChanges ? `
+            <div class="context-item">
+              <span class="context-label">Status:</span>
+              <span class="context-value" style="color: #f1c40f;">Uncommitted changes</span>
+            </div>
+          ` : ''}
+        ` : '<div class="context-item">⏳ Indexing codebase...</div>'}
+        
+        ${currentFileName ? `
+          <div class="context-item">
+            <span class="context-label">File:</span>
+            <span class="context-value">${currentFileName}</span>
+          </div>
+        ` : ''}
+        
+        ${selectedText ? `
+          <div class="context-item">
+            <span class="context-label">Selected:</span>
+            <div class="selected-text-preview">${selectedText.length > 100 ? selectedText.substring(0, 100) + '...' : selectedText}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// Enhanced chat message function to use improved context
+async function sendChatMessage(event?: Event) {
+  if (event) {
+    event.preventDefault();
+  }
+  
+  const textarea = document.getElementById('chat-textarea') as HTMLTextAreaElement;
+  const includeContextCheckbox = document.getElementById('include-context') as HTMLInputElement;
+  
+  if (!textarea || !aiService || !textarea.value.trim() || isAILoading) {
+    return;
+  }
+  
+  const message = textarea.value.trim();
+  const includeContext = includeContextCheckbox?.checked || false;
+  
+  // Character limit check
+  const MAX_MESSAGE_LENGTH = 100000;
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    writeToTerminal(`❌ Message too long! Maximum ${MAX_MESSAGE_LENGTH} characters. Current: ${message.length}`);
+    return;
+  }
+  
+  // Sanitize message
+  const sanitizedMessage = message
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\u0000/g, '');
+  
+  // Add user message
+  const userMessage = {
+    id: Date.now().toString(),
+    role: 'user' as const,
+    content: sanitizedMessage,
+    timestamp: new Date()
+  };
+  
+  aiChatMessages.push(userMessage);
+  textarea.value = '';
+  adjustTextareaHeight();
+  
+  // Set loading state
+  isAILoading = true;
+  updateChatMessages();
+  updateLayoutForAIChat();
+  
+  try {
+    // Build enhanced context-aware message
+    let enhancedMessage = sanitizedMessage;
+    if (includeContext) {
+      const currentFile = monacoEditor?.getValue();
+      const selectedText = monacoEditor?.getModel()?.getValueInRange(monacoEditor.getSelection());
       
-      let importNames: string[] = [];
-      let isDefault = false;
-      let isNamespace = false;
-      
-      if (importClause) {
-        if (importClause.includes('*')) {
-          isNamespace = true;
-          importNames = [importClause.trim()];
-        } else if (importClause.includes('{')) {
-          const namedImports = importClause.match(/\{([^}]+)\}/)?.[1];
-          if (namedImports) {
-            importNames = namedImports.split(',').map(name => name.trim());
-          }
-        } else {
-          isDefault = true;
-          importNames = [importClause.trim()];
+      if (currentFile || selectedText || codebaseIndex) {
+        enhancedMessage += '\n\n**Context:**\n';
+        
+        // Add enhanced codebase context
+        const codebaseContext = getEnhancedCodeContext();
+        if (codebaseContext) {
+          enhancedMessage += codebaseContext + '\n';
+        }
+        
+        if (activeTabPath) {
+          enhancedMessage += `\n**Current file:** ${activeTabPath}\n`;
+        }
+        
+        if (selectedText) {
+          enhancedMessage += `**Selected text:**\n\`\`\`\n${selectedText.substring(0, 5000)}\n\`\`\`\n`;
+        }
+        
+        if (currentFile && !selectedText && currentFile.length < 15000) {
+          enhancedMessage += `**Full file content:**\n\`\`\`\n${currentFile}\n\`\`\`\n`;
+        } else if (currentFile && !selectedText) {
+          enhancedMessage += `**Note:** File is large (${currentFile.length} characters). Please select specific code sections for analysis.\n`;
         }
       }
-      
-      imports.push({
-        source,
-        imports: importNames,
-        isDefault,
-        isNamespace
-      });
     }
     
-    // CommonJS require
-    const requireRegex = /require\s*\(['"]([^'"]+)['"]\)/g;
-    while ((match = requireRegex.exec(content)) !== null) {
+    // Limit enhanced message size
+    if (enhancedMessage.length > MAX_MESSAGE_LENGTH) {
+      enhancedMessage = enhancedMessage.substring(0, MAX_MESSAGE_LENGTH - 100) + '\n\n[Message truncated due to length]';
+    }
+    
+    // Send to AI service
+    const messageForAI = { ...userMessage, content: enhancedMessage };
+    const recentMessages = [...aiChatMessages.slice(-5), messageForAI];
+    
+    const response = await aiService.sendMessage(recentMessages, getSystemPrompt());
+    
+    response.timestamp = new Date(response.timestamp);
+    aiChatMessages.push(response);
+    
+  } catch (error) {
+    console.error('AI chat error:', error);
+    
+    let errorContent = 'Failed to get response';
+    if (error instanceof Error) {
+      if (error.message.includes('529') || error.message.includes('overloaded_error')) {
+        errorContent = '🔄 Anthropic API is temporarily overloaded. Please try again in a few minutes.';
+      } else if (error.message.includes('JSON') || error.message.includes('parse')) {
+        errorContent = '❌ Code contains characters that break the API. Try simplifying or removing special characters.';
+      } else if (error.message.includes('too large') || error.message.includes('token')) {
+        errorContent = 'Message too large for AI processing. Try a shorter message or break it into parts.';
+      } else if (error.message.includes('rate limit')) {
+        errorContent = 'Rate limit reached. Please wait before sending another message.';
+      } else {
+        errorContent = `Error: ${error.message}`;
+      }
+    }
+    
+    const errorMessage = {
+      id: Date.now().toString(),
+      role: 'assistant' as const,
+      content: `❌ ${errorContent}`,
+      timestamp: new Date()
+    };
+    aiChatMessages.push(errorMessage);
+    writeToTerminal(`❌ AI Chat Error: ${errorContent}`);
+    
+  } finally {
+    isAILoading = false;
+    updateChatMessages();
+    updateLayoutForAIChat();
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      const messagesContainer = document.getElementById('ai-chat-messages');
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+    }, 100);
+  }
+}
+
+function extractImports(content: string, language: string = ''): ImportInfo[] {
+  const imports: ImportInfo[] = [];
+  
+  if (language === 'javascript' || language === 'typescript' || language === 'tsx' || language === 'jsx') {
+    const importRegex = /import\s+(?:(\w+)\s*,\s*)?(?:\{([^}]+)\})?\s*from\s*['"']([^'"]+)['"']/g;
+    const namespaceImportRegex = /import\s+\*\s+as\s+(\w+)\s+from\s+['"']([^'"]+)['"']/g;
+    
+    let match;
+    
+    while ((match = importRegex.exec(content)) !== null) {
+      const [, defaultImport, namedImports, source] = match;
+      const importList: string[] = [];
+      
+      if (defaultImport) importList.push(defaultImport);
+      if (namedImports) {
+        importList.push(...namedImports.split(',').map(imp => imp.trim()));
+      }
+      
+      if (importList.length > 0) {
+        imports.push({
+          source,
+          imports: importList,
+          isDefault: !!defaultImport,
+          isNamespace: false
+        });
+      }
+    }
+    
+    while ((match = namespaceImportRegex.exec(content)) !== null) {
+      const [, alias, source] = match;
       imports.push({
-        source: match[1],
-        imports: [],
+        source,
+        imports: [alias],
         isDefault: false,
-        isNamespace: false
+        isNamespace: true
       });
     }
   }
@@ -5098,59 +5607,54 @@ function extractImports(content: string, language: string): ImportInfo[] {
   return imports;
 }
 
-function extractExports(content: string, language: string): string[] {
+function extractExports(content: string, language: string = ''): string[] {
   const exports: string[] = [];
   
-  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
-    // Named exports
-    const namedExportRegex = /export\s+(?:const|let|var|function|class|interface|type)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  if (language === 'javascript' || language === 'typescript' || language === 'tsx' || language === 'jsx') {
+    const exportRegex = /export\s+(?:const|let|var|function|class|interface|type|enum)\s+(\w+)/g;
+    const defaultExportRegex = /export\s+default\s+(?:function\s+)?(\w+)?/g;
+    
     let match;
-    while ((match = namedExportRegex.exec(content)) !== null) {
+    
+    while ((match = exportRegex.exec(content)) !== null) {
       exports.push(match[1]);
     }
     
-    // Export statements
-    const exportStatementRegex = /export\s*\{\s*([^}]+)\s*\}/g;
-    while ((match = exportStatementRegex.exec(content)) !== null) {
-      const namedExports = match[1].split(',').map(name => name.trim());
-      exports.push(...namedExports);
-    }
-    
-    // Default export
-    if (content.includes('export default')) {
-      exports.push('default');
+    while ((match = defaultExportRegex.exec(content)) !== null) {
+      if (match[1]) exports.push(`default:${match[1]}`);
     }
   }
   
   return exports;
 }
 
-function extractFunctions(content: string, language: string): string[] {
+function extractFunctions(content: string, language: string = ''): string[] {
   const functions: string[] = [];
   
-  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
-    // Function declarations
-    const funcRegex = /(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  if (language === 'javascript' || language === 'typescript' || language === 'tsx' || language === 'jsx') {
+    const functionRegex = /(?:export\s+)?(?:async\s+)?function\s+(\w+)/g;
+    const arrowFunctionRegex = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/g;
+    
     let match;
-    while ((match = funcRegex.exec(content)) !== null) {
+    
+    while ((match = functionRegex.exec(content)) !== null) {
       functions.push(match[1]);
     }
     
-    // Arrow functions
-    const arrowFuncRegex = /(?:export\s+)?(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/g;
-    while ((match = arrowFuncRegex.exec(content)) !== null) {
+    while ((match = arrowFunctionRegex.exec(content)) !== null) {
       functions.push(match[1]);
     }
   }
   
-  return functions;
+  return [...new Set(functions)];
 }
 
-function extractClasses(content: string, language: string): string[] {
+function extractClasses(content: string, language: string = ''): string[] {
   const classes: string[] = [];
   
-  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
-    const classRegex = /(?:export\s+)?class\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  if (language === 'javascript' || language === 'typescript' || language === 'tsx' || language === 'jsx') {
+    const classRegex = /(?:export\s+)?class\s+(\w+)/g;
+    
     let match;
     while ((match = classRegex.exec(content)) !== null) {
       classes.push(match[1]);
@@ -5160,19 +5664,13 @@ function extractClasses(content: string, language: string): string[] {
   return classes;
 }
 
-function extractTypes(content: string, language: string): string[] {
+function extractTypes(content: string, language: string = ''): string[] {
   const types: string[] = [];
   
-  if (language === 'typescript' || language === 'typescriptreact') {
-    // Interfaces
-    const interfaceRegex = /(?:export\s+)?interface\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
-    let match;
-    while ((match = interfaceRegex.exec(content)) !== null) {
-      types.push(match[1]);
-    }
+  if (language === 'typescript' || language === 'tsx') {
+    const typeRegex = /(?:export\s+)?(?:type|interface)\s+(\w+)/g;
     
-    // Type aliases
-    const typeRegex = /(?:export\s+)?type\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    let match;
     while ((match = typeRegex.exec(content)) !== null) {
       types.push(match[1]);
     }
@@ -5181,127 +5679,12 @@ function extractTypes(content: string, language: string): string[] {
   return types;
 }
 
-// Enhanced AI System Prompt
-function updateAISystemPrompt() {
-  if (!codebaseIndex) return;
-  
-  const projectInfo = buildProjectContextString();
-  console.log('📝 Updated AI system prompt with project context');
-}
-
-function buildProjectContextString(): string {
-  if (!codebaseIndex) return '';
-  
-  const { projectStructure, files } = codebaseIndex;
-  let context = '\n\n**CODEBASE CONTEXT:**\n';
-  
-  // Project info
-  if (projectStructure.packageJson) {
-    context += `\n**Project:** ${projectStructure.packageJson.name || 'Unknown'}\n`;
-    context += `**Description:** ${projectStructure.packageJson.description || 'No description'}\n`;
-  }
-  
-  // Frameworks and languages
-  if (projectStructure.frameworks.length > 0) {
-    context += `**Frameworks:** ${projectStructure.frameworks.join(', ')}\n`;
-  }
-  if (projectStructure.languages.length > 0) {
-    context += `**Languages:** ${projectStructure.languages.join(', ')}\n`;
-  }
-  
-  // Git info
-  if (projectStructure.gitInfo) {
-    context += `**Git Branch:** ${projectStructure.gitInfo.branch}\n`;
-    if (projectStructure.gitInfo.hasUncommittedChanges) {
-      context += `**Status:** Has uncommitted changes\n`;
-    }
-  }
-  
-  // File structure overview
-  context += `\n**Files:** ${files.size} indexed files\n`;
-  
-  return context;
-}
-
-// Enhanced context gathering for AI
-function getEnhancedCodeContext(): string {
-  if (!codebaseIndex) return '';
-  
-  let context = buildProjectContextString();
-  
-  // Add current file context
-  if (activeTabPath) {
-    const currentFile = codebaseIndex.files.get(activeTabPath);
-    if (currentFile) {
-      context += `\n**CURRENT FILE: ${activeTabPath}**\n`;
-      context += `Language: ${currentFile.language}\n`;
-      
-      if (currentFile.functions.length > 0) {
-        context += `Functions: ${currentFile.functions.slice(0, 10).join(', ')}${currentFile.functions.length > 10 ? '...' : ''}\n`;
-      }
-      
-      if (currentFile.classes.length > 0) {
-        context += `Classes: ${currentFile.classes.join(', ')}\n`;
-      }
-      
-      if (currentFile.imports.length > 0) {
-        context += `Imports: ${currentFile.imports.slice(0, 5).map(imp => imp.source).join(', ')}${currentFile.imports.length > 5 ? '...' : ''}\n`;
-      }
-    }
-  }
-  
-  // Add related files context
-  if (activeTabPath && codebaseIndex.dependencies.has(activeTabPath)) {
-    const deps = codebaseIndex.dependencies.get(activeTabPath) || [];
-    if (deps.length > 0) {
-      context += `\n**RELATED FILES:**\n`;
-      deps.slice(0, 5).forEach(dep => {
-        const depFile = Array.from(codebaseIndex!.files.values()).find(f => f.path.includes(dep));
-        if (depFile) {
-          context += `- ${depFile.path}\n`;
-        }
-      });
-    }
-  }
-  
-  return context;
-}
-
-// Update the getSystemPrompt function to include codebase context:
-function getSystemPrompt(): string {
-  const basePrompt = `You are an AI coding assistant integrated into a VS Code-like IDE called "Look Overlay Electron". You help users with:
-
-1. **Code Analysis**: Analyze and explain code snippets, functions, and files
-2. **Code Generation**: Create new code based on requirements
-3. **Debugging**: Help identify and fix issues in code
-4. **Refactoring**: Suggest improvements and optimizations
-5. **Documentation**: Generate comments and documentation
-6. **Learning**: Explain programming concepts and best practices
-
-When responding:
-- Be concise but thorough
-- Provide working code examples when appropriate
-- Consider the context of the current file/project
-- Suggest file paths and names for new components
-- Use markdown formatting for better readability
-- If suggesting code changes, be specific about where they should go
-- Always consider the project structure and existing patterns
-
-The user can share their current file content, selected text, or ask general programming questions.`;
-
-  // Add codebase context if available
-  const codebaseContext = getEnhancedCodeContext();
-  
-  return basePrompt + codebaseContext;
-}
-
-// Add refresh codebase function
-async function refreshCodebase() {
-  console.log('🔄 Refreshing codebase index...');
-  writeToTerminal('🔄 Refreshing codebase index...');
-  codebaseIndex = null;
-  await indexCodebase();
-}
-
 // Make refreshCodebase globally available
 (window as any).refreshCodebase = refreshCodebase;
+
+// Initialize everything when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeEverything);
+} else {
+  initializeEverything();
+}
