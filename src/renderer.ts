@@ -3635,6 +3635,293 @@ declare module 'next/dynamic' {
         'lib.next.d.ts'
       );
 
+      // Real ESLint integration - add this after the type definitions
+      
+      // Setup actual ESLint validation
+      function setupRealESLintValidation(monaco: any) {
+        
+        // Helper function to check if position is inside template literal
+        function isInsideTemplateLiteral(content: string, offset: number): boolean {
+          // Look for template literal backticks
+          const beforeContent = content.substring(0, offset);
+          const afterContent = content.substring(offset);
+          
+          // Count backticks before and after
+          const backticksBeforeCount = (beforeContent.match(/`/g) || []).length;
+          const backticksAfterCount = (afterContent.match(/`/g) || []).length;
+          
+          // If odd number of backticks before and at least one after, we're inside template literal
+          return backticksBeforeCount % 2 === 1 && backticksAfterCount > 0;
+        }
+        
+        // Helper function to check if position is inside JSX attribute
+        function isInsideJSXAttribute(content: string, offset: number): boolean {
+          const beforeContent = content.substring(Math.max(0, offset - 100), offset);
+          const afterContent = content.substring(offset, Math.min(content.length, offset + 100));
+          
+          // Look for JSX attribute pattern: prop="value" or prop='value'
+          return /\w+\s*=\s*["']/.test(beforeContent) && /["']/.test(afterContent);
+        }
+        
+        // Validate react/no-unescaped-entities
+        function validateReactUnescapedEntities(model: any) {
+          const content = model.getValue();
+          const markers: any[] = [];
+          
+          // More precise JSX content detection
+          const jsxPatterns = [
+            /<([a-zA-Z][a-zA-Z0-9]*)[^>]*>([^<]*)<\/\1>/g,
+            /<[a-zA-Z][a-zA-Z0-9]*[^>]*\/>\s*([^<\n{]+)/g,
+            /<\/[a-zA-Z][a-zA-Z0-9]*>\s*([^<\n{]+)/g
+          ];
+          
+          jsxPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              const jsxContent = match[2] || match[1];
+              if (!jsxContent || jsxContent.trim() === '') continue;
+              
+              const startOffset = match.index + match[0].indexOf(jsxContent);
+              
+              // Check for unescaped entities, but skip already escaped ones
+              const unescapedEntityRegex = /['"&<>]/g;
+              let entityMatch;
+              
+              while ((entityMatch = unescapedEntityRegex.exec(jsxContent)) !== null) {
+                const char = entityMatch[0];
+                const charOffset = startOffset + entityMatch.index;
+                const localOffset = entityMatch.index;
+                
+                // Skip if inside template literal
+                if (isInsideTemplateLiteral(content, charOffset)) {
+                  continue;
+                }
+                
+                // Skip if inside JSX attribute
+                if (isInsideJSXAttribute(content, charOffset)) {
+                  continue;
+                }
+                
+                // CRITICAL FIX: Skip if this character is part of an already escaped entity
+                if (char === '&') {
+                  // Check if this & is the start of a valid HTML entity
+                  const remainingContent = jsxContent.substring(localOffset);
+                  const entityRegex = /^&(?:amp|lt|gt|quot|apos|lsquo|rsquo|ldquo|rdquo|#39|#34);/;
+                  if (entityRegex.test(remainingContent)) {
+                    continue; // This is a properly escaped entity, skip it
+                  }
+                } else {
+                  // For other characters, check if they're part of an escaped entity
+                  const beforeChar = jsxContent.substring(Math.max(0, localOffset - 10), localOffset);
+                  const afterChar = jsxContent.substring(localOffset + 1, localOffset + 10);
+                  
+                  // Check if this character is part of an HTML entity
+                  const isPartOfEntity = /&[a-z]+$/.test(beforeChar) && /^[a-z]*;/.test(afterChar);
+                  if (isPartOfEntity) {
+                    continue; // This character is part of an escaped entity
+                  }
+                  
+                  // Also check for numeric entities like &#39;
+                  const isPartOfNumericEntity = /&#\d*$/.test(beforeChar) && /^\d*;/.test(afterChar);
+                  if (isPartOfNumericEntity) {
+                    continue;
+                  }
+                }
+                
+                const position = model.getPositionAt(charOffset);
+                
+                let message = '';
+                switch (char) {
+                  case "'":
+                    message = `'${char}' can be escaped with \`&apos;\`, \`&lsquo;\`, \`&#39;\`, \`&rsquo;\`.`;
+                    break;
+                  case '"':
+                    message = `'${char}' can be escaped with \`&quot;\`, \`&ldquo;\`, \`&rdquo;\`.`;
+                    break;
+                  case '&':
+                    message = `'${char}' can be escaped with \`&amp;\`.`;
+                    break;
+                  case '<':
+                    message = `'${char}' can be escaped with \`&lt;\`.`;
+                    break;
+                  case '>':
+                    message = `'${char}' can be escaped with \`&gt;\`.`;
+                    break;
+                }
+                
+                markers.push({
+                  severity: monaco.MarkerSeverity.Error,
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column + 1,
+                  message: message,
+                  code: 'react/no-unescaped-entities',
+                  source: 'eslint'
+                });
+              }
+            }
+          });
+          
+          return markers;
+        }
+        
+        // Validate unused variables
+        function validateUnusedVars(model: any) {
+          const content = model.getValue();
+          const markers: any[] = [];
+          
+          // Find variable declarations
+          const varDeclarations = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+          const declaredVars: {name: string, position: any}[] = [];
+          
+          let match;
+          while ((match = varDeclarations.exec(content)) !== null) {
+            const varName = match[1];
+            const position = model.getPositionAt(match.index + match[0].indexOf(varName));
+            declaredVars.push({ name: varName, position });
+          }
+          
+          // Check if variables are used
+          declaredVars.forEach(({ name, position }) => {
+            const usageRegex = new RegExp(`\\b${name}\\b`, 'g');
+            const matches = content.match(usageRegex) || [];
+            
+            // If only one match (the declaration itself), it's unused
+            if (matches.length <= 1) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: position.lineNumber,
+                startColumn: position.column,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column + name.length,
+                message: `'${name}' is assigned a value but never used.`,
+                code: 'no-unused-vars',
+                source: 'eslint'
+              });
+            }
+          });
+          
+          return markers;
+        }
+        
+        // Validate missing React import
+        function validateReactImport(model: any) {
+          const content = model.getValue();
+          const markers: any[] = [];
+          const fileName = model.uri.path;
+          
+          // Only check .tsx and .jsx files
+          if (!['.tsx', '.jsx'].some(ext => fileName.endsWith(ext))) {
+            return markers;
+          }
+          
+          // Check if JSX is used
+          const hasJSX = /<[a-zA-Z]/.test(content);
+          
+          if (hasJSX) {
+            // Check if React is imported
+            const hasReactImport = /import\s+.*React.*from\s+['"]react['"]/.test(content);
+            
+            if (!hasReactImport) {
+              markers.push({
+                severity: monaco.MarkerSeverity.Error,
+                startLineNumber: 1,
+                startColumn: 1,
+                endLineNumber: 1,
+                endColumn: 1,
+                message: "'React' must be in scope when using JSX",
+                code: 'react/react-in-jsx-scope',
+                source: 'eslint'
+              });
+            }
+          }
+          
+          return markers;
+        }
+        
+        // Validate missing keys in arrays
+        function validateMissingKeys(model: any) {
+          const content = model.getValue();
+          const markers: any[] = [];
+          
+          // Find array map calls that return JSX
+          const mapJSXRegex = /\.map\s*\(\s*[^)]*=>\s*<[^>]+>/g;
+          let match;
+          
+          while ((match = mapJSXRegex.exec(content)) !== null) {
+            const mapCode = match[0];
+            
+            // Check if key prop is missing
+            if (!/key\s*=/.test(mapCode)) {
+              const position = model.getPositionAt(match.index);
+              
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: position.lineNumber,
+                startColumn: position.column,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column + mapCode.length,
+                message: 'Missing "key" prop for element in iterator',
+                code: 'react/jsx-key',
+                source: 'eslint'
+              });
+            }
+          }
+          
+          return markers;
+        }
+        
+        // Main validation function
+        function validateModel(model: any) {
+          const uri = model.uri;
+          const fileName = uri.path;
+          
+          // Only validate React/TypeScript files
+          if (!['.tsx', '.jsx', '.ts', '.js'].some(ext => fileName.endsWith(ext))) {
+            return;
+          }
+          
+          const markers: any[] = [];
+          
+          // Add all validation rules
+          if (fileName.endsWith('.tsx') || fileName.endsWith('.jsx')) {
+            markers.push(...validateReactUnescapedEntities(model));
+            markers.push(...validateReactImport(model));
+            markers.push(...validateMissingKeys(model));
+          }
+          
+          markers.push(...validateUnusedVars(model));
+          
+          // Set markers on the model
+          monaco.editor.setModelMarkers(model, 'eslint', markers);
+        }
+        
+        // Setup validation for existing and new models
+        function setupModelValidation() {
+          const models = monaco.editor.getModels();
+          models.forEach((model: any) => {
+            validateModel(model);
+            model.onDidChangeContent(() => {
+              setTimeout(() => validateModel(model), 300);
+            });
+          });
+        }
+        
+        monaco.editor.onDidCreateModel((model: any) => {
+          validateModel(model);
+          model.onDidChangeContent(() => {
+            setTimeout(() => validateModel(model), 300);
+          });
+        });
+        
+        setupModelValidation();
+        console.log('✅ Enhanced ESLint validation setup complete');
+      }
+      
+      // Call the ESLint setup after Monaco is ready
+      setupRealESLintValidation(monaco);
+      
       // Create the editor
       monacoEditor = monaco.editor.create(container, {
         value: getWelcomeContent(),
@@ -3767,47 +4054,38 @@ function setupESLintValidation(monaco: any) {
 
   const eslint = new (window as any).eslint.Linter();
   
-  // ESLint configuration - you can customize these rules
+  // Enhanced ESLint configuration for React/Next.js
   const eslintConfig = {
     env: {
       browser: true,
       es2021: true,
       node: true
     },
-    extends: ['eslint:recommended'],
+    extends: ['eslint:recommended', '@next/next/core-web-vitals'],
     parserOptions: {
       ecmaVersion: 12,
-      sourceType: 'module'
+      sourceType: 'module',
+      ecmaFeatures: {
+        jsx: true
+      }
     },
     rules: {
-      // Error level rules (red squiggly lines)
+      // React specific rules
+      'react/no-unescaped-entities': 'error',
+      'react/jsx-uses-react': 'error',
+      'react/jsx-uses-vars': 'error',
+      'react/jsx-no-undef': 'error',
+      'react/jsx-key': 'error',
+      
+      // General rules
       'no-unused-vars': 'error',
       'no-undef': 'error',
       'no-unreachable': 'error',
       'no-duplicate-keys': 'error',
       'no-empty': 'error',
       'no-extra-semi': 'error',
-      'no-func-assign': 'error',
-      'no-irregular-whitespace': 'error',
-      'no-obj-calls': 'error',
-      'no-sparse-arrays': 'error',
-      'use-isnan': 'error',
-      'valid-typeof': 'error',
-      
-      // Warning level rules (yellow squiggly lines)
-      'no-console': 'warn',
-      'no-debugger': 'warn',
-      'no-alert': 'warn',
       'prefer-const': 'warn',
-      'no-var': 'warn',
-      
-      // Style rules
-      'semi': ['error', 'always'],
-      'quotes': ['warn', 'single'],
-      'indent': ['warn', 2],
-      'comma-dangle': ['warn', 'never'],
-      'no-trailing-spaces': 'warn',
-      'eol-last': 'warn'
+      'no-var': 'error'
     }
   };
 
