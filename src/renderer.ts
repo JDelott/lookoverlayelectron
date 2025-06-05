@@ -1,6 +1,3 @@
-console.log('Renderer loaded');
-console.log('Renderer loaded');
-
 interface FileItem {
   name: string;
   path: string;
@@ -2198,17 +2195,17 @@ function createLayout() {
           <div class="sidebar-header">
             Explorer
             <button id="refresh-explorer" style="
-              background: transparent;
-              border: 1px solid #3c3c3c;
-              color: #cccccc;
-              padding: 2px 6px;
-              border-radius: 3px;
-              font-size: 10px;
-              cursor: pointer;
+          background: transparent;
+          border: 1px solid #3c3c3c;
+          color: #cccccc;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
             ">🔄</button>
-          </div>
+      </div>
           <div class="file-tree"></div>
-        </div>
+          </div>
         <div class="main-content">
           <div class="toolbar">
             <button id="terminal-toggle">Toggle Terminal</button>
@@ -2260,11 +2257,11 @@ function createLayout() {
               cursor: pointer;
               display: none;
             ">🛑 Stop Server</button>
-          </div>
+            </div>
           <div class="editor-area">
             <div class="tab-bar" id="tab-bar"></div>
             <div class="editor-container" id="editor-container"></div>
-          </div>
+            </div>
           <div class="terminal-container" id="terminal-container">
             <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
             <div class="terminal-header">
@@ -2279,7 +2276,7 @@ function createLayout() {
                   font-size: 10px;
                   cursor: pointer;
                 ">+ New Terminal</button>
-              </div>
+            </div>
               <div class="terminal-header-right">
                 <span id="process-indicator" style="
                   font-size: 11px;
@@ -2287,8 +2284,8 @@ function createLayout() {
                   display: none;
                 ">🟢 Server Running</span>
                 <span class="terminal-size-indicator" id="terminal-size-indicator">Height: 200px</span>
-              </div>
-            </div>
+          </div>
+          </div>
             <div class="terminal-output" id="terminal-output"></div>
             <div class="terminal-input-container">
               <span class="terminal-prompt">$</span>
@@ -2980,6 +2977,7 @@ async function executeCommand(command: string) {
   writeToTerminal('');
 }
 
+// Replace the existing Monaco initialization with this enhanced version
 async function initializeMonaco() {
   const container = document.getElementById('editor-container');
   if (!container) return;
@@ -2991,29 +2989,800 @@ async function initializeMonaco() {
       paths: { 
         vs: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' 
       } 
-      });
+    });
       
-      (window as any).require(['vs/editor/editor.main'], () => {
-        console.log('Monaco modules loaded');
-        
-      monacoEditor = (window as any).monaco.editor.create(container, {
+    (window as any).require(['vs/editor/editor.main'], () => {
+      console.log('Monaco modules loaded');
+      
+      const monaco = (window as any).monaco;
+      
+      // TypeScript configuration
+      monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+        target: monaco.languages.typescript.ScriptTarget.ES2020,
+        allowNonTsExtensions: true,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.CommonJS,
+        noEmit: true,
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true,
+        jsx: monaco.languages.typescript.JsxEmit.React, // Change from ReactJSX to React
+        jsxFactory: 'React.createElement', // Explicitly set JSX factory
+        allowJs: true,
+        checkJs: true,
+        strict: true,
+        noImplicitAny: true,
+        noImplicitReturns: true,
+        noImplicitThis: true,
+        noUnusedLocals: true,
+        noUnusedParameters: true,
+        noFallthroughCasesInSwitch: true,
+        alwaysStrict: true,
+        skipLibCheck: false,
+        skipDefaultLibCheck: false,
+        lib: ['dom', 'es2020', 'es2017', 'es2015', 'es6']
+      });
+
+      // JavaScript configuration
+      monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+        target: monaco.languages.typescript.ScriptTarget.ES2020,
+        allowNonTsExtensions: true,
+        allowJs: true,
+        checkJs: true,
+        noEmit: true,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.CommonJS,
+        noImplicitAny: true,
+        noUnusedLocals: true,
+        noUnusedParameters: true,
+        jsx: monaco.languages.typescript.JsxEmit.React, // Change from ReactJSX to React
+        jsxFactory: 'React.createElement', // Explicitly set JSX factory
+        lib: ['dom', 'es2020', 'es2017', 'es2015', 'es6']
+      });
+
+      // Enable validation
+      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        noSuggestionDiagnostics: false,
+        diagnosticCodesToIgnore: []
+      });
+
+      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        noSuggestionDiagnostics: false,
+        diagnosticCodesToIgnore: []
+      });
+
+      // FIXED: More explicit JSX and React type definitions
+      const fixedReactTypes = `
+// React JSX Runtime
+declare module 'react/jsx-runtime' {
+  export function jsx(type: any, props: any, key?: any): React.ReactElement;
+  export function jsxs(type: any, props: any, key?: any): React.ReactElement;
+  export namespace JSX {
+    interface Element extends React.ReactElement<any, any> {}
+    interface IntrinsicElements {
+      [elemName: string]: any;
+    }
+  }
+}
+
+// React module with proper types
+declare module 'react' {
+  export function useState<T>(initialState: T | (() => T)): [T, (value: T | ((prev: T) => T)) => void];
+  export function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+  export function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+  export function useMemo<T>(factory: () => T, deps: any[]): T;
+  export function useRef<T>(initialValue: T): { current: T };
+  
+  // CRITICAL: This is how Monaco understands JSX children
+  export function createElement<P extends {}>(
+    type: string | ComponentType<P>,
+    props?: (P & { children?: ReactNode }) | null,
+    ...children: ReactNode[]
+  ): ReactElement<P>;
+  
+  export const Fragment: any;
+  
+  export interface FC<P = {}> {
+    (props: P & { children?: ReactNode }): ReactElement | null;
+  }
+  
+  export type ComponentType<P = {}> = FC<P> | ComponentClass<P>;
+  
+  export interface ComponentClass<P = {}> {
+    new (props: P & { children?: ReactNode }): Component<P>;
+  }
+  
+  export type JSXElementConstructor<P> =
+    | ((props: P & { children?: ReactNode }) => ReactElement | null)
+    | (new (props: P & { children?: ReactNode }) => Component<P, any>);
+  
+  export interface ReactElement<P = any, T extends string | JSXElementConstructor<any> = string | JSXElementConstructor<any>> {
+    type: T;
+    props: P & { children?: ReactNode };
+    key: string | number | null;
+  }
+  
+  // FIX: Define ReactNode properly
+  export type ReactNode = 
+    | ReactElement
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | ReactNode[]
+    | { [key: string]: any };
+  
+  export interface Component<P = {}, S = {}> {
+    props: P & { children?: ReactNode };
+    state: S;
+    setState(state: Partial<S>): void;
+    render(): ReactElement | null;
+  }
+  
+  export class Component<P, S> {}
+  
+  export interface HTMLAttributes<T> {
+    className?: string;
+    id?: string;
+    style?: any;
+    onClick?: (event: any) => void;
+    onChange?: (event: any) => void;
+    onSubmit?: (event: any) => void;
+    children?: ReactNode;
+    [key: string]: any;
+  }
+  
+  // Add SVG Props for your svg elements
+  export interface SVGProps<T> extends HTMLAttributes<T> {
+    fill?: string;
+    stroke?: string;
+    strokeWidth?: string | number;
+    strokeLinecap?: "round" | "butt" | "square";
+    strokeLinejoin?: "round" | "miter" | "bevel";
+    viewBox?: string;
+    d?: string;
+    [key: string]: any;
+  }
+}
+
+// React JSX Runtime
+declare module 'react/jsx-runtime' {
+  import { ReactElement } from 'react';
+  export function jsx(type: any, props: any, key?: any): ReactElement;
+  export function jsxs(type: any, props: any, key?: any): ReactElement;
+}
+
+// CRITICAL FIX: Enhanced JSX namespace with proper children handling
+declare global {
+  namespace JSX {
+    type Element = React.ReactElement<any, any>;
+    
+    interface ElementClass extends React.Component<any> {
+      render(): React.ReactNode;
+    }
+    
+    interface ElementAttributesProperty {
+      props: {};
+    }
+    
+    interface ElementChildrenAttribute {
+      children: {};
+    }
+    
+    // FIX: Add explicit children support to all intrinsic elements
+    interface IntrinsicElements {
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> & { children?: React.ReactNode };
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement> & { children?: React.ReactNode };
+      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> & { children?: React.ReactNode };
+      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+      form: React.DetailedHTMLProps<React.HTMLAttributes<HTMLFormElement>, HTMLFormElement> & { children?: React.ReactNode };
+      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
+      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement> & { children?: React.ReactNode };
+      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement> & { children?: React.ReactNode };
+      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement> & { children?: React.ReactNode };
+      ol: React.DetailedHTMLProps<React.HTMLAttributes<HTMLOListElement>, HTMLOListElement> & { children?: React.ReactNode };
+      li: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLIElement>, HTMLLIElement> & { children?: React.ReactNode };
+      nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
+      table: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableElement>, HTMLTableElement> & { children?: React.ReactNode };
+      thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement> & { children?: React.ReactNode };
+      tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement> & { children?: React.ReactNode };
+      tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement> & { children?: React.ReactNode };
+      td: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement> & { children?: React.ReactNode };
+      th: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement> & { children?: React.ReactNode };
+      svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement> & { children?: React.ReactNode };
+      path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+      
+      [elemName: string]: any;
+    }
+  }
+}
+
+// Alternative JSX namespace declaration for better Monaco compatibility
+declare namespace JSX {
+  type Element = React.ReactElement<any, any>;
+  
+  interface ElementClass extends React.Component<any> {
+    render(): React.ReactNode;
+  }
+  
+  interface ElementAttributesProperty {
+    props: {};
+  }
+  
+  interface ElementChildrenAttribute {
+    children: {};
+  }
+  
+  interface IntrinsicElements {
+    div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+    span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+    button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+    input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+    form: React.DetailedHTMLProps<React.HTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+    h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
+    a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
+    img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+    ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
+    ol: React.DetailedHTMLProps<React.HTMLAttributes<HTMLOListElement>, HTMLOListElement>;
+    li: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+    nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    table: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableElement>, HTMLTableElement>;
+    thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+    tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+    tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement>;
+    td: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement>;
+    th: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement>;
+    svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement>;
+    path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+    
+    [elemName: string]: any;
+  }
+}
+
+// DOM and basic types
+interface HTMLElement {
+  innerHTML: string;
+  textContent: string;
+  style: any;
+  className: string;
+  addEventListener(type: string, listener: any): void;
+  removeEventListener(type: string, listener: any): void;
+  setAttribute(name: string, value: string): void;
+  getAttribute(name: string): string | null;
+  classList: {
+    add(className: string): void;
+    remove(className: string): void;
+    contains(className: string): boolean;
+    toggle(className: string): void;
+  };
+}
+
+interface Document {
+  getElementById(id: string): HTMLElement | null;
+  createElement(tagName: string): HTMLElement;
+  querySelector(selector: string): HTMLElement | null;
+  querySelectorAll(selector: string): HTMLElement[];
+}
+
+declare const document: Document;
+declare const window: any;
+declare const console: {
+  log(...args: any[]): void;
+  error(...args: any[]): void;
+  warn(...args: any[]): void;
+  info(...args: any[]): void;
+};
+
+declare const process: {
+  env: { [key: string]: string | undefined };
+  argv: string[];
+};
+
+declare const require: (id: string) => any;
+declare const module: { exports: any };
+declare const exports: any;
+declare const __dirname: string;
+declare const __filename: string;
+`;
+
+      // Add the comprehensive React types
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        fixedReactTypes,
+        'file:///node_modules/@types/react/index.d.ts'
+      );
+      
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        fixedReactTypes,
+        'file:///node_modules/@types/react/index.d.ts'
+      );
+
+      // Also add as a regular lib
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        fixedReactTypes,
+        'lib.react.d.ts'
+      );
+      
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        fixedReactTypes,
+        'lib.react.d.ts'
+      );
+
+      // Add Next.js type definitions
+      const nextJsTypes = `
+// Next.js Link component
+declare module 'next/link' {
+  import { Component, ReactNode } from 'react';
+  
+  export interface LinkProps {
+    href: string | { pathname: string; query?: any };
+    as?: string;
+    replace?: boolean;
+    scroll?: boolean;
+    shallow?: boolean;
+    passHref?: boolean;
+    prefetch?: boolean;
+    locale?: string;
+    children: ReactNode;
+    className?: string;
+    onClick?: (e: any) => void;
+    onMouseEnter?: (e: any) => void;
+    target?: string;
+    rel?: string;
+  }
+  
+  export default class Link extends Component<LinkProps> {}
+}
+
+// Next.js Router
+declare module 'next/router' {
+  export interface NextRouter {
+    route: string;
+    pathname: string;
+    query: { [key: string]: string | string[] };
+    asPath: string;
+    basePath: string;
+    locale?: string;
+    locales?: string[];
+    defaultLocale?: string;
+    isReady: boolean;
+    isPreview: boolean;
+    isLocaleDomain: boolean;
+    push(url: string, as?: string, options?: any): Promise<boolean>;
+    replace(url: string, as?: string, options?: any): Promise<boolean>;
+    reload(): void;
+    back(): void;
+    prefetch(url: string, asPath?: string, options?: any): Promise<void>;
+    beforePopState(cb: (state: any) => boolean): void;
+    events: {
+      on(type: string, handler: (...args: any[]) => void): void;
+      off(type: string, handler: (...args: any[]) => void): void;
+      emit(type: string, ...args: any[]): void;
+    };
+  }
+  
+  export function useRouter(): NextRouter;
+  export const router: NextRouter;
+  export default router;
+}
+
+// Next.js Image component
+declare module 'next/image' {
+  import { Component } from 'react';
+  
+  export interface ImageProps {
+    src: string;
+    width?: number;
+    height?: number;
+    alt: string;
+    quality?: number;
+    priority?: boolean;
+    placeholder?: 'blur' | 'empty';
+    blurDataURL?: string;
+    unoptimized?: boolean;
+    loader?: ({ src, width, quality }: { src: string; width: number; quality?: number }) => string;
+    layout?: 'fixed' | 'fill' | 'intrinsic' | 'responsive';
+    objectFit?: string;
+    objectPosition?: string;
+    loading?: 'lazy' | 'eager';
+    className?: string;
+    style?: any;
+    onClick?: (e: any) => void;
+    onLoad?: (e: any) => void;
+    onError?: (e: any) => void;
+  }
+  
+  export default class Image extends Component<ImageProps> {}
+}
+
+// Next.js Head component
+declare module 'next/head' {
+  import { Component, ReactNode } from 'react';
+  
+  export interface HeadProps {
+    children: ReactNode;
+  }
+  
+  export default class Head extends Component<HeadProps> {}
+}
+
+// Next.js Document
+declare module 'next/document' {
+  import { Component, ReactElement } from 'react';
+  
+  export interface DocumentProps {
+    __NEXT_DATA__: any;
+    dangerousAsPath: string;
+    docComponentsRendered: any;
+    buildManifest: any;
+    ampPath: string;
+    inAmpMode: boolean;
+    hybridAmp: boolean;
+    isDevelopment: boolean;
+    dynamicImports: string[];
+    assetPrefix?: string;
+    canonicalBase: string;
+    headTags: any[];
+    unstable_runtimeConfig?: any;
+    devOnlyCacheBusterQueryString: string;
+    scriptLoader: any;
+    locale?: string;
+    locales?: string[];
+    defaultLocale?: string;
+    domainLocales?: any[];
+    isPreview?: boolean;
+  }
+  
+  export default class Document extends Component<DocumentProps> {
+    static getInitialProps(ctx: any): Promise<DocumentProps>;
+  }
+  
+  export class Html extends Component<any> {}
+  export class Head extends Component<any> {}
+  export class Main extends Component<any> {}
+  export class NextScript extends Component<any> {}
+}
+
+// Next.js App
+declare module 'next/app' {
+  import { Component } from 'react';
+  
+  export interface AppProps {
+    Component: any;
+    pageProps: any;
+    router: any;
+  }
+  
+  export default class App extends Component<AppProps> {}
+}
+
+// Next.js API routes
+declare module 'next/api/*' {
+  export interface NextApiRequest {
+    query: { [key: string]: string | string[] };
+    cookies: { [key: string]: string };
+    body: any;
+    env: any;
+    preview?: boolean;
+    previewData?: any;
+  }
+  
+  export interface NextApiResponse {
+    status(statusCode: number): NextApiResponse;
+    json(body: any): void;
+    send(body: any): void;
+    redirect(url: string): void;
+    setPreviewData(data: any, options?: any): void;
+    clearPreviewData(): void;
+    setHeader(name: string, value: string | string[]): void;
+    end(): void;
+  }
+  
+  export type NextApiHandler = (req: NextApiRequest, res: NextApiResponse) => void | Promise<void>;
+}
+
+// Next.js Dynamic imports
+declare module 'next/dynamic' {
+  import { ComponentType } from 'react';
+  
+  export interface DynamicOptions {
+    loading?: ComponentType<any>;
+    loader?: () => Promise<any>;
+    loadableGenerated?: {
+      webpack?: any;
+      modules?: any;
+    };
+    ssr?: boolean;
+  }
+  
+  export default function dynamic<T = {}>(
+    dynamicOptions: DynamicOptions | (() => Promise<any>),
+    options?: DynamicOptions
+  ): ComponentType<T>;
+}
+`;
+
+      // Add Next.js types to Monaco
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        nextJsTypes,
+        'file:///node_modules/@types/next/index.d.ts'
+      );
+      
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        nextJsTypes,
+        'file:///node_modules/@types/next/index.d.ts'
+      );
+
+      // Also add as regular lib
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        nextJsTypes,
+        'lib.next.d.ts'
+      );
+      
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        nextJsTypes,
+        'lib.next.d.ts'
+      );
+
+      // Create the editor
+      monacoEditor = monaco.editor.create(container, {
         value: getWelcomeContent(),
         language: 'markdown',
-              theme: 'vs-dark',
-              automaticLayout: true,
+        theme: 'vs-dark',
+        automaticLayout: true,
         fontSize: 14,
         lineNumbers: 'on',
         minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              wordWrap: 'on'
-            });
-            
-      // Setup auto-save after Monaco is ready
-      setupAutoSave();
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        quickSuggestions: {
+          other: true,
+          comments: true,
+          strings: true
+        },
+        parameterHints: {
+          enabled: true
+        },
+        autoIndent: 'full',
+        formatOnPaste: true,
+        formatOnType: true,
+        suggestOnTriggerCharacters: true,
+        acceptSuggestionOnEnter: 'on',
+        tabCompletion: 'on',
+        wordBasedSuggestions: true,
+        codeLens: true,
+        colorDecorators: true,
+        links: true,
+        matchBrackets: 'always',
+        renderWhitespace: 'selection',
+        rulers: [80, 120],
+        snippetSuggestions: 'top'
+      });
       
-      console.log('Monaco Editor created successfully!');
+      setupAutoSave();
+      console.log('✅ Monaco Editor created with proper JSX IntrinsicElements support!');
       resolve();
     });
+  });
+}
+
+// Enhanced switchToTab function with better debugging
+function switchToTab(filePath: string) {
+  const tab = openTabs.get(filePath);
+  if (!tab) return;
+  
+  activeTabPath = filePath;
+  
+  if (monacoEditor) {
+    const monaco = (window as any).monaco;
+    const uri = monaco.Uri.file(filePath);
+    
+    // Debug: Log what's happening
+    console.log(`🔧 Opening file: ${filePath}`);
+    console.log(`🔧 Detected language: ${tab.language}`);
+    console.log(`🔧 File extension: ${filePath.split('.').pop()}`);
+    
+    let model = monaco.editor.getModel(uri);
+    
+    if (!model) {
+      // Force TypeScript language for .tsx files
+      let language = tab.language;
+      if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
+        language = 'typescript'; // Force TypeScript for React files
+        console.log(`🔧 Forcing TypeScript language for React file: ${filePath}`);
+      }
+      
+      model = monaco.editor.createModel(tab.content, language, uri);
+      console.log(`✅ Created new model for ${filePath} with language: ${language}`);
+    } else {
+      model.setValue(tab.content);
+      
+      // Force TypeScript language for .tsx files
+      let language = tab.language;
+      if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
+        language = 'typescript';
+        console.log(`🔧 Forcing TypeScript language for existing React file: ${filePath}`);
+      }
+      
+      monaco.editor.setModelLanguage(model, language);
+      console.log(`🔄 Updated existing model for ${filePath} with language: ${language}`);
+    }
+    
+    monacoEditor.setModel(model);
+    
+    // Force immediate validation for TypeScript files
+    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx') || filePath.endsWith('.js') || filePath.endsWith('.jsx')) {
+      console.log(`🔍 Forcing validation for: ${filePath}`);
+      
+      // Multiple validation attempts
+      setTimeout(() => {
+        console.log(`🔍 First validation check for ${filePath}`);
+        const markers1 = monaco.editor.getModelMarkers({ resource: uri });
+        console.log(`Found ${markers1.length} markers:`, markers1);
+      }, 500);
+      
+      setTimeout(() => {
+        console.log(`🔍 Second validation check for ${filePath}`);
+        const markers2 = monaco.editor.getModelMarkers({ resource: uri });
+        console.log(`Found ${markers2.length} markers:`, markers2);
+        
+        if (markers2.length === 0) {
+          console.log(`⚠️ No markers found, forcing re-validation...`);
+          // Force a model change to trigger validation
+          const currentValue = model.getValue();
+          model.setValue(currentValue + ' ');
+          setTimeout(() => {
+            model.setValue(currentValue);
+            setTimeout(() => {
+              const markers3 = monaco.editor.getModelMarkers({ resource: uri });
+              console.log(`🔍 After forced re-validation: ${markers3.length} markers`, markers3);
+            }, 500);
+          }, 100);
+        }
+      }, 1500);
+    }
+  }
+  
+  updateActiveTabStyling();
+  console.log(`📄 Switched to tab: ${tab.name} with language: ${tab.language}`);
+}
+
+// ESLint validation setup
+function setupESLintValidation(monaco: any) {
+  if (!(window as any).eslint) {
+    console.warn('ESLint not available globally');
+    return;
+  }
+
+  const eslint = new (window as any).eslint.Linter();
+  
+  // ESLint configuration - you can customize these rules
+  const eslintConfig = {
+    env: {
+      browser: true,
+      es2021: true,
+      node: true
+    },
+    extends: ['eslint:recommended'],
+    parserOptions: {
+      ecmaVersion: 12,
+      sourceType: 'module'
+    },
+    rules: {
+      // Error level rules (red squiggly lines)
+      'no-unused-vars': 'error',
+      'no-undef': 'error',
+      'no-unreachable': 'error',
+      'no-duplicate-keys': 'error',
+      'no-empty': 'error',
+      'no-extra-semi': 'error',
+      'no-func-assign': 'error',
+      'no-irregular-whitespace': 'error',
+      'no-obj-calls': 'error',
+      'no-sparse-arrays': 'error',
+      'use-isnan': 'error',
+      'valid-typeof': 'error',
+      
+      // Warning level rules (yellow squiggly lines)
+      'no-console': 'warn',
+      'no-debugger': 'warn',
+      'no-alert': 'warn',
+      'prefer-const': 'warn',
+      'no-var': 'warn',
+      
+      // Style rules
+      'semi': ['error', 'always'],
+      'quotes': ['warn', 'single'],
+      'indent': ['warn', 2],
+      'comma-dangle': ['warn', 'never'],
+      'no-trailing-spaces': 'warn',
+      'eol-last': 'warn'
+    }
+  };
+
+  // Function to validate code with ESLint
+  function validateWithESLint(model: any) {
+    const code = model.getValue();
+    const language = model.getLanguageId();
+    
+    // Only run ESLint on JavaScript/TypeScript files
+    if (!['javascript', 'typescript', 'javascriptreact', 'typescriptreact'].includes(language)) {
+      return;
+    }
+    
+    try {
+      const messages = eslint.verifyAndFix(code, eslintConfig, {
+        filename: model.uri.path,
+        allowInlineConfig: true
+      });
+
+      // Convert ESLint messages to Monaco markers
+      const markers = messages.messages.map((message: any) => ({
+        severity: message.severity === 2 
+          ? monaco.MarkerSeverity.Error 
+          : monaco.MarkerSeverity.Warning,
+        startLineNumber: message.line,
+        startColumn: message.column,
+        endLineNumber: message.endLine || message.line,
+        endColumn: message.endColumn || message.column + 1,
+        message: `${message.message} (${message.ruleId})`,
+        source: 'ESLint'
+      }));
+
+      // Set markers on the model
+      monaco.editor.setModelMarkers(model, 'eslint', markers);
+      
+    } catch (error) {
+      console.error('ESLint validation error:', error);
+    }
+  }
+
+  // Set up validation on content change
+  let validationTimeout: number;
+  
+  monaco.editor.onDidChangeModelContent(() => {
+    clearTimeout(validationTimeout);
+    validationTimeout = setTimeout(() => {
+      const model = monacoEditor?.getModel();
+      if (model) {
+        validateWithESLint(model);
+      }
+    }, 500) as any; // Debounce validation
+  });
+
+  // Validate when switching models
+  monaco.editor.onDidChangeModel(() => {
+    const model = monacoEditor?.getModel();
+    if (model) {
+      setTimeout(() => validateWithESLint(model), 100);
+    }
   });
 }
 
@@ -3227,6 +3996,18 @@ async function openFile(filePath: string) {
     // Add to open tabs
     openTabs.set(filePath, newTab);
     
+    // Pre-create Monaco model for better language services
+    if ((window as any).monaco && monacoEditor) {
+      const monaco = (window as any).monaco;
+      const uri = monaco.Uri.file(filePath);
+      
+      // Create model if it doesn't exist
+      if (!monaco.editor.getModel(uri)) {
+        monaco.editor.createModel(content, language, uri);
+        console.log(`Created Monaco model for ${filePath} with language ${language}`);
+      }
+    }
+    
     // Switch to the new tab
     switchToTab(filePath);
     
@@ -3246,23 +4027,7 @@ async function openFile(filePath: string) {
   }
 }
 
-function switchToTab(filePath: string) {
-  const tab = openTabs.get(filePath);
-  if (!tab) return;
-  
-  activeTabPath = filePath;
-  
-  // Update Monaco editor content and language
-  if (monacoEditor) {
-    monacoEditor.setValue(tab.content);
-    (window as any).monaco.editor.setModelLanguage(monacoEditor.getModel(), tab.language);
-  }
-  
-  // Update active tab styling
-  updateActiveTabStyling();
-  
-  console.log(`Switched to tab: ${tab.name}`);
-}
+
 
 function closeTab(filePath: string, event?: Event) {
   if (event) {
@@ -3520,9 +4285,9 @@ async function renderFileTree() {
 function getLanguageFromExtension(extension: string): string {
   const languageMap: { [key: string]: string } = {
     'js': 'javascript',
-    'jsx': 'javascriptreact',    // Better JSX support
+    'jsx': 'javascript', // CHANGED: Use 'javascript' for JSX, not 'javascriptreact'
     'ts': 'typescript',
-    'tsx': 'typescriptreact',    // Better TSX support
+    'tsx': 'typescript', // CHANGED: Use 'typescript' for TSX, not 'typescriptreact'
     'html': 'html',
     'css': 'css',
     'json': 'json',
