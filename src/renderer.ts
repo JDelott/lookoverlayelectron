@@ -3126,22 +3126,26 @@ declare module 'react' {
   export const Fragment: any;
   
   export interface FC<P = {}> {
-    (props: P & { children?: ReactNode }): ReactElement | null;
+    (props: P): ReactElement | null;
+    displayName?: string;
+    defaultProps?: Partial<P>;
   }
   
   export type ComponentType<P = {}> = FC<P> | ComponentClass<P>;
   
   export interface ComponentClass<P = {}> {
-    new (props: P & { children?: ReactNode }): Component<P>;
+    new (props: P): Component<P>;
+    displayName?: string;
+    defaultProps?: Partial<P>;
   }
   
   export type JSXElementConstructor<P> =
-    | ((props: P & { children?: ReactNode }) => ReactElement | null)
-    | (new (props: P & { children?: ReactNode }) => Component<P, any>);
+    | ((props: P) => ReactElement | null)
+    | (new (props: P) => Component<P, any>);
   
   export interface ReactElement<P = any, T extends string | JSXElementConstructor<any> = string | JSXElementConstructor<any>> {
     type: T;
-    props: P & { children?: ReactNode };
+    props: P;
     key: string | number | null;
   }
   
@@ -3153,11 +3157,15 @@ declare module 'react' {
     | boolean
     | null
     | undefined
-    | ReactNode[]
-    | { [key: string]: any };
+    | ReactNode[];
+  
+  export interface ReactComponentProps {
+    key?: string | number | null;
+    ref?: any;
+  }
   
   export interface Component<P = {}, S = {}> {
-    props: P & { children?: ReactNode };
+    props: P;
     state: S;
     setState(state: Partial<S>): void;
     render(): ReactElement | null;
@@ -3173,6 +3181,8 @@ declare module 'react' {
     onChange?: (event: any) => void;
     onSubmit?: (event: any) => void;
     children?: ReactNode;
+    key?: string | number | null;
+    ref?: any;
     [key: string]: any;
   }
   
