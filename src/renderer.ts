@@ -1221,6 +1221,56 @@ interface Project {
 let aiChatWidth: number = 320; // Default width
 let isAIChatResizing: boolean = false;
 
+// Add after existing state variables (around line 80):
+
+// Codebase analysis state
+interface CodebaseIndex {
+  files: Map<string, CodeFile>;
+  dependencies: Map<string, string[]>; // file -> dependencies
+  exports: Map<string, string[]>; // file -> exports
+  projectStructure: ProjectStructure;
+  lastIndexed: Date;
+}
+
+interface CodeFile {
+  path: string;
+  content: string;
+  language: string;
+  size: number;
+  lastModified: Date;
+  imports: ImportInfo[];
+  exports: string[];
+  functions: string[];
+  classes: string[];
+  types: string[];
+}
+
+interface ImportInfo {
+  source: string;
+  imports: string[];
+  isDefault: boolean;
+  isNamespace: boolean;
+}
+
+interface ProjectStructure {
+  packageJson?: any;
+  tsConfig?: any;
+  gitInfo?: GitInfo;
+  frameworks: string[];
+  languages: string[];
+}
+
+interface GitInfo {
+  branch: string;
+  hasUncommittedChanges: boolean;
+  lastCommit: string;
+  remoteUrl?: string;
+}
+
+// Codebase state
+let codebaseIndex: CodebaseIndex | null = null;
+let isIndexing: boolean = false;
+
 function createLayout() {
   const root = document.getElementById('root');
   if (!root) return;
@@ -2104,6 +2154,15 @@ function createLayout() {
             <button id="terminal-toggle">Toggle Terminal</button>
             <button id="clear-terminal">Clear Terminal</button>
             <button id="refresh-files">🔄 Refresh Files</button>
+            <button id="refresh-codebase" style="
+              background: #7b68ee;
+              color: white;
+              border: none;
+              padding: 4px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              cursor: pointer;
+            ">🔍 Refresh Codebase</button>
             <button id="ai-chat-toggle" style="
               background: #7b68ee;
               color: white;
@@ -2189,6 +2248,7 @@ function createLayout() {
   document.getElementById('clear-terminal')?.addEventListener('click', clearActiveTerminal);
   document.getElementById('refresh-explorer')?.addEventListener('click', refreshCurrentDirectory);
   document.getElementById('refresh-files')?.addEventListener('click', refreshCurrentDirectory);
+  document.getElementById('refresh-codebase')?.addEventListener('click', refreshCodebase);
   document.getElementById('ai-chat-toggle')?.addEventListener('click', toggleAIChat);
   document.getElementById('save-file')?.addEventListener('click', saveCurrentFile);
   document.getElementById('toggle-autosave')?.addEventListener('click', toggleAutoSave);
@@ -4019,22 +4079,54 @@ function renderCodeContext(): string {
   const currentFileName = activeTabPath ? activeTabPath.split('/').pop() : null;
   const selectedText = monacoEditor ? monacoEditor.getModel()?.getValueInRange(monacoEditor.getSelection()) : null;
   
-  if (!currentFileName && !selectedText) {
+  // Get enhanced context from codebase index
+  const codebaseContext = getEnhancedCodeContext();
+  
+  if (!currentFileName && !selectedText && !codebaseContext) {
     return '';
   }
   
   return `
     <div class="code-context">
       <div class="context-header">
-        <span class="context-title">📁 Current Context</span>
+        <span class="context-title">📁 Project Context</span>
+        <button onclick="refreshCodebase()" style="
+          background: transparent;
+          border: 1px solid #3c3c3c;
+          color: #cccccc;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
+        " title="Refresh codebase analysis">🔄</button>
       </div>
       <div class="context-content">
+        ${codebaseIndex ? `
+          <div class="context-item">
+            <span class="context-label">Files:</span>
+            <span class="context-value">${codebaseIndex.files.size} indexed</span>
+          </div>
+          ${codebaseIndex.projectStructure.frameworks.length > 0 ? `
+            <div class="context-item">
+              <span class="context-label">Stack:</span>
+              <span class="context-value">${codebaseIndex.projectStructure.frameworks.join(', ')}</span>
+            </div>
+          ` : ''}
+          ${codebaseIndex.projectStructure.gitInfo ? `
+            <div class="context-item">
+              <span class="context-label">Branch:</span>
+              <span class="context-value">${codebaseIndex.projectStructure.gitInfo.branch}</span>
+            </div>
+          ` : ''}
+        ` : '<div class="context-item">⏳ Indexing codebase...</div>'}
+        
         ${currentFileName ? `
           <div class="context-item">
             <span class="context-label">File:</span>
             <span class="context-value">${currentFileName}</span>
           </div>
         ` : ''}
+        
         ${selectedText ? `
           <div class="context-item">
             <span class="context-label">Selected:</span>
@@ -4270,26 +4362,7 @@ Get your API key from [Anthropic Console](https://console.anthropic.com/)`,
   }
 }
 
-function getSystemPrompt(): string {
-  return `You are an AI coding assistant integrated into a VS Code-like IDE. You help users with:
 
-1. **Code Analysis**: Analyze and explain code snippets, functions, and files
-2. **Code Generation**: Create new code based on requirements
-3. **Debugging**: Help identify and fix issues in code
-4. **Refactoring**: Suggest improvements and optimizations
-5. **Documentation**: Generate comments and documentation
-6. **Learning**: Explain programming concepts and best practices
-
-When responding:
-- Be concise but thorough
-- Provide working code examples when appropriate
-- Consider the context of the current file/project
-- Suggest file paths and names for new components
-- Use markdown formatting for better readability
-- If suggesting code changes, be specific about where they should go
-
-The user can share their current file content, selected text, or ask general programming questions.`;
-}
 
 async function sendChatMessage(event?: Event) {
   if (event) {
@@ -4684,7 +4757,10 @@ async function initializeEverything() {
   initializeTerminal();
   setupAutoSave();
   await initializeAIService();
-  renderAIChat(); // Add this line
+  renderAIChat();
+  
+  // Index the codebase for AI context
+  await indexCodebase();
   
   console.log('✅ IDE initialization complete');
 }
@@ -4772,3 +4848,460 @@ function setAIChatWidth(width: number) {
   
   console.log(`AI Chat width set to: ${width}px`);
 }
+
+// Codebase Analysis Functions
+async function indexCodebase() {
+  if (isIndexing) return;
+  
+  console.log('🔍 Starting codebase indexing...');
+  isIndexing = true;
+  writeToTerminal('🔍 Analyzing codebase for AI context...');
+  
+  try {
+    const files = new Map<string, CodeFile>();
+    const dependencies = new Map<string, string[]>();
+    const exports = new Map<string, string[]>();
+    
+    // Get project structure
+    const projectStructure = await analyzeProjectStructure();
+    
+    // Index all files recursively
+    await indexDirectory(currentWorkingDirectory, files, dependencies, exports);
+    
+    codebaseIndex = {
+      files,
+      dependencies,
+      exports,
+      projectStructure,
+      lastIndexed: new Date()
+    };
+    
+    console.log(`✅ Indexed ${files.size} files`);
+    writeToTerminal(`✅ Codebase indexed: ${files.size} files analyzed`);
+    
+    // Update AI context
+    updateAISystemPrompt();
+    
+  } catch (error) {
+    console.error('❌ Codebase indexing failed:', error);
+    writeToTerminal(`❌ Codebase indexing failed: ${error}`);
+  } finally {
+    isIndexing = false;
+  }
+}
+
+async function analyzeProjectStructure(): Promise<ProjectStructure> {
+  const structure: ProjectStructure = {
+    frameworks: [],
+    languages: []
+  };
+  
+  try {
+    // Read package.json
+    const packageJsonPath = `${currentWorkingDirectory}/package.json`;
+    try {
+      const packageContent = await (window as any).electronAPI.readFile(packageJsonPath);
+      if (packageContent) {
+        structure.packageJson = JSON.parse(packageContent);
+        
+        // Detect frameworks
+        const deps = { ...structure.packageJson.dependencies, ...structure.packageJson.devDependencies };
+        if (deps.react) structure.frameworks.push('React');
+        if (deps.vue) structure.frameworks.push('Vue');
+        if (deps.angular) structure.frameworks.push('Angular');
+        if (deps.svelte) structure.frameworks.push('Svelte');
+        if (deps.electron) structure.frameworks.push('Electron');
+        if (deps.express) structure.frameworks.push('Express');
+        if (deps.nextjs || deps.next) structure.frameworks.push('Next.js');
+        if (deps.nuxt) structure.frameworks.push('Nuxt.js');
+      }
+    } catch (e) {
+      console.log('No package.json found');
+    }
+    
+    // Read tsconfig.json
+    const tsconfigPath = `${currentWorkingDirectory}/tsconfig.json`;
+    try {
+      const tsconfigContent = await (window as any).electronAPI.readFile(tsconfigPath);
+      if (tsconfigContent) {
+        structure.tsConfig = JSON.parse(tsconfigContent);
+        structure.languages.push('TypeScript');
+      }
+    } catch (e) {
+      console.log('No tsconfig.json found');
+    }
+    
+    // Get git information
+    structure.gitInfo = await getGitInfo();
+    
+  } catch (error) {
+    console.error('Error analyzing project structure:', error);
+  }
+  
+  return structure;
+}
+
+async function getGitInfo(): Promise<GitInfo | undefined> {
+  try {
+    // Check if it's a git repository
+    const gitCheck = await (window as any).electronAPI.executeCommand('git rev-parse --is-inside-work-tree', currentWorkingDirectory);
+    if (!gitCheck.success) return undefined;
+    
+    // Get current branch
+    const branchResult = await (window as any).electronAPI.executeCommand('git branch --show-current', currentWorkingDirectory);
+    const branch = branchResult.success ? branchResult.output.trim() : 'unknown';
+    
+    // Check for uncommitted changes
+    const statusResult = await (window as any).electronAPI.executeCommand('git status --porcelain', currentWorkingDirectory);
+    const hasUncommittedChanges = statusResult.success ? statusResult.output.trim().length > 0 : false;
+    
+    // Get last commit
+    const commitResult = await (window as any).electronAPI.executeCommand('git log -1 --pretty=format:"%h %s"', currentWorkingDirectory);
+    const lastCommit = commitResult.success ? commitResult.output.trim() : 'unknown';
+    
+    // Get remote URL
+    const remoteResult = await (window as any).electronAPI.executeCommand('git remote get-url origin', currentWorkingDirectory);
+    const remoteUrl = remoteResult.success ? remoteResult.output.trim() : undefined;
+    
+    return {
+      branch,
+      hasUncommittedChanges,
+      lastCommit,
+      remoteUrl
+    };
+  } catch (error) {
+    console.error('Error getting git info:', error);
+    return undefined;
+  }
+}
+
+async function indexDirectory(dirPath: string, files: Map<string, CodeFile>, dependencies: Map<string, string[]>, exports: Map<string, string[]>) {
+  try {
+    const items = await (window as any).electronAPI.getDirectoryContents(dirPath);
+    if (!Array.isArray(items)) return;
+    
+    for (const item of items) {
+      if (item.type === 'file') {
+        await indexFile(item.path, files, dependencies, exports);
+      } else if (item.type === 'directory' && shouldIndexDirectory(item.name)) {
+        await indexDirectory(item.path, files, dependencies, exports);
+      }
+    }
+  } catch (error) {
+    console.error(`Error indexing directory ${dirPath}:`, error);
+  }
+}
+
+function shouldIndexDirectory(dirName: string): boolean {
+  const excludedDirs = ['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.nuxt', 'public', 'assets'];
+  return !excludedDirs.includes(dirName) && !dirName.startsWith('.');
+}
+
+async function indexFile(filePath: string, files: Map<string, CodeFile>, dependencies: Map<string, string[]>, exports: Map<string, string[]>) {
+  try {
+    const fileName = filePath.split('/').pop() || '';
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    
+    // Only index relevant files
+    if (!shouldIndexFile(extension)) return;
+    
+    const content = await (window as any).electronAPI.readFile(filePath);
+    if (!content) return;
+    
+    // Prevent indexing huge files
+    if (content.length > 100000) {
+      console.log(`Skipping large file: ${filePath} (${content.length} chars)`);
+      return;
+    }
+    
+    const language = getLanguageFromExtension(extension);
+    const codeFile: CodeFile = {
+      path: filePath,
+      content,
+      language,
+      size: content.length,
+      lastModified: new Date(),
+      imports: extractImports(content, language),
+      exports: extractExports(content, language),
+      functions: extractFunctions(content, language),
+      classes: extractClasses(content, language),
+      types: extractTypes(content, language)
+    };
+    
+    files.set(filePath, codeFile);
+    
+    // Build dependency graph
+    const fileDeps = codeFile.imports.map(imp => imp.source);
+    dependencies.set(filePath, fileDeps);
+    exports.set(filePath, codeFile.exports);
+    
+  } catch (error) {
+    console.error(`Error indexing file ${filePath}:`, error);
+  }
+}
+
+function shouldIndexFile(extension: string): boolean {
+  const codeExtensions = ['js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'css', 'scss', 'less', 'json', 'md', 'html', 'py', 'java', 'c', 'cpp', 'cs', 'php', 'rb', 'go', 'rs'];
+  return codeExtensions.includes(extension);
+}
+
+function extractImports(content: string, language: string): ImportInfo[] {
+  const imports: ImportInfo[] = [];
+  
+  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
+    // ES6 imports
+    const importRegex = /import\s+(?:(.+?)\s+from\s+)?['"]([^'"]+)['"];?/g;
+    let match;
+    while ((match = importRegex.exec(content)) !== null) {
+      const importClause = match[1];
+      const source = match[2];
+      
+      let importNames: string[] = [];
+      let isDefault = false;
+      let isNamespace = false;
+      
+      if (importClause) {
+        if (importClause.includes('*')) {
+          isNamespace = true;
+          importNames = [importClause.trim()];
+        } else if (importClause.includes('{')) {
+          const namedImports = importClause.match(/\{([^}]+)\}/)?.[1];
+          if (namedImports) {
+            importNames = namedImports.split(',').map(name => name.trim());
+          }
+        } else {
+          isDefault = true;
+          importNames = [importClause.trim()];
+        }
+      }
+      
+      imports.push({
+        source,
+        imports: importNames,
+        isDefault,
+        isNamespace
+      });
+    }
+    
+    // CommonJS require
+    const requireRegex = /require\s*\(['"]([^'"]+)['"]\)/g;
+    while ((match = requireRegex.exec(content)) !== null) {
+      imports.push({
+        source: match[1],
+        imports: [],
+        isDefault: false,
+        isNamespace: false
+      });
+    }
+  }
+  
+  return imports;
+}
+
+function extractExports(content: string, language: string): string[] {
+  const exports: string[] = [];
+  
+  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
+    // Named exports
+    const namedExportRegex = /export\s+(?:const|let|var|function|class|interface|type)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    let match;
+    while ((match = namedExportRegex.exec(content)) !== null) {
+      exports.push(match[1]);
+    }
+    
+    // Export statements
+    const exportStatementRegex = /export\s*\{\s*([^}]+)\s*\}/g;
+    while ((match = exportStatementRegex.exec(content)) !== null) {
+      const namedExports = match[1].split(',').map(name => name.trim());
+      exports.push(...namedExports);
+    }
+    
+    // Default export
+    if (content.includes('export default')) {
+      exports.push('default');
+    }
+  }
+  
+  return exports;
+}
+
+function extractFunctions(content: string, language: string): string[] {
+  const functions: string[] = [];
+  
+  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
+    // Function declarations
+    const funcRegex = /(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    let match;
+    while ((match = funcRegex.exec(content)) !== null) {
+      functions.push(match[1]);
+    }
+    
+    // Arrow functions
+    const arrowFuncRegex = /(?:export\s+)?(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/g;
+    while ((match = arrowFuncRegex.exec(content)) !== null) {
+      functions.push(match[1]);
+    }
+  }
+  
+  return functions;
+}
+
+function extractClasses(content: string, language: string): string[] {
+  const classes: string[] = [];
+  
+  if (language === 'javascript' || language === 'typescript' || language === 'javascriptreact' || language === 'typescriptreact') {
+    const classRegex = /(?:export\s+)?class\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    let match;
+    while ((match = classRegex.exec(content)) !== null) {
+      classes.push(match[1]);
+    }
+  }
+  
+  return classes;
+}
+
+function extractTypes(content: string, language: string): string[] {
+  const types: string[] = [];
+  
+  if (language === 'typescript' || language === 'typescriptreact') {
+    // Interfaces
+    const interfaceRegex = /(?:export\s+)?interface\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    let match;
+    while ((match = interfaceRegex.exec(content)) !== null) {
+      types.push(match[1]);
+    }
+    
+    // Type aliases
+    const typeRegex = /(?:export\s+)?type\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    while ((match = typeRegex.exec(content)) !== null) {
+      types.push(match[1]);
+    }
+  }
+  
+  return types;
+}
+
+// Enhanced AI System Prompt
+function updateAISystemPrompt() {
+  if (!codebaseIndex) return;
+  
+  const projectInfo = buildProjectContextString();
+  console.log('📝 Updated AI system prompt with project context');
+}
+
+function buildProjectContextString(): string {
+  if (!codebaseIndex) return '';
+  
+  const { projectStructure, files } = codebaseIndex;
+  let context = '\n\n**CODEBASE CONTEXT:**\n';
+  
+  // Project info
+  if (projectStructure.packageJson) {
+    context += `\n**Project:** ${projectStructure.packageJson.name || 'Unknown'}\n`;
+    context += `**Description:** ${projectStructure.packageJson.description || 'No description'}\n`;
+  }
+  
+  // Frameworks and languages
+  if (projectStructure.frameworks.length > 0) {
+    context += `**Frameworks:** ${projectStructure.frameworks.join(', ')}\n`;
+  }
+  if (projectStructure.languages.length > 0) {
+    context += `**Languages:** ${projectStructure.languages.join(', ')}\n`;
+  }
+  
+  // Git info
+  if (projectStructure.gitInfo) {
+    context += `**Git Branch:** ${projectStructure.gitInfo.branch}\n`;
+    if (projectStructure.gitInfo.hasUncommittedChanges) {
+      context += `**Status:** Has uncommitted changes\n`;
+    }
+  }
+  
+  // File structure overview
+  context += `\n**Files:** ${files.size} indexed files\n`;
+  
+  return context;
+}
+
+// Enhanced context gathering for AI
+function getEnhancedCodeContext(): string {
+  if (!codebaseIndex) return '';
+  
+  let context = buildProjectContextString();
+  
+  // Add current file context
+  if (activeTabPath) {
+    const currentFile = codebaseIndex.files.get(activeTabPath);
+    if (currentFile) {
+      context += `\n**CURRENT FILE: ${activeTabPath}**\n`;
+      context += `Language: ${currentFile.language}\n`;
+      
+      if (currentFile.functions.length > 0) {
+        context += `Functions: ${currentFile.functions.slice(0, 10).join(', ')}${currentFile.functions.length > 10 ? '...' : ''}\n`;
+      }
+      
+      if (currentFile.classes.length > 0) {
+        context += `Classes: ${currentFile.classes.join(', ')}\n`;
+      }
+      
+      if (currentFile.imports.length > 0) {
+        context += `Imports: ${currentFile.imports.slice(0, 5).map(imp => imp.source).join(', ')}${currentFile.imports.length > 5 ? '...' : ''}\n`;
+      }
+    }
+  }
+  
+  // Add related files context
+  if (activeTabPath && codebaseIndex.dependencies.has(activeTabPath)) {
+    const deps = codebaseIndex.dependencies.get(activeTabPath) || [];
+    if (deps.length > 0) {
+      context += `\n**RELATED FILES:**\n`;
+      deps.slice(0, 5).forEach(dep => {
+        const depFile = Array.from(codebaseIndex!.files.values()).find(f => f.path.includes(dep));
+        if (depFile) {
+          context += `- ${depFile.path}\n`;
+        }
+      });
+    }
+  }
+  
+  return context;
+}
+
+// Update the getSystemPrompt function to include codebase context:
+function getSystemPrompt(): string {
+  const basePrompt = `You are an AI coding assistant integrated into a VS Code-like IDE called "Look Overlay Electron". You help users with:
+
+1. **Code Analysis**: Analyze and explain code snippets, functions, and files
+2. **Code Generation**: Create new code based on requirements
+3. **Debugging**: Help identify and fix issues in code
+4. **Refactoring**: Suggest improvements and optimizations
+5. **Documentation**: Generate comments and documentation
+6. **Learning**: Explain programming concepts and best practices
+
+When responding:
+- Be concise but thorough
+- Provide working code examples when appropriate
+- Consider the context of the current file/project
+- Suggest file paths and names for new components
+- Use markdown formatting for better readability
+- If suggesting code changes, be specific about where they should go
+- Always consider the project structure and existing patterns
+
+The user can share their current file content, selected text, or ask general programming questions.`;
+
+  // Add codebase context if available
+  const codebaseContext = getEnhancedCodeContext();
+  
+  return basePrompt + codebaseContext;
+}
+
+// Add refresh codebase function
+async function refreshCodebase() {
+  console.log('🔄 Refreshing codebase index...');
+  writeToTerminal('🔄 Refreshing codebase index...');
+  codebaseIndex = null;
+  await indexCodebase();
+}
+
+// Make refreshCodebase globally available
+(window as any).refreshCodebase = refreshCodebase;
