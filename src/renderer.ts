@@ -2996,7 +2996,7 @@ async function initializeMonaco() {
       
       const monaco = (window as any).monaco;
       
-      // TypeScript configuration
+      // TypeScript configuration with proper module resolution
       monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
         target: monaco.languages.typescript.ScriptTarget.ES2020,
         allowNonTsExtensions: true,
@@ -3005,8 +3005,8 @@ async function initializeMonaco() {
         noEmit: true,
         esModuleInterop: true,
         allowSyntheticDefaultImports: true,
-        jsx: monaco.languages.typescript.JsxEmit.React, // Change from ReactJSX to React
-        jsxFactory: 'React.createElement', // Explicitly set JSX factory
+        jsx: monaco.languages.typescript.JsxEmit.React,
+        jsxFactory: 'React.createElement',
         allowJs: true,
         checkJs: true,
         strict: true,
@@ -3019,40 +3019,86 @@ async function initializeMonaco() {
         alwaysStrict: true,
         skipLibCheck: false,
         skipDefaultLibCheck: false,
-        lib: ['dom', 'es2020', 'es2017', 'es2015', 'es6']
+        lib: ['dom', 'es2020', 'es2017', 'es2015', 'es6'],
+        baseUrl: '.',
+        paths: {
+          '@/*': ['./src/*', './*'],
+          '@/components/*': ['./src/components/*', './components/*'],
+          '@/lib/*': ['./src/lib/*', './lib/*'],
+          '@/utils/*': ['./src/utils/*', './utils/*'],
+          '@/styles/*': ['./src/styles/*', './styles/*'],
+          '@/public/*': ['./public/*'],
+          '@/types/*': ['./src/types/*', './types/*'],
+          '@/hooks/*': ['./src/hooks/*', './hooks/*'],
+          '@/api/*': ['./src/api/*', './api/*'],
+          '@/pages/*': ['./src/pages/*', './pages/*'],
+          '@/app/*': ['./src/app/*', './app/*']
+        }
       });
 
-      // JavaScript configuration
-      monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-        target: monaco.languages.typescript.ScriptTarget.ES2020,
-        allowNonTsExtensions: true,
-        allowJs: true,
-        checkJs: true,
-        noEmit: true,
-        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        module: monaco.languages.typescript.ModuleKind.CommonJS,
-        noImplicitAny: true,
-        noUnusedLocals: true,
-        noUnusedParameters: true,
-        jsx: monaco.languages.typescript.JsxEmit.React, // Change from ReactJSX to React
-        jsxFactory: 'React.createElement', // Explicitly set JSX factory
-        lib: ['dom', 'es2020', 'es2017', 'es2015', 'es6']
+      // Configure module resolution for @ aliases
+      const originalResolveModuleName = monaco.languages.typescript.typescriptDefaults._extraLibs;
+      
+      // Add module resolution interceptor
+      monaco.languages.typescript.typescriptDefaults.setWorkerOptions({
+        customWorkerPath: undefined,
+        async getWorker(moduleId: string, label: string) {
+          const worker = await monaco.languages.typescript.getTypeScriptWorker();
+          const client = await worker();
+          
+          // Monkey patch the module resolution
+          const originalResolveModuleName = client._ts.resolveModuleName;
+          client._ts.resolveModuleName = function(
+            moduleName: string, 
+            containingFile: string, 
+            compilerOptions: any, 
+            host: any, 
+            cache: any
+          ) {
+            // Handle @ aliases
+            if (moduleName.startsWith('@/')) {
+              const aliasPath = moduleName.replace('@/', './src/');
+              // Try to resolve with the alias
+              const resolved = originalResolveModuleName.call(this, aliasPath, containingFile, compilerOptions, host, cache);
+              if (resolved.resolvedModule) {
+                return resolved;
+              }
+              // Fallback to original path without src/
+              const fallbackPath = moduleName.replace('@/', './');
+              return originalResolveModuleName.call(this, fallbackPath, containingFile, compilerOptions, host, cache);
+            }
+            return originalResolveModuleName.call(this, moduleName, containingFile, compilerOptions, host, cache);
+          };
+          
+          return client;
+        }
       });
 
-      // Enable validation
-      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
-        noSuggestionDiagnostics: false,
-        diagnosticCodesToIgnore: []
-      });
+      // Create virtual file models for @ aliases to help resolution
+      const aliasResolutionTypes = `
+// Virtual module declarations for @ alias resolution
+declare module "*.tsx" {
+  import { FC } from 'react';
+  const Component: FC<any>;
+  export default Component;
+}
 
-      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
-        noSuggestionDiagnostics: false,
-        diagnosticCodesToIgnore: []
-      });
+declare module "*.ts" {
+  const content: any;
+  export default content;
+}
+
+declare module "*.js" {
+  const content: any;
+  export default content;
+}
+
+declare module "*.jsx" {
+  import { FC } from 'react';
+  const Component: FC<any>;
+  export default Component;
+}
+`;
 
       // FIXED: More explicit JSX and React type definitions
       const fixedReactTypes = `
@@ -3060,12 +3106,6 @@ async function initializeMonaco() {
 declare module 'react/jsx-runtime' {
   export function jsx(type: any, props: any, key?: any): React.ReactElement;
   export function jsxs(type: any, props: any, key?: any): React.ReactElement;
-  export namespace JSX {
-    interface Element extends React.ReactElement<any, any> {}
-    interface IntrinsicElements {
-      [elemName: string]: any;
-    }
-  }
 }
 
 // React module with proper types
@@ -3136,6 +3176,36 @@ declare module 'react' {
     [key: string]: any;
   }
   
+  export interface ButtonHTMLAttributes<T> extends HTMLAttributes<T> {
+    disabled?: boolean;
+    type?: 'button' | 'submit' | 'reset';
+  }
+  
+  export interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
+    type?: string;
+    value?: string | number;
+    placeholder?: string;
+    disabled?: boolean;
+    required?: boolean;
+  }
+  
+  export interface AnchorHTMLAttributes<T> extends HTMLAttributes<T> {
+    href?: string;
+    target?: string;
+    rel?: string;
+  }
+  
+  export interface ImgHTMLAttributes<T> extends HTMLAttributes<T> {
+    src?: string;
+    alt?: string;
+    width?: number | string;
+    height?: number | string;
+  }
+  
+  export interface DetailedHTMLProps<E extends HTMLAttributes<T>, T> extends E {
+    ref?: any;
+  }
+  
   // Add SVG Props for your svg elements
   export interface SVGProps<T> extends HTMLAttributes<T> {
     fill?: string;
@@ -3149,14 +3219,7 @@ declare module 'react' {
   }
 }
 
-// React JSX Runtime
-declare module 'react/jsx-runtime' {
-  import { ReactElement } from 'react';
-  export function jsx(type: any, props: any, key?: any): ReactElement;
-  export function jsxs(type: any, props: any, key?: any): ReactElement;
-}
-
-// CRITICAL FIX: Enhanced JSX namespace with proper children handling
+// CRITICAL FIX: Both global and module-level JSX namespace
 declare global {
   namespace JSX {
     type Element = React.ReactElement<any, any>;
@@ -3173,47 +3236,54 @@ declare global {
       children: {};
     }
     
-    // FIX: Add explicit children support to all intrinsic elements
+    // COMPREHENSIVE IntrinsicElements interface
     interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> & { children?: React.ReactNode };
-      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement> & { children?: React.ReactNode };
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> & { children?: React.ReactNode };
+      // HTML Elements
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
       input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-      form: React.DetailedHTMLProps<React.HTMLAttributes<HTMLFormElement>, HTMLFormElement> & { children?: React.ReactNode };
-      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement> & { children?: React.ReactNode };
-      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement> & { children?: React.ReactNode };
-      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement> & { children?: React.ReactNode };
+      form: React.DetailedHTMLProps<React.HTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
+      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
       img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
-      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement> & { children?: React.ReactNode };
-      ol: React.DetailedHTMLProps<React.HTMLAttributes<HTMLOListElement>, HTMLOListElement> & { children?: React.ReactNode };
-      li: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLIElement>, HTMLLIElement> & { children?: React.ReactNode };
-      nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { children?: React.ReactNode };
-      table: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableElement>, HTMLTableElement> & { children?: React.ReactNode };
-      thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement> & { children?: React.ReactNode };
-      tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement> & { children?: React.ReactNode };
-      tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement> & { children?: React.ReactNode };
-      td: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement> & { children?: React.ReactNode };
-      th: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement> & { children?: React.ReactNode };
-      svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement> & { children?: React.ReactNode };
-      path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
+      ol: React.DetailedHTMLProps<React.HTMLAttributes<HTMLOListElement>, HTMLOListElement>;
+      li: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+      nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      table: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableElement>, HTMLTableElement>;
+      thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+      tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+      tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement>;
+      td: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement>;
+      th: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement>;
       
+      // SVG Elements  
+      svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement>;
+      path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+      circle: React.DetailedHTMLProps<React.SVGProps<SVGCircleElement>, SVGCircleElement>;
+      rect: React.DetailedHTMLProps<React.SVGProps<SVGRectElement>, SVGRectElement>;
+      line: React.DetailedHTMLProps<React.SVGProps<SVGLineElement>, SVGLineElement>;
+      
+      // Catch-all for any other elements
       [elemName: string]: any;
     }
   }
 }
 
-// Alternative JSX namespace declaration for better Monaco compatibility
+// Also declare JSX namespace at module level for better Monaco compatibility  
 declare namespace JSX {
   type Element = React.ReactElement<any, any>;
   
@@ -3262,12 +3332,15 @@ declare namespace JSX {
     th: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement>;
     svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement>;
     path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+    circle: React.DetailedHTMLProps<React.SVGProps<SVGCircleElement>, SVGCircleElement>;
+    rect: React.DetailedHTMLProps<React.SVGProps<SVGRectElement>, SVGRectElement>;
+    line: React.DetailedHTMLProps<React.SVGProps<SVGLineElement>, SVGLineElement>;
     
     [elemName: string]: any;
   }
 }
 
-// DOM and basic types
+// DOM and basic types  
 interface HTMLElement {
   innerHTML: string;
   textContent: string;
@@ -3324,7 +3397,18 @@ declare const __filename: string;
         'file:///node_modules/@types/react/index.d.ts'
       );
 
-      // Also add as a regular lib
+      // Also add alias resolution types
+      monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        aliasResolutionTypes,
+        'lib.aliases.d.ts'
+      );
+      
+      monaco.languages.typescript.javascriptDefaults.addExtraLib(
+        aliasResolutionTypes,
+        'lib.aliases.d.ts'
+      );
+
+      // Also add as regular libs
       monaco.languages.typescript.typescriptDefaults.addExtraLib(
         fixedReactTypes,
         'lib.react.d.ts'
