@@ -41,6 +41,9 @@ class RendererApp {
       // Load and inject Tailwind CSS
       await this.loadTailwindCSS();
       
+      // Expose layout manager globally FIRST
+      this.layoutManager.exposeGlobally();
+      
       // Create the main layout
       this.layoutManager.createLayout();
       
@@ -125,7 +128,7 @@ class RendererApp {
       // Ctrl/Cmd + ` to toggle terminal
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault();
-        this.terminalManager.toggleTerminal();
+        this.layoutManager.toggleTerminal();
       }
       
       // Ctrl/Cmd + Shift + P for AI chat
@@ -148,13 +151,8 @@ class RendererApp {
   }
 
   private setupGlobalFunctions(): void {
-    // Make functions available globally for HTML onclick handlers
-    (window as any).toggleAIChat = () => this.layoutManager.toggleAIChat();
-    (window as any).clearAIChat = () => {
-      // Implementation for clearing AI chat
-      console.log('Clear AI chat');
-    };
-    (window as any).toggleTerminal = () => this.terminalManager.toggleTerminal();
+    // Clean setup - no redundant global functions since layoutManager handles everything
+    (window as any).app = this;
   }
 }
 

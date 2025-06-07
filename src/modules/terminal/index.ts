@@ -11,7 +11,6 @@ export class TerminalManager {
 
   initialize(): void {
     this.createNewTerminal();
-    this.setupTerminalResize();
   }
 
   createNewTerminal(): string {
@@ -156,9 +155,13 @@ export class TerminalManager {
   }
 
   toggleTerminal(): void {
-    this.state.terminalVisible = !this.state.terminalVisible;
+    // Let the layout manager handle the toggle
     if ((window as any).layoutManager) {
       (window as any).layoutManager.toggleTerminal();
+    } else {
+      // Fallback if layout manager isn't available
+      this.state.terminalVisible = !this.state.terminalVisible;
+      console.warn('Layout manager not available, using fallback toggle');
     }
   }
 
@@ -229,11 +232,6 @@ export class TerminalManager {
         tab.classList.add('bg-gray-800', 'text-gray-400');
       }
     });
-  }
-
-  private setupTerminalResize(): void {
-    // The layout manager now handles terminal resizing
-    // This method can be simplified or removed entirely
   }
 
   private detectShell(): string {
