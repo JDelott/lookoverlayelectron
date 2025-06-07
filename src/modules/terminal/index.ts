@@ -157,21 +157,8 @@ export class TerminalManager {
 
   toggleTerminal(): void {
     this.state.terminalVisible = !this.state.terminalVisible;
-    this.updateTerminalLayout();
-  }
-
-  private updateTerminalLayout(): void {
-    const terminalContainer = document.querySelector('.terminal-container') as HTMLElement;
-    const editorArea = document.querySelector('.editor-area') as HTMLElement;
-    
-    if (terminalContainer && editorArea) {
-      if (this.state.terminalVisible) {
-        terminalContainer.classList.remove('hidden');
-        editorArea.style.height = `calc(100% - ${this.state.terminalHeight}px)`;
-      } else {
-        terminalContainer.classList.add('hidden');
-        editorArea.style.height = '100%';
-      }
+    if ((window as any).layoutManager) {
+      (window as any).layoutManager.toggleTerminal();
     }
   }
 
@@ -245,45 +232,8 @@ export class TerminalManager {
   }
 
   private setupTerminalResize(): void {
-    const resizeHandle = document.querySelector('.terminal-resize-handle') as HTMLElement;
-    let isResizing = false;
-
-    if (resizeHandle) {
-      resizeHandle.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-      });
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      
-      const containerHeight = window.innerHeight - 100; // Account for header
-      const newHeight = containerHeight - e.clientY;
-      
-      if (newHeight >= 100 && newHeight <= containerHeight - 200) {
-        this.setTerminalHeight(newHeight);
-      }
-    };
-
-    const handleMouseUp = () => {
-      isResizing = false;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }
-
-  private setTerminalHeight(height: number): void {
-    this.state.terminalHeight = height;
-    
-    const terminalContainer = document.querySelector('.terminal-container') as HTMLElement;
-    const editorArea = document.querySelector('.editor-area') as HTMLElement;
-    
-    if (terminalContainer && editorArea) {
-      terminalContainer.style.height = `${height}px`;
-      editorArea.style.height = `calc(100% - ${height}px)`;
-    }
+    // The layout manager now handles terminal resizing
+    // This method can be simplified or removed entirely
   }
 
   private detectShell(): string {

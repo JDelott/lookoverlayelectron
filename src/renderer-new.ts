@@ -25,6 +25,7 @@ class RendererApp {
       terminalCounter: 1,
       terminalVisible: false,
       terminalHeight: 200,
+      aiChatVisible: false,
       monacoEditor: null
     };
 
