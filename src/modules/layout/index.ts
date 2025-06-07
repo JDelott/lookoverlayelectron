@@ -32,6 +32,9 @@ export class LayoutManager {
       return;
     }
 
+    // Preserve the current AI chat state before rebuilding
+    const wasAIChatVisible = this.state.aiChatVisible;
+
     root.className = 'w-full h-screen bg-gray-900 text-gray-300 overflow-hidden p-2';
     root.innerHTML = this.getLayoutHTML();
     
@@ -40,6 +43,9 @@ export class LayoutManager {
     this.setupViewportObserver();
     this.setupButtonInteractions();
     this.isInitialized = true;
+    
+    // Restore AI chat state after layout rebuild
+    this.state.aiChatVisible = wasAIChatVisible;
     this.updatePanelVisibility();
   }
 
@@ -61,7 +67,7 @@ export class LayoutManager {
         --header-height: 40px;
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
-        --chat-width: ${this.state.aiChatVisible ? this.panelSizes.aiChatWidth + 'px' : '0px'};
+        --chat-width: ${this.panelSizes.aiChatWidth}px;
       }
 
       /* Project Selector Styles */
@@ -214,24 +220,7 @@ export class LayoutManager {
         margin: 0;
       }
 
-      /* Scrollbar styles */
-      .project-list::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      .project-list::-webkit-scrollbar-track {
-        background: #252526;
-      }
-
-      .project-list::-webkit-scrollbar-thumb {
-        background: #424242;
-        border-radius: 4px;
-      }
-
-      .project-list::-webkit-scrollbar-thumb:hover {
-        background: #555;
-      }
-
+      /* Main Layout Styles - FLEXBOX APPROACH */
       #root {
         padding: var(--safe-area-inset-top) var(--safe-area-inset-right) var(--safe-area-inset-bottom) var(--safe-area-inset-left);
         box-sizing: border-box;
@@ -247,20 +236,13 @@ export class LayoutManager {
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
         background: rgb(17 24 39);
         border: 1px solid rgb(75 85 99);
+        display: flex;
+        flex-direction: column;
       }
 
       .ide-container {
-        display: grid;
-        grid-template-columns: 
-          var(--sidebar-width) 
-          4px 
-          1fr 
-          ${this.state.aiChatVisible ? '4px var(--chat-width)' : ''};
-        grid-template-rows: var(--header-height) 1fr var(--status-height);
-        grid-template-areas: 
-          "header header header${this.state.aiChatVisible ? ' header header' : ''}"
-          "sidebar h-sidebar main${this.state.aiChatVisible ? ' h-chat chat' : ''}"
-          "status status status${this.state.aiChatVisible ? ' status status' : ''}";
+        display: flex;
+        flex-direction: column;
         height: 100%;
         width: 100%;
         min-height: 300px;
@@ -269,26 +251,33 @@ export class LayoutManager {
       }
       
       .header-area { 
-        grid-area: header; 
-        z-index: 10;
+        height: var(--header-height);
         background: rgb(31 41 55);
         border-bottom: 1px solid rgb(75 85 99);
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 0 16px;
-        min-height: var(--header-height);
+        flex-shrink: 0;
+        z-index: 10;
+      }
+
+      .content-area {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        overflow: hidden;
       }
       
       .sidebar-area { 
-        grid-area: sidebar; 
+        width: var(--sidebar-width);
         min-width: 200px;
         max-width: 500px;
-        overflow: hidden;
         display: flex;
         flex-direction: column;
         background: rgb(31 41 55);
         border-right: 1px solid rgb(75 85 99);
+        flex-shrink: 0;
       }
       
       .sidebar-header {
@@ -303,41 +292,35 @@ export class LayoutManager {
         text-transform: uppercase;
         color: rgb(209 213 219);
         flex-shrink: 0;
-        position: sticky;
-        top: 0;
-        z-index: 2;
       }
       
       .sidebar-content {
         flex: 1;
         overflow-y: auto;
         overflow-x: hidden;
-        padding: 4px 0;
+        padding: 4px 8px;
         min-height: 0;
       }
       
       .handle-sidebar { 
-        grid-area: h-sidebar; 
+        width: 4px;
         background: rgb(55 65 81);
         cursor: col-resize;
         transition: background-color 0.2s;
         user-select: none;
-        z-index: 5;
-        min-width: 4px;
-        width: 4px;
+        flex-shrink: 0;
       }
       .handle-sidebar:hover { 
         background: rgb(59 130 246); 
       }
       
       .main-area { 
-        grid-area: main; 
-        min-width: 0; 
+        flex: 1;
         display: flex; 
         flex-direction: column;
         overflow: hidden;
         background: rgb(17 24 39);
-        position: relative;
+        min-width: 0;
       }
       
       .main-content {
@@ -373,11 +356,9 @@ export class LayoutManager {
         flex-direction: column;
         background: rgb(31 41 55);
         border-top: 1px solid rgb(75 85 99);
-        min-height: 0;
-        overflow: hidden;
-        transition: height 0.2s ease-out;
         height: ${this.state.terminalVisible ? (this.terminalCollapsed ? '32px' : `${this.panelSizes.terminalHeight}px`) : '0px'};
         flex-shrink: 0;
+        overflow: hidden;
       }
       
       .terminal-header {
@@ -391,19 +372,11 @@ export class LayoutManager {
         padding: 0 8px;
       }
       
-      .terminal-resize-handle {
-        height: 4px;
-        background: rgb(55 65 81);
-        cursor: row-resize;
-        transition: background-color 0.2s;
-        user-select: none;
-        flex-shrink: 0;
-        z-index: 5;
-        display: ${this.terminalCollapsed ? 'none' : 'block'};
-      }
-      
-      .terminal-resize-handle:hover {
-        background: rgb(59 130 246);
+      .terminal-tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 1;
       }
       
       .terminal-output {
@@ -419,47 +392,31 @@ export class LayoutManager {
         color: rgb(229 231 235);
         display: ${this.terminalCollapsed ? 'none' : 'block'};
       }
-      
-      .terminal-output::-webkit-scrollbar {
-        width: 8px;
-      }
-      
-      .terminal-output::-webkit-scrollbar-track {
-        background: rgb(31 41 55);
-      }
-      
-      .terminal-output::-webkit-scrollbar-thumb {
-        background: rgb(75 85 99);
-        border-radius: 4px;
-      }
-      
-      .terminal-output::-webkit-scrollbar-thumb:hover {
-        background: rgb(107 114 128);
-      }
-      
+
+      /* Chat Panel Styles */
       .handle-chat { 
-        grid-area: h-chat; 
+        width: 4px;
         background: rgb(55 65 81);
         cursor: col-resize;
         transition: background-color 0.2s;
         user-select: none;
-        z-index: 5;
-        min-width: 4px;
-        width: 4px;
+        flex-shrink: 0;
+        display: ${this.state.aiChatVisible ? 'block' : 'none'};
       }
       .handle-chat:hover { 
         background: rgb(59 130 246); 
       }
       
       .chat-area { 
-        grid-area: chat; 
-        min-width: 280px;
+        width: ${this.state.aiChatVisible ? 'var(--chat-width)' : '0px'};
+        min-width: ${this.state.aiChatVisible ? '280px' : '0px'};
         max-width: 600px;
         overflow: hidden;
-        display: flex;
+        display: ${this.state.aiChatVisible ? 'flex' : 'none'};
         flex-direction: column;
         background: rgb(31 41 55);
         border-left: 1px solid rgb(75 85 99);
+        flex-shrink: 0;
       }
       
       .chat-header {
@@ -475,176 +432,59 @@ export class LayoutManager {
       
       .chat-content {
         flex: 1;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 12px;
         min-height: 0;
-        padding: 16px;
       }
-      
+
       .status-area { 
-        grid-area: status; 
-        z-index: 10;
-        background: rgb(37 99 235);
-        color: white;
-        font-size: 11px;
+        height: var(--status-height);
+        background: rgb(55 65 81);
+        border-top: 1px solid rgb(75 85 99);
         display: flex;
         align-items: center;
         padding: 0 12px;
-        border-top: 1px solid rgb(75 85 99);
-        min-height: var(--status-height);
+        font-size: 12px;
+        color: rgb(209 213 219);
+        flex-shrink: 0;
       }
-      
-      /* Panel Toggle Buttons - MAXIMUM SPECIFICITY TO OVERRIDE TAILWIND */
-      html body div#root .header-area .panel-toggle-btn {
-        position: relative !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        padding: 8px 16px !important;
-        margin: 0 !important;
-        background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%) !important;
-        border: 1px solid rgb(75 85 99) !important;
-        color: rgb(226 232 240) !important;
-        cursor: pointer !important;
-        border-radius: 8px !important;
-        font-size: 12px !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        backdrop-filter: blur(8px) !important;
-        box-shadow: 
-          0 1px 3px rgba(0, 0, 0, 0.12),
-          0 1px 2px rgba(0, 0, 0, 0.24),
-          inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-        overflow: hidden !important;
-        -webkit-app-region: no-drag !important;
-        min-height: auto !important;
-        width: auto !important;
-        height: auto !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn::before {
-        content: '' !important;
-        position: absolute !important;
-        top: 0 !important;
-        left: -100% !important;
-        width: 100% !important;
-        height: 100% !important;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent) !important;
-        transition: left 0.6s !important;
-        z-index: 0 !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn:hover {
-        background: linear-gradient(135deg, rgb(55 65 81) 0%, rgb(75 85 99) 100%) !important;
-        border-color: rgb(96 165 250) !important;
-        color: rgb(248 250 252) !important;
-        transform: translateY(-2px) scale(1.02) !important;
-        box-shadow: 
-          0 4px 20px rgba(59, 130, 246, 0.25),
-          0 2px 8px rgba(0, 0, 0, 0.2),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn:hover::before {
-        left: 100% !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn:active {
-        transform: translateY(0) scale(0.98) !important;
-        transition: all 0.1s !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn.active {
-        background: linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%) !important;
-        border-color: rgb(59 130 246) !important;
-        color: white !important;
-        box-shadow: 
-          0 4px 20px rgba(59, 130, 246, 0.4),
-          0 2px 8px rgba(59, 130, 246, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.1) !important;
-        transform: translateY(-1px) !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn.active::before {
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn.active:hover {
-        background: linear-gradient(135deg, rgb(79 70 229) 0%, rgb(59 130 246) 100%) !important;
-        transform: translateY(-2px) scale(1.02) !important;
-        box-shadow: 
-          0 6px 25px rgba(79, 70, 229, 0.5),
-          0 3px 12px rgba(59, 130, 246, 0.4),
-          inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
-      }
-      
-      /* Button Icons */
-      html body div#root .header-area .panel-toggle-btn[onclick*="toggleTerminal"]::after {
-        content: '⚡' !important;
-        font-size: 14px !important;
-        margin-left: 4px !important;
-        position: relative !important;
-        z-index: 1 !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn[onclick*="toggleAIChat"]::after {
-        content: '🤖' !important;
-        font-size: 14px !important;
-        margin-left: 4px !important;
-        position: relative !important;
-        z-index: 1 !important;
-      }
-      
-      html body div#root .header-area .panel-toggle-btn[onclick*="resetLayout"]::after {
-        content: '🔄' !important;
-        font-size: 14px !important;
-        margin-left: 4px !important;
-        position: relative !important;
-        z-index: 1 !important;
-      }
-      
-      .terminal-controls {
-        opacity: 0;
-        transition: opacity 0.2s ease;
-      }
-      
-      .terminal-section:hover .terminal-controls,
-      .terminal-controls:hover {
-        opacity: 1;
-      }
-      
-      .terminal-tabs {
+
+      /* File Tree Styles */
+      .file-tree-wrapper {
         display: flex;
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .file-item {
+        display: block;
+        width: 100%;
+        border-radius: 4px;
+        margin-bottom: 1px;
+        transition: background-color 0.15s;
+      }
+
+      .file-item:hover {
+        background-color: rgba(55, 65, 81, 0.6);
+      }
+
+      .expansion-arrow {
+        font-size: 10px;
+        display: inline-flex;
         align-items: center;
-        gap: 4px;
-        flex: 1;
-        overflow-x: auto;
-        overflow-y: hidden;
+        justify-content: center;
+        width: 12px;
+        height: 12px;
+        user-select: none;
       }
-      
-      @media (max-width: 1200px) {
-        :root {
-          --sidebar-width: 250px;
-        }
-      }
-      
-      @media (max-width: 900px) {
-        :root {
-          --sidebar-width: 200px;
-          --chat-width: 0px;
-        }
-      }
-      
-      @media (max-width: 768px) {
-        :root {
-          --sidebar-width: 180px;
-        }
+
+      .file-name {
+        font-size: 13px;
+        line-height: 1.2;
       }
     `;
+    
     document.head.appendChild(style);
   }
 
@@ -654,22 +494,18 @@ export class LayoutManager {
         <div class="ide-container">
           <!-- Header -->
           <div class="header-area">
-            <div class="flex items-center gap-2">
-              <div class="text-sm font-semibold text-gray-300">LookOverlay IDE</div>
+            <div class="flex items-center">
+              <span class="text-lg font-bold text-gray-200">LookOverlay IDE</span>
             </div>
             
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-3">
               <button 
-                id="terminal-toggle-btn" 
-                class="${this.state.terminalVisible ? 'active' : ''}"
                 onclick="window.layoutManager?.toggleTerminal()"
                 style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
-                Terminal ⚡
+                Terminal 💻
               </button>
               <button 
-                id="chat-toggle-btn" 
-                class="${this.state.aiChatVisible ? 'active' : ''}"
                 onclick="window.layoutManager?.toggleAIChat()"
                 style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
@@ -684,100 +520,97 @@ export class LayoutManager {
             </div>
           </div>
 
-          <!-- Sidebar -->
-          <div class="sidebar-area">
-            <div class="sidebar-header">
-              Explorer
-            </div>
-            <div class="sidebar-content" id="file-tree">
-              <!-- File tree content will be populated here -->
-            </div>
-          </div>
-
-          <!-- Sidebar Handle -->
-          <div class="handle-sidebar" data-panel="sidebar"></div>
-
-          <!-- Main Content -->
-          <div class="main-area">
-            <div class="main-content">
-              <!-- Tab Bar -->
-              <div class="tab-bar">
-                <!-- Tabs will be populated here -->
+          <!-- Content Area (Sidebar + Main + Chat) -->
+          <div class="content-area">
+            <!-- Sidebar -->
+            <div class="sidebar-area">
+              <div class="sidebar-header">
+                Explorer
               </div>
-
-              <!-- Editor -->
-              <div class="editor-wrapper" id="editor-wrapper">
-                <div id="editor-container" class="w-full h-full"></div>
+              <div class="sidebar-content" id="file-tree">
+                <!-- File tree content will be populated here -->
               </div>
             </div>
 
-            <!-- Terminal Section -->
-            <div class="terminal-section">
-              <!-- Terminal Header -->
-              <div class="terminal-header">
-                <div class="terminal-tabs">
-                  <!-- Terminal tabs will be populated here -->
+            <!-- Sidebar Handle -->
+            <div class="handle-sidebar" data-panel="sidebar"></div>
+
+            <!-- Main Content -->
+            <div class="main-area">
+              <div class="main-content">
+                <!-- Tab Bar -->
+                <div class="tab-bar">
+                  <!-- Tabs will be populated here -->
+                </div>
+
+                <!-- Editor -->
+                <div class="editor-wrapper" id="editor-wrapper">
+                  <div id="editor-container" class="w-full h-full"></div>
+                </div>
+              </div>
+
+              <!-- Terminal Section -->
+              <div class="terminal-section">
+                <div class="terminal-header">
+                  <div class="terminal-tabs">
+                    <!-- Terminal tabs will be populated here -->
+                  </div>
+                  
+                  <div class="flex items-center gap-1 terminal-controls">
+                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                            onclick="window.layoutManager?.toggleTerminalCollapse()" 
+                            title="Collapse/Expand">
+                      ${this.terminalCollapsed ? '▲' : '▼'}
+                    </button>
+                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                            onclick="window.layoutManager?.maximizeTerminal()" 
+                            title="Maximize">
+                      ⛶
+                    </button>
+                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                            onclick="window.layoutManager?.hideTerminal()" 
+                            title="Close">
+                      ×
+                    </button>
+                  </div>
                 </div>
                 
-                <div class="flex items-center gap-1 terminal-controls">
-                  <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
-                          onclick="window.layoutManager?.toggleTerminalCollapse()" 
-                          title="Collapse/Expand">
-                    ${this.terminalCollapsed ? '▲' : '▼'}
+                <!-- Terminal Content -->
+                <div class="terminal-output">
+                  <!-- Terminal content will be populated here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat Handle -->
+            <div class="handle-chat" data-panel="ai-chat"></div>
+
+            <!-- Chat Panel -->
+            <div class="chat-area">
+              <div class="chat-header">
+                <div class="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                  <span>🤖</span>
+                  AI Assistant
+                </div>
+                <div class="flex gap-1">
+                  <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
+                          onclick="window.layoutManager?.clearAIChat()">
+                    Clear
                   </button>
-                  <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
-                          onclick="window.layoutManager?.maximizeTerminal()" 
-                          title="Maximize">
-                    ⛶
-                  </button>
-                  <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
-                          onclick="window.layoutManager?.hideTerminal()" 
-                          title="Close">
+                  <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
+                          onclick="window.layoutManager?.hideAIChat()">
                     ×
                   </button>
                 </div>
               </div>
               
-              <!-- Terminal Resize Handle -->
-              <div class="terminal-resize-handle" data-panel="terminal"></div>
-              
-              <!-- Terminal Content -->
-              <div class="terminal-output">
-                <!-- Terminal content will be populated here -->
+              <div class="chat-content" id="ai-chat-content">
+                <div class="text-sm text-gray-400">
+                  AI Assistant is ready to help!
+                </div>
               </div>
             </div>
           </div>
-
-          ${this.state.aiChatVisible ? `
-          <!-- Chat Handle -->
-          <div class="handle-chat" data-panel="ai-chat"></div>
-
-          <!-- Chat Panel -->
-          <div class="chat-area">
-            <div class="chat-header">
-              <div class="flex items-center gap-2 text-sm font-semibold text-gray-300">
-                <span>🤖</span>
-                AI Assistant
-              </div>
-              <div class="flex gap-1">
-                <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
-                        onclick="window.layoutManager?.clearAIChat()">
-                  Clear
-                </button>
-                <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
-                        onclick="window.layoutManager?.hideAIChat()">
-                  ×
-                </button>
-              </div>
-            </div>
-            
-            <div class="chat-content" id="ai-chat-content">
-              <div class="text-sm text-gray-400">
-                AI Assistant is ready to help!
-              </div>
-            </div>
-          </div>
-          ` : ''}
 
           <!-- Status Bar -->
           <div class="status-area">
@@ -938,41 +771,21 @@ export class LayoutManager {
     const root = document.querySelector('.ide-container') as HTMLElement;
     if (root) {
       document.documentElement.style.setProperty('--sidebar-width', `${this.panelSizes.sidebarWidth}px`);
-      document.documentElement.style.setProperty('--chat-width', this.state.aiChatVisible ? `${this.panelSizes.aiChatWidth}px` : '0px');
+      document.documentElement.style.setProperty('--chat-width', `${this.panelSizes.aiChatWidth}px`);
     }
     this.triggerEditorResize();
   }
 
-  private updatePanelVisibility(): void {
-    const terminalSection = document.querySelector('.terminal-section') as HTMLElement;
-    if (terminalSection) {
-      terminalSection.style.display = this.state.terminalVisible ? 'flex' : 'none';
-      
-      const height = this.state.terminalVisible ? 
-        (this.terminalCollapsed ? '32px' : `${this.panelSizes.terminalHeight}px`) : '0px';
-      terminalSection.style.height = height;
-      
-      const resizeHandle = terminalSection.querySelector('.terminal-resize-handle') as HTMLElement;
-      const output = terminalSection.querySelector('.terminal-output') as HTMLElement;
-      const header = terminalSection.querySelector('.terminal-header') as HTMLElement;
-      
-      if (resizeHandle) {
-        resizeHandle.style.display = this.terminalCollapsed ? 'none' : 'block';
-      }
-      if (output) {
-        output.style.display = this.terminalCollapsed ? 'none' : 'block';
-      }
-      if (header) {
-        header.style.borderBottom = this.terminalCollapsed ? 'none' : '1px solid rgb(75 85 99)';
-      }
-    }
+  public updatePanelVisibility(): void {
+    if (!this.isInitialized) return;
 
-    if (this.needsLayoutRebuild()) {
-      this.rebuildLayout();
-    }
+    // Just update the CSS custom properties
+    const root = document.documentElement;
+    root.style.setProperty('--sidebar-width', `${this.panelSizes.sidebarWidth}px`);
+    root.style.setProperty('--chat-width', `${this.panelSizes.aiChatWidth}px`);
 
     this.updateButtonStates();
-    this.updatePanelSizes();
+    this.triggerEditorResize();
   }
 
   private needsLayoutRebuild(): boolean {
@@ -1083,7 +896,7 @@ export class LayoutManager {
       this.panelSizes.terminalHeight = 250;
     }
     
-    this.updatePanelVisibility();
+    this.injectLayoutStyles(); // Re-inject styles with new state
     console.log('Terminal toggled:', this.state.terminalVisible);
   }
 
@@ -1095,28 +908,33 @@ export class LayoutManager {
       this.panelSizes.terminalHeight = 250;
     }
     
-    this.updatePanelVisibility();
+    // Rebuild the layout to apply the new CSS
+    this.rebuildLayout();
   }
 
   hideTerminal(): void {
     this.state.terminalVisible = false;
-    this.updatePanelVisibility();
+    // Rebuild the layout to apply the new CSS
+    this.rebuildLayout();
   }
 
   toggleAIChat(): void {
     this.state.aiChatVisible = !this.state.aiChatVisible;
-    this.updatePanelVisibility();
+    
+    this.injectLayoutStyles(); // Re-inject styles with new state
     console.log('AI Chat toggled:', this.state.aiChatVisible);
   }
 
   showAIChat(): void {
     this.state.aiChatVisible = true;
-    this.updatePanelVisibility();
+    // Rebuild the layout to apply the new CSS
+    this.rebuildLayout();
   }
 
   hideAIChat(): void {
     this.state.aiChatVisible = false;
-    this.updatePanelVisibility();
+    // Rebuild the layout to apply the new CSS
+    this.rebuildLayout();
   }
 
   toggleTerminalCollapse(): void {
@@ -1146,7 +964,8 @@ export class LayoutManager {
       aiChatWidth: 350
     };
     this.terminalCollapsed = false;
-    this.updatePanelVisibility();
+    // Rebuild the layout to apply the new CSS
+    this.rebuildLayout();
   }
 
   clearAIChat(): void {

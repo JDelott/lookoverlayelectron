@@ -2,6 +2,7 @@ import { FileItem } from '../types';
 
 export class FileSystemManager {
   private electronAPI: any;
+  private fileTree: FileItem[] = []; // Store the file tree state
 
   constructor() {
     this.electronAPI = (window as any).electronAPI;
@@ -14,12 +15,25 @@ export class FileSystemManager {
         return [];
       }
       
-      const result = await this.electronAPI.getDirectoryContents();
-      return result || [];
+      // Only load root if we don't have a file tree yet
+      if (this.fileTree.length === 0) {
+        const result = await this.electronAPI.getDirectoryContents();
+        this.fileTree = this.processFileItems(result || []);
+      }
+      
+      return this.fileTree;
     } catch (error) {
       console.error('Failed to load file system:', error);
       return [];
     }
+  }
+
+  private processFileItems(items: any[]): FileItem[] {
+    return items.map(item => ({
+      ...item,
+      isExpanded: false,
+      children: []
+    }));
   }
 
   async readFile(filePath: string): Promise<string> {
@@ -126,16 +140,42 @@ export class FileSystemManager {
         return;
       }
 
+      console.log('🔧 Toggling directory:', item.name, 'currently expanded:', item.isExpanded);
+
       if (item.isExpanded) {
+        // Collapse: just hide children
         item.isExpanded = false;
         item.children = [];
+        console.log('📁 Collapsed directory:', item.name);
       } else {
+        // Expand: load children
+        console.log('🔧 Loading children for:', item.path);
         const children = await this.electronAPI.getDirectoryContents(item.path);
-        item.children = children || [];
+        item.children = this.processFileItems(children || []);
         item.isExpanded = true;
+        console.log('📁 Expanded directory:', item.name, 'with', item.children.length, 'children');
       }
     } catch (error) {
       console.error('Failed to toggle directory:', error);
     }
+  }
+
+  // Helper method to find an item in the tree by path
+  private findItemByPath(items: FileItem[], path: string): FileItem | null {
+    for (const item of items) {
+      if (item.path === path) {
+        return item;
+      }
+      if (item.children && item.children.length > 0) {
+        const found = this.findItemByPath(item.children, path);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  // Get the current file tree state
+  getFileTree(): FileItem[] {
+    return this.fileTree;
   }
 }

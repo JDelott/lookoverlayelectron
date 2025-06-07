@@ -120,13 +120,34 @@ class RendererApp {
 
   private renderFileTree(files: any[]): void {
     const fileTreeContainer = document.getElementById('file-tree');
-    if (!fileTreeContainer) return;
+    if (!fileTreeContainer) {
+      console.error('File tree container not found');
+      return;
+    }
 
     fileTreeContainer.innerHTML = '';
     
-    files.forEach(file => {
-      const fileElement = this.createFileElement(file, 0);
-      fileTreeContainer.appendChild(fileElement);
+    // Create a wrapper for the entire tree
+    const treeWrapper = document.createElement('div');
+    treeWrapper.className = 'file-tree-wrapper';
+    
+    this.renderFileItems(files, treeWrapper, 0);
+    
+    fileTreeContainer.appendChild(treeWrapper);
+    
+    console.log('✅ File tree rendered with', files.length, 'items');
+  }
+
+  private renderFileItems(items: any[], container: HTMLElement, depth: number): void {
+    items.forEach(item => {
+      // Create the file/folder item
+      const itemElement = this.createFileElement(item, depth);
+      container.appendChild(itemElement);
+      
+      // If it's an expanded directory with children, render them underneath
+      if (item.type === 'directory' && item.isExpanded && item.children && item.children.length > 0) {
+        this.renderFileItems(item.children, container, depth + 1);
+      }
     });
   }
 
@@ -136,25 +157,40 @@ class RendererApp {
     const isDirectory = item.type === 'directory';
     const icon = isDirectory ? '📁' : this.fileSystem.getFileIcon(item.name.split('.').pop() || '');
     
-    element.className = `file-item`;
+    element.className = `file-item cursor-pointer hover:bg-gray-700 px-2 py-1 text-sm text-gray-300 w-full`;
     element.style.paddingLeft = `${depth * 16 + 8}px`;
     
     element.innerHTML = `
-      ${isDirectory ? '<span class="expansion-arrow">▶</span>' : '<span class="mr-2"></span>'}
-      <span class="mr-2">${icon}</span>
-      <span class="file-name">${item.name}</span>
+      <div class="flex items-center w-full">
+        ${isDirectory ? `<span class="expansion-arrow mr-1 text-gray-400 w-3">${item.isExpanded ? '▼' : '▶'}</span>` : '<span class="mr-4 w-3"></span>'}
+        <span class="mr-2 flex-shrink-0">${icon}</span>
+        <span class="file-name flex-1 truncate">${item.name}</span>
+      </div>
     `;
 
-    if (isDirectory) {
-      element.onclick = async () => {
-        await this.fileSystem.toggleDirectory(item);
-        this.renderFileTree(await this.fileSystem.loadFileSystem());
-      };
-    } else {
-      element.onclick = () => {
-        this.tabManager.openFile(item.path);
-      };
-    }
+    // Add click handler
+    element.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      
+      if (isDirectory) {
+        console.log('📁 Clicking directory:', item.name);
+        try {
+          await this.fileSystem.toggleDirectory(item);
+          // Just re-render the file tree - don't touch layout
+          const updatedFiles = this.fileSystem.getFileTree();
+          this.renderFileTree(updatedFiles);
+        } catch (error) {
+          console.error('Error toggling directory:', error);
+        }
+      } else {
+        console.log('📄 Clicking file:', item.name);
+        try {
+          await this.tabManager.openFile(item.path);
+        } catch (error) {
+          console.error('Error opening file:', error);
+        }
+      }
+    });
 
     return element;
   }
