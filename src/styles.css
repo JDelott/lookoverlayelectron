@@ -326,20 +326,6 @@ body {
   margin-right: 5px;
 }
 
-button {
-  background-color: #4a90e2;
-  color: white;
-  border: none;
-  border-radius: 3px;
-  padding: 8px 12px;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-button:hover {
-  background-color: #3a80d2;
-}
-
 .controls {
   display: flex;
   gap: 5px;

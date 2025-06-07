@@ -368,7 +368,12 @@ ipcMain.handle('get-screen-info', async () => {
 
 // Get current working directory
 ipcMain.handle('get-current-directory', async () => {
-  return process.cwd();
+  try {
+    return process.cwd();
+  } catch (error) {
+    console.error('Error getting current directory:', error);
+    return null;
+  }
 });
 
 // Open external URLs

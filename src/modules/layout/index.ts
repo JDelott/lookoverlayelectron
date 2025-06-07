@@ -26,12 +26,19 @@ export class LayoutManager {
     const root = document.getElementById('root');
     if (!root) return;
 
+    // If showProjectSelector is true, show project selector instead of main layout
+    if (this.state.showProjectSelector) {
+      this.createProjectSelector();
+      return;
+    }
+
     root.className = 'w-full h-screen bg-gray-900 text-gray-300 overflow-hidden p-2';
     root.innerHTML = this.getLayoutHTML();
     
     this.injectLayoutStyles();
     this.setupResizeHandlers();
     this.setupViewportObserver();
+    this.setupButtonInteractions();
     this.isInitialized = true;
     this.updatePanelVisibility();
   }
@@ -55,6 +62,174 @@ export class LayoutManager {
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
         --chat-width: ${this.state.aiChatVisible ? this.panelSizes.aiChatWidth + 'px' : '0px'};
+      }
+
+      /* Project Selector Styles */
+      .project-selector-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+      }
+
+      .project-selector-modal {
+        background-color: #252526;
+        border-radius: 8px;
+        width: 600px;
+        max-width: 90vw;
+        max-height: 80vh;
+        overflow: hidden;
+        border: 1px solid #3c3c3c;
+      }
+
+      .project-selector-header {
+        background-color: #2d2d30;
+        padding: 16px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #3c3c3c;
+      }
+
+      .project-selector-header h2 {
+        margin: 0;
+        color: #cccccc;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .close-button {
+        background: transparent;
+        border: none;
+        color: #cccccc;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+      }
+
+      .close-button:hover {
+        color: #ffffff;
+      }
+
+      .project-selector-content {
+        padding: 20px;
+      }
+
+      .project-actions {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .project-action-btn {
+        flex: 1;
+        padding: 12px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s;
+      }
+
+      .project-action-btn.primary {
+        background-color: #0e639c;
+        color: white;
+      }
+
+      .project-action-btn.primary:hover {
+        background-color: #1177bb;
+      }
+
+      .project-action-btn.secondary {
+        background-color: #3c3c3c;
+        color: #cccccc;
+        border: 1px solid #555;
+      }
+
+      .project-action-btn.secondary:hover {
+        background-color: #4c4c4c;
+      }
+
+      .recent-projects h3 {
+        margin: 0 0 16px 0;
+        color: #cccccc;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .project-list {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .project-item {
+        background-color: #1e1e1e;
+        border: 1px solid #3c3c3c;
+        border-radius: 6px;
+        padding: 16px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .project-item:hover {
+        background-color: #2d2d30;
+        border-color: #0e639c;
+      }
+
+      .project-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+        margin-bottom: 4px;
+      }
+
+      .project-path {
+        font-size: 13px;
+        color: #569cd6;
+        margin-bottom: 4px;
+        font-family: 'Consolas', monospace;
+      }
+
+      .project-last-opened {
+        font-size: 12px;
+        color: #888;
+      }
+
+      .loading,
+      .no-recent-projects {
+        text-align: center;
+        color: #888;
+        padding: 20px;
+      }
+
+      .no-recent-projects p {
+        margin: 0;
+      }
+
+      /* Scrollbar styles */
+      .project-list::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .project-list::-webkit-scrollbar-track {
+        background: #252526;
+      }
+
+      .project-list::-webkit-scrollbar-thumb {
+        background: #424242;
+        border-radius: 4px;
+      }
+
+      .project-list::-webkit-scrollbar-thumb:hover {
+        background: #555;
       }
 
       #root {
@@ -320,27 +495,116 @@ export class LayoutManager {
         min-height: var(--status-height);
       }
       
-      .panel-toggle-btn {
-        transition: all 0.2s ease;
-        background: rgb(31 41 55);
-        border: 1px solid rgb(75 85 99);
-        color: rgb(209 213 219);
-        cursor: pointer;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: 500;
+      /* Panel Toggle Buttons - MAXIMUM SPECIFICITY TO OVERRIDE TAILWIND */
+      html body div#root .header-area .panel-toggle-btn {
+        position: relative !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        padding: 8px 16px !important;
+        margin: 0 !important;
+        background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%) !important;
+        border: 1px solid rgb(75 85 99) !important;
+        color: rgb(226 232 240) !important;
+        cursor: pointer !important;
+        border-radius: 8px !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        backdrop-filter: blur(8px) !important;
+        box-shadow: 
+          0 1px 3px rgba(0, 0, 0, 0.12),
+          0 1px 2px rgba(0, 0, 0, 0.24),
+          inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+        overflow: hidden !important;
+        -webkit-app-region: no-drag !important;
+        min-height: auto !important;
+        width: auto !important;
+        height: auto !important;
       }
       
-      .panel-toggle-btn:hover {
-        background: rgb(75 85 99);
-        transform: translateY(-1px);
+      html body div#root .header-area .panel-toggle-btn::before {
+        content: '' !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: -100% !important;
+        width: 100% !important;
+        height: 100% !important;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent) !important;
+        transition: left 0.6s !important;
+        z-index: 0 !important;
       }
       
-      .panel-toggle-btn.active {
-        background: rgb(59 130 246);
-        border-color: rgb(59 130 246);
-        color: white;
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+      html body div#root .header-area .panel-toggle-btn:hover {
+        background: linear-gradient(135deg, rgb(55 65 81) 0%, rgb(75 85 99) 100%) !important;
+        border-color: rgb(96 165 250) !important;
+        color: rgb(248 250 252) !important;
+        transform: translateY(-2px) scale(1.02) !important;
+        box-shadow: 
+          0 4px 20px rgba(59, 130, 246, 0.25),
+          0 2px 8px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn:hover::before {
+        left: 100% !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn:active {
+        transform: translateY(0) scale(0.98) !important;
+        transition: all 0.1s !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn.active {
+        background: linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%) !important;
+        border-color: rgb(59 130 246) !important;
+        color: white !important;
+        box-shadow: 
+          0 4px 20px rgba(59, 130, 246, 0.4),
+          0 2px 8px rgba(59, 130, 246, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.1) !important;
+        transform: translateY(-1px) !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn.active::before {
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn.active:hover {
+        background: linear-gradient(135deg, rgb(79 70 229) 0%, rgb(59 130 246) 100%) !important;
+        transform: translateY(-2px) scale(1.02) !important;
+        box-shadow: 
+          0 6px 25px rgba(79, 70, 229, 0.5),
+          0 3px 12px rgba(59, 130, 246, 0.4),
+          inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+      }
+      
+      /* Button Icons */
+      html body div#root .header-area .panel-toggle-btn[onclick*="toggleTerminal"]::after {
+        content: '⚡' !important;
+        font-size: 14px !important;
+        margin-left: 4px !important;
+        position: relative !important;
+        z-index: 1 !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn[onclick*="toggleAIChat"]::after {
+        content: '🤖' !important;
+        font-size: 14px !important;
+        margin-left: 4px !important;
+        position: relative !important;
+        z-index: 1 !important;
+      }
+      
+      html body div#root .header-area .panel-toggle-btn[onclick*="resetLayout"]::after {
+        content: '🔄' !important;
+        font-size: 14px !important;
+        margin-left: 4px !important;
+        position: relative !important;
+        z-index: 1 !important;
       }
       
       .terminal-controls {
@@ -397,23 +661,25 @@ export class LayoutManager {
             <div class="flex items-center gap-2">
               <button 
                 id="terminal-toggle-btn" 
-                class="panel-toggle-btn px-3 py-1 text-xs rounded ${this.state.terminalVisible ? 'active' : ''}"
+                class="${this.state.terminalVisible ? 'active' : ''}"
                 onclick="window.layoutManager?.toggleTerminal()"
+                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
-                Terminal
+                Terminal ⚡
               </button>
               <button 
                 id="chat-toggle-btn" 
-                class="panel-toggle-btn px-3 py-1 text-xs rounded ${this.state.aiChatVisible ? 'active' : ''}"
+                class="${this.state.aiChatVisible ? 'active' : ''}"
                 onclick="window.layoutManager?.toggleAIChat()"
+                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
-                AI Chat
+                AI Chat 🤖
               </button>
               <button 
-                class="panel-toggle-btn px-3 py-1 text-xs rounded"
                 onclick="window.layoutManager?.resetLayout()"
+                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
-                Reset
+                Reset 🔄
               </button>
             </div>
           </div>
@@ -763,10 +1029,39 @@ export class LayoutManager {
     const chatBtn = document.getElementById('chat-toggle-btn');
     
     if (terminalBtn) {
-      terminalBtn.classList.toggle('active', this.state.terminalVisible);
+      if (this.state.terminalVisible) {
+        terminalBtn.classList.add('active');
+        terminalBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
+        terminalBtn.style.borderColor = 'rgb(59 130 246)';
+        terminalBtn.style.color = 'white';
+        terminalBtn.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.1)';
+        terminalBtn.style.transform = 'translateY(-1px)';
+      } else {
+        terminalBtn.classList.remove('active');
+        terminalBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
+        terminalBtn.style.borderColor = 'rgb(75 85 99)';
+        terminalBtn.style.color = 'rgb(226 232 240)';
+        terminalBtn.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+        terminalBtn.style.transform = 'none';
+      }
     }
+    
     if (chatBtn) {
-      chatBtn.classList.toggle('active', this.state.aiChatVisible);
+      if (this.state.aiChatVisible) {
+        chatBtn.classList.add('active');
+        chatBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
+        chatBtn.style.borderColor = 'rgb(59 130 246)';
+        chatBtn.style.color = 'white';
+        chatBtn.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.1)';
+        chatBtn.style.transform = 'translateY(-1px)';
+      } else {
+        chatBtn.classList.remove('active');
+        chatBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
+        chatBtn.style.borderColor = 'rgb(75 85 99)';
+        chatBtn.style.color = 'rgb(226 232 240)';
+        chatBtn.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+        chatBtn.style.transform = 'none';
+      }
     }
   }
 
@@ -871,5 +1166,235 @@ export class LayoutManager {
       this.resizeObserver = null;
     }
     delete (window as any).layoutManager;
+  }
+
+  private setupButtonInteractions(): void {
+    const terminalBtn = document.getElementById('terminal-toggle-btn');
+    const chatBtn = document.getElementById('chat-toggle-btn');
+    
+    if (terminalBtn) {
+      this.setupButtonHoverEffects(terminalBtn);
+    }
+    if (chatBtn) {
+      this.setupButtonHoverEffects(chatBtn);
+    }
+    
+    // Setup reset button hover effects
+    const resetBtn = document.querySelector('[onclick*="resetLayout"]') as HTMLElement;
+    if (resetBtn) {
+      this.setupButtonHoverEffects(resetBtn);
+    }
+  }
+
+  private setupButtonHoverEffects(button: HTMLElement): void {
+    const originalStyle = button.style.cssText;
+    
+    button.addEventListener('mouseenter', () => {
+      button.style.background = 'linear-gradient(135deg, rgb(55 65 81) 0%, rgb(75 85 99) 100%)';
+      button.style.borderColor = 'rgb(96 165 250)';
+      button.style.color = 'rgb(248 250 252)';
+      button.style.transform = 'translateY(-2px) scale(1.02)';
+      button.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+      if (!button.classList.contains('active')) {
+        button.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
+        button.style.borderColor = 'rgb(75 85 99)';
+        button.style.color = 'rgb(226 232 240)';
+        button.style.transform = 'none';
+        button.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+      }
+    });
+    
+    button.addEventListener('mousedown', () => {
+      button.style.transform = 'translateY(0) scale(0.98)';
+    });
+    
+    button.addEventListener('mouseup', () => {
+      if (button.matches(':hover')) {
+        button.style.transform = 'translateY(-2px) scale(1.02)';
+      } else {
+        button.style.transform = 'none';
+      }
+    });
+  }
+
+  private createProjectSelector(): void {
+    const root = document.getElementById('root');
+    if (!root) return;
+
+    // Inject styles first
+    this.injectLayoutStyles();
+
+    root.innerHTML = `
+      <div class="project-selector-overlay">
+        <div class="project-selector-modal">
+          <div class="project-selector-header">
+            <h2>Select Project</h2>
+            <button class="close-button" onclick="window.layoutManager?.hideProjectSelector()">✕</button>
+          </div>
+          
+          <div class="project-selector-content">
+            <div class="project-actions">
+              <button 
+                class="project-action-btn primary"
+                onclick="window.layoutManager?.browseForProject()"
+              >
+                📁 Browse for Project
+              </button>
+              <button 
+                class="project-action-btn secondary"
+                onclick="window.layoutManager?.useCurrentDirectory()"
+              >
+                📂 Use Current Directory
+              </button>
+            </div>
+
+            <div id="recent-projects-section">
+              <div class="loading">Loading recent projects...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.loadRecentProjects();
+  }
+
+  private async loadRecentProjects(): Promise<void> {
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) return;
+
+      const projects = await electronAPI.getRecentProjects();
+      const section = document.getElementById('recent-projects-section');
+      if (!section) return;
+
+      if (projects.length > 0) {
+        section.innerHTML = `
+          <div class="recent-projects">
+            <h3>Recent Projects</h3>
+            <div class="project-list">
+              ${projects.map((project: any, index: number) => `
+                <div class="project-item" onclick="window.layoutManager?.selectProject('${project.path}')">
+                  <div class="project-info">
+                    <div class="project-name">${project.name}</div>
+                    <div class="project-path">${project.path}</div>
+                    <div class="project-last-opened">
+                      Last opened: ${new Date(project.lastOpened).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        section.innerHTML = `
+          <div class="no-recent-projects">
+            <p>No recent projects found. Use the buttons above to select a project.</p>
+          </div>
+        `;
+      }
+    } catch (error) {
+      console.error('Error loading recent projects:', error);
+      const section = document.getElementById('recent-projects-section');
+      if (section) {
+        section.innerHTML = `
+          <div class="no-recent-projects">
+            <p>No recent projects found. Use the buttons above to select a project.</p>
+          </div>
+        `;
+      }
+    }
+  }
+
+  async browseForProject(): Promise<void> {
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) return;
+
+      const selectedPath = await electronAPI.selectProjectDirectory();
+      if (selectedPath) {
+        await this.selectProject(selectedPath);
+      }
+    } catch (error) {
+      console.error('Error browsing for project:', error);
+    }
+  }
+
+  async useCurrentDirectory(): Promise<void> {
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) return;
+
+      const currentDir = await electronAPI.getCurrentDirectory();
+      if (currentDir) {
+        await this.selectProject(currentDir);
+      }
+    } catch (error) {
+      console.error('Error getting current directory:', error);
+    }
+  }
+
+  async selectProject(projectPath: string): Promise<void> {
+    try {
+      console.log('🔧 selectProject called with:', projectPath);
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) {
+        console.error('❌ ElectronAPI not available');
+        return;
+      }
+
+      // Set the current directory
+      const result = await electronAPI.setCurrentDirectory(projectPath);
+      if (result.success) {
+        // Save to recent projects
+        await electronAPI.saveRecentProject(projectPath);
+        
+        // Update state
+        this.state.currentWorkingDirectory = projectPath;
+        this.state.showProjectSelector = false;
+        
+        console.log('🔧 Creating main layout...');
+        // Create the main layout
+        this.createLayout();
+        
+        // Check if app is available
+        const app = (window as any).app;
+        console.log('🔧 Window.app available:', !!app);
+        
+        if (app) {
+          console.log('🔧 Triggering full app initialization after project selection...');
+          try {
+            await app.initializeModules();
+            console.log('✅ Modules initialized successfully');
+          } catch (error) {
+            console.error('❌ Error initializing modules:', error);
+          }
+        } else {
+          console.error('❌ App not found on window object');
+        }
+        
+        console.log('Project selected:', projectPath);
+      } else {
+        console.error('Failed to set project directory:', result.error);
+        alert('Failed to set project directory: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error selecting project:', error);
+      alert('Error selecting project: ' + error);
+    }
+  }
+
+  hideProjectSelector(): void {
+    this.state.showProjectSelector = false;
+    this.createLayout();
+  }
+
+  showProjectSelector(): void {
+    this.state.showProjectSelector = true;
+    this.createProjectSelector();
   }
 }

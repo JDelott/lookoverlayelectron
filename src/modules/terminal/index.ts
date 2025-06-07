@@ -2,11 +2,11 @@ import { Terminal, AppState } from '../types';
 
 export class TerminalManager {
   private state: AppState;
-  private ipcRenderer: any;
+  private electronAPI: any;
 
   constructor(state: AppState) {
     this.state = state;
-    this.ipcRenderer = (window as any).electronAPI || (window as any).require?.('electron').ipcRenderer;
+    this.electronAPI = (window as any).electronAPI;
   }
 
   initialize(): void {
@@ -24,7 +24,7 @@ export class TerminalManager {
       isActive: true,
       runningProcesses: new Set(),
       currentProcess: '',
-      shell: this.detectShell()
+      shell: this.getDefaultShell() // Use a simple default instead of detecting
     };
 
     this.state.terminals.set(terminalId, terminal);
@@ -36,82 +36,126 @@ export class TerminalManager {
     return terminalId;
   }
 
-  private async initializeTerminalSession(terminalId: string): Promise<void> {
-    try {
-      await this.ipcRenderer.invoke('start-terminal', terminalId, this.state.currentWorkingDirectory);
-      this.writeToTerminal(`Welcome to terminal ${terminalId}\n`);
-      this.writeToTerminal(`Working directory: ${this.state.currentWorkingDirectory}\n`);
-      this.writeToTerminal('$ ');
-    } catch (error) {
-      console.error('Failed to initialize terminal session:', error);
+  private getDefaultShell(): string {
+    // Simple default shell detection without using process
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.includes('win')) {
+      return 'cmd.exe';
+    } else if (userAgent.includes('mac')) {
+      return '/bin/zsh';
+    } else {
+      return '/bin/bash';
     }
+  }
+
+  private initializeTerminalSession(terminalId: string): void {
+    const terminal = this.state.terminals.get(terminalId);
+    if (!terminal) return;
+
+    const welcomeMessage = `Welcome to Terminal ${terminal.name}\nWorking directory: ${terminal.workingDirectory}\n\n`;
+    terminal.output += welcomeMessage;
+    terminal.history.push(welcomeMessage);
+    
+    this.updateTerminalDisplay();
+    console.log(`Terminal ${terminalId} initialized`);
   }
 
   async executeCommand(command: string): Promise<void> {
-    if (!this.state.activeTerminalId) return;
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (!activeTerminal) return;
 
-    const terminal = this.state.terminals.get(this.state.activeTerminalId);
-    if (!terminal) return;
-
-    terminal.history.push(command);
-    this.writeToTerminal(`${command}\n`);
+    // Add command to output
+    activeTerminal.output += `$ ${command}\n`;
+    activeTerminal.history.push(command);
 
     try {
-      if (command.trim().startsWith('cd ')) {
-        await this.handleCdCommand(command.trim().split(' ').slice(1));
+      if (this.electronAPI) {
+        const result = await this.electronAPI.executeCommand(command, activeTerminal.workingDirectory);
+        
+        if (result.success) {
+          activeTerminal.output += result.output + '\n';
+          // Update working directory if it changed
+          if (result.workingDir) {
+            activeTerminal.workingDirectory = result.workingDir;
+          }
+        } else {
+          activeTerminal.output += `Error: ${result.output}\n`;
+        }
       } else {
-        await this.ipcRenderer.invoke('execute-command', this.state.activeTerminalId, command);
+        activeTerminal.output += 'Error: Electron API not available\n';
       }
     } catch (error) {
-      this.writeToTerminal(`Error: ${error}\n`);
+      activeTerminal.output += `Error: ${error}\n`;
     }
+
+    this.updateTerminalDisplay();
   }
 
-  private async handleCdCommand(args: string[]): Promise<void> {
-    const terminal = this.state.terminals.get(this.state.activeTerminalId);
-    if (!terminal) return;
+  private renderTerminalTabs(): void {
+    const tabsContainer = document.querySelector('.terminal-tabs');
+    if (!tabsContainer) return;
 
-    try {
-      const newPath = args.length > 0 ? args[0] : '~';
-      const result = await this.ipcRenderer.invoke('change-directory', newPath);
+    tabsContainer.innerHTML = '';
+    
+    this.state.terminals.forEach((terminal, terminalId) => {
+      const tab = document.createElement('div');
+      tab.className = `terminal-tab ${terminal.isActive ? 'active' : ''}`;
+      tab.innerHTML = `
+        <span class="terminal-tab-name">${terminal.name}</span>
+        <button class="terminal-tab-close" onclick="window.app?.terminalManager?.closeTerminal('${terminalId}', event)">×</button>
+      `;
       
-      if (result.success) {
-        terminal.workingDirectory = result.path;
-        this.state.currentWorkingDirectory = result.path;
-        this.writeToTerminal(`Changed directory to: ${result.path}\n`);
-      } else {
-        this.writeToTerminal(`cd: ${result.error}\n`);
-      }
-    } catch (error) {
-      this.writeToTerminal(`cd: ${error}\n`);
-    }
+      tab.onclick = (e) => {
+        if (!(e.target as HTMLElement).classList.contains('terminal-tab-close')) {
+          this.switchToTerminal(terminalId);
+        }
+      };
+      
+      tabsContainer.appendChild(tab);
+    });
 
-    this.writeToTerminal('$ ');
+    // Add new terminal button
+    const newTabButton = document.createElement('button');
+    newTabButton.className = 'terminal-new-tab';
+    newTabButton.innerHTML = '+';
+    newTabButton.onclick = () => this.createNewTerminal();
+    tabsContainer.appendChild(newTabButton);
   }
 
-  writeToTerminal(text: string): void {
-    const terminal = this.state.terminals.get(this.state.activeTerminalId);
-    if (!terminal) return;
+  private updateTerminalDisplay(): void {
+    const terminalOutput = document.querySelector('.terminal-output');
+    if (!terminalOutput) return;
 
-    terminal.output += text;
-    
-    const terminalOutput = document.querySelector('.terminal-output') as HTMLElement;
-    if (terminalOutput) {
-      terminalOutput.innerHTML += this.escapeHtml(text).replace(/\n/g, '<br>');
-      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (!activeTerminal) return;
+
+    terminalOutput.innerHTML = `
+      <div class="terminal-content">
+        <pre>${activeTerminal.output}</pre>
+        <div class="terminal-input-line">
+          <span class="terminal-prompt">$ </span>
+          <input type="text" class="terminal-input" placeholder="Enter command..." />
+        </div>
+      </div>
+    `;
+
+    // Setup input handling
+    const input = terminalOutput.querySelector('.terminal-input') as HTMLInputElement;
+    if (input) {
+      input.focus();
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const command = input.value.trim();
+          if (command) {
+            this.executeCommand(command);
+            input.value = '';
+          }
+        }
+      });
     }
-  }
 
-  clearTerminal(): void {
-    const terminal = this.state.terminals.get(this.state.activeTerminalId);
-    if (!terminal) return;
-
-    terminal.output = '';
-    
-    const terminalOutput = document.querySelector('.terminal-output') as HTMLElement;
-    if (terminalOutput) {
-      terminalOutput.innerHTML = '';
-    }
+    // Scroll to bottom
+    terminalOutput.scrollTop = terminalOutput.scrollHeight;
   }
 
   switchToTerminal(terminalId: string): void {
@@ -154,6 +198,21 @@ export class TerminalManager {
     this.renderTerminalTabs();
   }
 
+  private updateActiveTerminalTab(): void {
+    const tabs = document.querySelectorAll('.terminal-tab');
+    tabs.forEach(tab => tab.classList.remove('active'));
+    
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (activeTerminal) {
+      const activeTab = Array.from(tabs).find(tab => 
+        tab.querySelector('.terminal-tab-name')?.textContent === activeTerminal.name
+      );
+      if (activeTab) {
+        activeTab.classList.add('active');
+      }
+    }
+  }
+
   toggleTerminal(): void {
     // Let the layout manager handle the toggle
     if ((window as any).layoutManager) {
@@ -163,86 +222,5 @@ export class TerminalManager {
       this.state.terminalVisible = !this.state.terminalVisible;
       console.warn('Layout manager not available, using fallback toggle');
     }
-  }
-
-  private updateTerminalDisplay(): void {
-    const terminalOutput = document.querySelector('.terminal-output') as HTMLElement;
-    if (terminalOutput) {
-      const terminal = this.state.terminals.get(this.state.activeTerminalId);
-      if (terminal) {
-        terminalOutput.innerHTML = this.escapeHtml(terminal.output).replace(/\n/g, '<br>');
-        terminalOutput.scrollTop = terminalOutput.scrollHeight;
-      } else {
-        terminalOutput.innerHTML = '';
-      }
-    }
-  }
-
-  private renderTerminalTabs(): void {
-    const tabContainer = document.querySelector('.terminal-tabs') as HTMLElement;
-    if (!tabContainer) return;
-
-    tabContainer.innerHTML = '';
-
-    this.state.terminals.forEach((terminal, terminalId) => {
-      const tabElement = document.createElement('div');
-      tabElement.className = `
-        flex items-center px-3 py-1 cursor-pointer text-sm border-r border-gray-600
-        ${terminal.isActive ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}
-        transition-colors
-      `;
-      
-      const name = document.createElement('span');
-      name.textContent = terminal.name;
-      
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'ml-2 px-1 rounded text-gray-400 hover:text-white hover:bg-gray-600';
-      closeBtn.innerHTML = '×';
-      closeBtn.onclick = (e) => this.closeTerminal(terminalId, e);
-      
-      tabElement.appendChild(name);
-      tabElement.appendChild(closeBtn);
-      
-      tabElement.onclick = () => this.switchToTerminal(terminalId);
-      
-      tabContainer.appendChild(tabElement);
-    });
-
-    // Add new terminal button
-    const newTerminalBtn = document.createElement('button');
-    newTerminalBtn.className = `
-      px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white
-      border-r border-gray-600 transition-colors
-    `;
-    newTerminalBtn.innerHTML = '+';
-    newTerminalBtn.onclick = () => this.createNewTerminal();
-    
-    tabContainer.appendChild(newTerminalBtn);
-  }
-
-  private updateActiveTerminalTab(): void {
-    const tabs = document.querySelectorAll('.terminal-tabs > div');
-    tabs.forEach((tab, index) => {
-      const terminalId = Array.from(this.state.terminals.keys())[index];
-      if (terminalId === this.state.activeTerminalId) {
-        tab.classList.add('bg-gray-700', 'text-white');
-        tab.classList.remove('bg-gray-800', 'text-gray-400');
-      } else {
-        tab.classList.remove('bg-gray-700', 'text-white');
-        tab.classList.add('bg-gray-800', 'text-gray-400');
-      }
-    });
-  }
-
-  private detectShell(): string {
-    if (process.platform === 'win32') return 'cmd.exe';
-    if (process.platform === 'darwin') return '/bin/zsh';
-    return '/bin/bash';
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

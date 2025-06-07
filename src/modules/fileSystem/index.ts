@@ -1,16 +1,21 @@
 import { FileItem } from '../types';
 
 export class FileSystemManager {
-  private ipcRenderer: any;
+  private electronAPI: any;
 
   constructor() {
-    this.ipcRenderer = (window as any).electronAPI || (window as any).require?.('electron').ipcRenderer;
+    this.electronAPI = (window as any).electronAPI;
   }
 
   async loadFileSystem(): Promise<FileItem[]> {
     try {
-      const result = await this.ipcRenderer.invoke('get-file-tree');
-      return result;
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return [];
+      }
+      
+      const result = await this.electronAPI.getDirectoryContents();
+      return result || [];
     } catch (error) {
       console.error('Failed to load file system:', error);
       return [];
@@ -19,8 +24,13 @@ export class FileSystemManager {
 
   async readFile(filePath: string): Promise<string> {
     try {
-      const content = await this.ipcRenderer.invoke('read-file', filePath);
-      return content;
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return '';
+      }
+      
+      const content = await this.electronAPI.readFile(filePath);
+      return content || '';
     } catch (error) {
       console.error('Failed to read file:', error);
       return '';
@@ -29,7 +39,12 @@ export class FileSystemManager {
 
   async writeFile(filePath: string, content: string): Promise<boolean> {
     try {
-      await this.ipcRenderer.invoke('write-file', filePath, content);
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+      
+      await this.electronAPI.writeFile(filePath, content);
       return true;
     } catch (error) {
       console.error('Failed to write file:', error);
@@ -106,12 +121,17 @@ export class FileSystemManager {
     if (item.type !== 'directory') return;
 
     try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return;
+      }
+
       if (item.isExpanded) {
         item.isExpanded = false;
         item.children = [];
       } else {
-        const children = await this.ipcRenderer.invoke('get-directory-contents', item.path);
-        item.children = children;
+        const children = await this.electronAPI.getDirectoryContents(item.path);
+        item.children = children || [];
         item.isExpanded = true;
       }
     } catch (error) {
