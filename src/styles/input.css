@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom VS Code-like styles */
+@layer base {
+  * {
+    @apply box-border;
+  }
+  
+  html, body {
+    @apply w-full h-full overflow-hidden bg-vscode-bg text-vscode-text;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+  }
+}
+
+@layer components {
+  .file-item {
+    @apply flex items-center px-1 py-1 cursor-pointer text-sm leading-6 select-none rounded mx-1 whitespace-nowrap min-h-6;
+  }
+  
+  .file-item:hover {
+    @apply bg-vscode-hover;
+  }
+  
+  .file-item.selected {
+    @apply bg-vscode-active text-white;
+  }
+  
+  .file-item.selected:hover {
+    @apply bg-blue-600;
+  }
+  
+  .tab {
+    @apply flex items-center px-3 py-2 bg-gray-800 border border-gray-600 border-b-0 mr-1 cursor-pointer text-sm text-gray-300 max-w-48;
+  }
+  
+  .tab.active {
+    @apply bg-gray-900 border-blue-500 border-b-2;
+  }
+  
+  .terminal-tab {
+    @apply flex items-center px-3 py-1 cursor-pointer text-sm border-r border-gray-600 transition-colors;
+  }
+  
+  .terminal-tab.active {
+    @apply bg-gray-700 text-white;
+  }
+  
+  .terminal-tab:not(.active) {
+    @apply bg-gray-800 text-gray-400 hover:bg-gray-700;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}
