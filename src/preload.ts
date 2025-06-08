@@ -35,11 +35,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   
   // Process lifecycle events
-  onProcessStarted: (callback: (process: {id: string, command: string}) => void) => {
-    ipcRenderer.on('process-started', (event, process) => callback(process));
+  onProcessStarted: (callback: (info: { id: string; command: string }) => void) => {
+    ipcRenderer.on('process-started', (event, info) => callback(info));
   },
-  onProcessEnded: (callback: (process: {id: string}) => void) => {
-    ipcRenderer.on('process-ended', (event, process) => callback(process));
+  onProcessEnded: (callback: (info: { id: string }) => void) => {
+    ipcRenderer.on('process-ended', (event, info) => callback(info));
   },
   
   // Screen capture operations

@@ -3,6 +3,9 @@ import { Terminal, AppState } from '../types';
 export class TerminalManager {
   private state: AppState;
   private electronAPI: any;
+  private commandHistory: string[] = [];
+  private historyIndex = -1;
+  private runningProcesses = new Map<string, { command: string; started: Date }>();
 
   constructor(state: AppState) {
     this.state = state;
@@ -11,6 +14,29 @@ export class TerminalManager {
 
   initialize(): void {
     this.createNewTerminal();
+    this.setupStreamingHandlers();
+  }
+
+  private setupStreamingHandlers(): void {
+    // Listen for streaming command output
+    if (this.electronAPI) {
+      this.electronAPI.onCommandOutputStream((data: string) => {
+        this.appendToActiveTerminal(data);
+      });
+
+      this.electronAPI.onProcessStarted((info: { id: string; command: string }) => {
+        this.runningProcesses.set(info.id, { 
+          command: info.command, 
+          started: new Date() 
+        });
+        this.updateTerminalStatus();
+      });
+
+      this.electronAPI.onProcessEnded((info: { id: string }) => {
+        this.runningProcesses.delete(info.id);
+        this.updateTerminalStatus();
+      });
+    }
   }
 
   createNewTerminal(): string {
@@ -24,7 +50,7 @@ export class TerminalManager {
       isActive: true,
       runningProcesses: new Set(),
       currentProcess: '',
-      shell: this.getDefaultShell() // Use a simple default instead of detecting
+      shell: this.getDefaultShell()
     };
 
     this.state.terminals.set(terminalId, terminal);
@@ -37,7 +63,6 @@ export class TerminalManager {
   }
 
   private getDefaultShell(): string {
-    // Simple default shell detection without using process
     const userAgent = navigator.userAgent.toLowerCase();
     if (userAgent.includes('win')) {
       return 'cmd.exe';
@@ -52,7 +77,12 @@ export class TerminalManager {
     const terminal = this.state.terminals.get(terminalId);
     if (!terminal) return;
 
-    const welcomeMessage = `Welcome to Terminal ${terminal.name}\nWorking directory: ${terminal.workingDirectory}\n\n`;
+    const welcomeMessage = `\x1b[36m╭─────────────────────────────────────────────────────────────╮\x1b[0m
+\x1b[36m│\x1b[0m \x1b[1;37mWelcome to ${terminal.name}\x1b[0m                                   \x1b[36m│\x1b[0m
+\x1b[36m│\x1b[0m \x1b[90mWorking directory: ${terminal.workingDirectory}\x1b[0m
+\x1b[36m╰─────────────────────────────────────────────────────────────╯\x1b[0m
+
+`;
     terminal.output += welcomeMessage;
     terminal.history.push(welcomeMessage);
     
@@ -64,8 +94,15 @@ export class TerminalManager {
     const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
     if (!activeTerminal) return;
 
-    // Add command to output
-    activeTerminal.output += `$ ${command}\n`;
+    // Add to command history
+    if (command.trim()) {
+      this.commandHistory.push(command);
+      this.historyIndex = this.commandHistory.length;
+    }
+
+    // Add command to output with styled prompt
+    const prompt = this.getStyledPrompt(activeTerminal.workingDirectory);
+    activeTerminal.output += `${prompt}${command}\n`;
     activeTerminal.history.push(command);
 
     try {
@@ -73,22 +110,38 @@ export class TerminalManager {
         const result = await this.electronAPI.executeCommand(command, activeTerminal.workingDirectory);
         
         if (result.success) {
-          activeTerminal.output += result.output + '\n';
+          if (result.output) {
+            activeTerminal.output += result.output + '\n';
+          }
           // Update working directory if it changed
           if (result.workingDir) {
             activeTerminal.workingDirectory = result.workingDir;
           }
         } else {
-          activeTerminal.output += `Error: ${result.output}\n`;
+          activeTerminal.output += `\x1b[91m❌ Error: ${result.output}\x1b[0m\n`;
         }
       } else {
-        activeTerminal.output += 'Error: Electron API not available\n';
+        activeTerminal.output += '\x1b[91m❌ Error: Electron API not available\x1b[0m\n';
       }
     } catch (error) {
-      activeTerminal.output += `Error: ${error}\n`;
+      activeTerminal.output += `\x1b[91m❌ Error: ${error}\x1b[0m\n`;
     }
 
     this.updateTerminalDisplay();
+  }
+
+  private getStyledPrompt(workingDir: string): string {
+    const shortDir = workingDir.split('/').pop() || workingDir;
+    return `\x1b[36m╭─\x1b[0m \x1b[1;34m${shortDir}\x1b[0m
+\x1b[36m╰─\x1b[0m \x1b[1;32m$\x1b[0m `;
+  }
+
+  private appendToActiveTerminal(data: string): void {
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (activeTerminal) {
+      activeTerminal.output += data;
+      this.updateTerminalDisplay();
+    }
   }
 
   private renderTerminalTabs(): void {
@@ -100,7 +153,12 @@ export class TerminalManager {
     this.state.terminals.forEach((terminal, terminalId) => {
       const tab = document.createElement('div');
       tab.className = `terminal-tab ${terminal.isActive ? 'active' : ''}`;
+      
+      const isRunning = this.runningProcesses.size > 0;
+      const statusIcon = isRunning ? '🟢' : '⚫';
+      
       tab.innerHTML = `
+        <span class="terminal-tab-icon">${statusIcon}</span>
         <span class="terminal-tab-name">${terminal.name}</span>
         <button class="terminal-tab-close" onclick="window.app?.terminalManager?.closeTerminal('${terminalId}', event)">×</button>
       `;
@@ -117,7 +175,7 @@ export class TerminalManager {
     // Add new terminal button
     const newTabButton = document.createElement('button');
     newTabButton.className = 'terminal-new-tab';
-    newTabButton.innerHTML = '+';
+    newTabButton.innerHTML = '+ New Terminal';
     newTabButton.onclick = () => this.createNewTerminal();
     tabsContainer.appendChild(newTabButton);
   }
@@ -129,12 +187,20 @@ export class TerminalManager {
     const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
     if (!activeTerminal) return;
 
+    // Convert ANSI codes to HTML
+    const formattedOutput = this.ansiToHtml(activeTerminal.output);
+    const currentPrompt = this.getStyledPrompt(activeTerminal.workingDirectory);
+
     terminalOutput.innerHTML = `
       <div class="terminal-content">
-        <pre>${activeTerminal.output}</pre>
-        <div class="terminal-input-line">
-          <span class="terminal-prompt">$ </span>
-          <input type="text" class="terminal-input" placeholder="Enter command..." />
+        <div class="terminal-scroll-content">
+          <pre class="terminal-output-text">${formattedOutput}</pre>
+        </div>
+        <div class="terminal-input-section">
+          <div class="terminal-input-line">
+            <span class="terminal-current-prompt">${this.ansiToHtml(currentPrompt)}</span>
+            <input type="text" class="terminal-input" placeholder="" spellcheck="false" autocomplete="off" />
+          </div>
         </div>
       </div>
     `;
@@ -143,19 +209,101 @@ export class TerminalManager {
     const input = terminalOutput.querySelector('.terminal-input') as HTMLInputElement;
     if (input) {
       input.focus();
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          const command = input.value.trim();
-          if (command) {
-            this.executeCommand(command);
-            input.value = '';
-          }
-        }
-      });
+      input.addEventListener('keydown', (e) => this.handleKeyDown(e, input));
     }
 
     // Scroll to bottom
-    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    const scrollContent = terminalOutput.querySelector('.terminal-scroll-content');
+    if (scrollContent) {
+      scrollContent.scrollTop = scrollContent.scrollHeight;
+    }
+  }
+
+  private handleKeyDown(e: KeyboardEvent, input: HTMLInputElement): void {
+    switch (e.key) {
+      case 'Enter':
+        const command = input.value.trim();
+        if (command) {
+          this.executeCommand(command);
+          input.value = '';
+        }
+        break;
+        
+      case 'ArrowUp':
+        e.preventDefault();
+        if (this.historyIndex > 0) {
+          this.historyIndex--;
+          input.value = this.commandHistory[this.historyIndex] || '';
+        }
+        break;
+        
+      case 'ArrowDown':
+        e.preventDefault();
+        if (this.historyIndex < this.commandHistory.length - 1) {
+          this.historyIndex++;
+          input.value = this.commandHistory[this.historyIndex] || '';
+        } else {
+          this.historyIndex = this.commandHistory.length;
+          input.value = '';
+        }
+        break;
+        
+      case 'Tab':
+        e.preventDefault();
+        // TODO: Implement tab completion
+        break;
+        
+      case 'c':
+        if (e.ctrlKey) {
+          e.preventDefault();
+          this.killRunningProcesses();
+        }
+        break;
+    }
+  }
+
+  private ansiToHtml(text: string): string {
+    const ansiRegex = /\x1b\[[0-9;]*m/g;
+    const ansiMap: { [key: string]: string } = {
+      '\x1b[0m': '</span>',     // Reset
+      '\x1b[1m': '<span class="bold">',      // Bold
+      '\x1b[90m': '<span class="dim">',      // Dim
+      '\x1b[91m': '<span class="red">',      // Red
+      '\x1b[92m': '<span class="green">',    // Green
+      '\x1b[93m': '<span class="yellow">',   // Yellow
+      '\x1b[94m': '<span class="blue">',     // Blue
+      '\x1b[95m': '<span class="magenta">',  // Magenta
+      '\x1b[96m': '<span class="cyan">',     // Cyan
+      '\x1b[97m': '<span class="white">',    // White
+      '\x1b[30m': '<span class="black">',    // Black
+      '\x1b[31m': '<span class="red">',      // Red
+      '\x1b[32m': '<span class="green">',    // Green
+      '\x1b[33m': '<span class="yellow">',   // Yellow
+      '\x1b[34m': '<span class="blue">',     // Blue
+      '\x1b[35m': '<span class="magenta">',  // Magenta
+      '\x1b[36m': '<span class="cyan">',     // Cyan
+      '\x1b[37m': '<span class="white">',    // White
+      '\x1b[1;37m': '<span class="bold white">', // Bold White
+      '\x1b[1;32m': '<span class="bold green">', // Bold Green
+      '\x1b[1;34m': '<span class="bold blue">',  // Bold Blue
+    };
+
+    return text.replace(ansiRegex, (match) => ansiMap[match] || '');
+  }
+
+  private async killRunningProcesses(): Promise<void> {
+    if (this.electronAPI) {
+      try {
+        await this.electronAPI.killProcess();
+        this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
+      } catch (error) {
+        console.error('Failed to kill processes:', error);
+      }
+    }
+  }
+
+  private updateTerminalStatus(): void {
+    this.renderTerminalTabs();
   }
 
   switchToTerminal(terminalId: string): void {
@@ -214,11 +362,9 @@ export class TerminalManager {
   }
 
   toggleTerminal(): void {
-    // Let the layout manager handle the toggle
     if ((window as any).layoutManager) {
       (window as any).layoutManager.toggleTerminal();
     } else {
-      // Fallback if layout manager isn't available
       this.state.terminalVisible = !this.state.terminalVisible;
       console.warn('Layout manager not available, using fallback toggle');
     }
