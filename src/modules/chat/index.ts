@@ -903,12 +903,17 @@ export class ChatManager {
       }
 
       /* Typing cursor effect */
-      .typing-cursor::after {
+      .typing-cursor::after,
+      .typing-cursor-inline::after {
         content: '▊';
         color: #60a5fa;
         animation: blink 1s infinite;
         margin-left: 2px;
         font-weight: normal;
+      }
+
+      .typing-cursor-inline {
+        display: inline;
       }
 
       @keyframes blink {
@@ -1696,19 +1701,70 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       timestamp: new Date()
     };
 
-    // Add empty message to state and render
+    // Add empty message to state
     this.chatState.messages.push(this.currentStreamingMessage);
-    this.renderMessages();
     
-    // Find the message element that was just created
+    // Create the message element directly without full re-render
+    this.createStreamingMessageElement();
+  }
+
+  private createStreamingMessageElement(): void {
+    if (!this.currentStreamingMessage) return;
+
     const container = document.getElementById('messages-container');
-    if (container) {
-      const messageElements = container.querySelectorAll('.message.assistant');
-      this.streamingMessageElement = messageElements[messageElements.length - 1] as HTMLElement;
-      
-      // Add streaming class for visual effects
-      this.streamingMessageElement?.classList.add('streaming');
-    }
+    if (!container) return;
+
+    // Create the message element
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant streaming';
+    messageDiv.setAttribute('data-message-id', this.currentStreamingMessage.id);
+
+    // Avatar
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.textContent = '🤖';
+
+    // Content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'message-header';
+
+    const role = document.createElement('span');
+    role.className = 'message-role';
+    role.textContent = 'Claude';
+
+    const time = document.createElement('span');
+    time.className = 'message-time';
+    time.textContent = this.currentStreamingMessage.timestamp.toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
+    header.appendChild(role);
+    header.appendChild(time);
+
+    // Message text container
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text typing-cursor';
+    textDiv.textContent = ''; // Start empty
+
+    contentDiv.appendChild(header);
+    contentDiv.appendChild(textDiv);
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(contentDiv);
+
+    // Add to container
+    container.appendChild(messageDiv);
+
+    // Store reference
+    this.streamingMessageElement = messageDiv;
+
+    // Scroll to bottom
+    this.scrollToBottom();
   }
 
   private handleStreamToken(token: string): void {
@@ -1717,11 +1773,11 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add token to message content
     this.currentStreamingMessage.content += token;
     
-    // Update the message element progressively with typing effect
-    this.updateStreamingMessage();
+    // Update the streaming message element directly
+    this.updateStreamingMessageContent();
   }
 
-  private updateStreamingMessage(): void {
+  private updateStreamingMessageContent(): void {
     if (!this.currentStreamingMessage || !this.streamingMessageElement) return;
 
     // Find the text element within the message
@@ -1732,20 +1788,50 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     const hasCodeBlocks = /```[\s\S]*?```/.test(this.currentStreamingMessage.content);
     
     if (hasCodeBlocks) {
-      // For content with code blocks, use the full markdown processing
+      // For content with code blocks, we need to handle this specially
+      // Remove typing cursor temporarily
+      textElement.classList.remove('typing-cursor');
+      
+      // Process and update content
       const processedContent = this.processMarkdownWithCodeBlocks(this.currentStreamingMessage.content);
       textElement.innerHTML = '';
       textElement.appendChild(processedContent);
+      
+      // Re-add typing cursor to the text element (not code blocks)
+      const lastTextElement = this.findLastTextNode(textElement);
+      if (lastTextElement && lastTextElement.nodeType === Node.TEXT_NODE) {
+        // Create a span for the cursor
+        const cursorSpan = document.createElement('span');
+        cursorSpan.className = 'typing-cursor-inline';
+        lastTextElement.parentNode?.insertBefore(cursorSpan, lastTextElement.nextSibling);
+      }
     } else {
-      // For simple text, apply simple markdown processing
+      // For simple text, just update with markdown processing
       textElement.innerHTML = this.processSimpleMarkdown(this.currentStreamingMessage.content);
+      
+      // Keep typing cursor
+      if (!textElement.classList.contains('typing-cursor')) {
+        textElement.classList.add('typing-cursor');
+      }
     }
 
-    // Add cursor effect for streaming
-    textElement.classList.add('typing-cursor');
-    
     // Scroll to bottom
     this.scrollToBottom();
+  }
+
+  private findLastTextNode(element: HTMLElement): Node | null {
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+    
+    let lastTextNode = null;
+    let node;
+    while (node = walker.nextNode()) {
+      lastTextNode = node;
+    }
+    return lastTextNode;
   }
 
   private handleStreamEnd(): void {
@@ -1756,6 +1842,10 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       // Remove typing cursor
       const textElement = this.streamingMessageElement.querySelector('.message-text');
       textElement?.classList.remove('typing-cursor');
+      
+      // Remove inline cursor spans if any
+      const inlineCursors = this.streamingMessageElement.querySelectorAll('.typing-cursor-inline');
+      inlineCursors.forEach(cursor => cursor.remove());
     }
 
     this.currentStreamingMessage = null;
@@ -1763,12 +1853,25 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.streamingMessageElement = null;
     this.chatState.isLoading = false;
 
-    // Final render to ensure everything is properly formatted
+    // Do a final render to ensure proper formatting
     this.renderMessages();
   }
 
   private handleStreamError(error: string): void {
     console.error('Stream error:', error);
+    
+    // Remove the partial streaming message element if it exists
+    if (this.streamingMessageElement) {
+      this.streamingMessageElement.remove();
+    }
+    
+    // Remove streaming message from state
+    if (this.chatState.messages.length > 0) {
+      const lastMessage = this.chatState.messages[this.chatState.messages.length - 1];
+      if (lastMessage.role === 'assistant' && lastMessage.id === this.currentStreamSessionId) {
+        this.chatState.messages.pop();
+      }
+    }
     
     // Clean up streaming state
     this.currentStreamingMessage = null;
@@ -1776,15 +1879,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.streamingMessageElement = null;
     this.chatState.isLoading = false;
     
-    // Remove any partial streaming message
-    if (this.chatState.messages.length > 0) {
-      const lastMessage = this.chatState.messages[this.chatState.messages.length - 1];
-      if (lastMessage.role === 'assistant' && lastMessage.content === '') {
-        this.chatState.messages.pop();
-      }
-    }
-    
-    // Add error message
+    // Add error message and render
     const errorMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'assistant',
