@@ -514,10 +514,13 @@ export class ChatManager {
         'You are a helpful assistant. Respond with just "OK" to confirm the connection.'
       );
 
-      if (testResult) {
+      // Check if we got a valid response
+      if (testResult && (typeof testResult === 'string' || testResult.content)) {
         this.chatState.apiKeyConfigured = true;
         this.showChatInterface();
         this.addWelcomeMessage();
+      } else {
+        throw new Error('Invalid response from API');
       }
     } catch (error) {
       console.error('API key validation failed:', error);
@@ -609,11 +612,11 @@ Feel free to ask questions about your code or request new functionality!`,
         this.getSystemPrompt()
       );
 
-      // Add assistant response
+      // Add assistant response - extract content from the response object
       const assistantMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: response,
+        content: typeof response === 'string' ? response : response.content || JSON.stringify(response),
         timestamp: new Date()
       };
 
