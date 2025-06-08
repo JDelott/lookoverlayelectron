@@ -429,7 +429,50 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
   }
 });
 
-// Update the IPC handler with proper typing
+// Smarter truncation detection
+function isResponseTruncated(text: string): boolean {
+  const trimmedText = text.trim();
+  
+  // Don't flag short responses
+  if (trimmedText.length < 100) {
+    return false;
+  }
+  
+  // Check for incomplete code blocks (most reliable indicator)
+  const hasOpenCodeBlock = /```[a-zA-Z]*\s*$/.test(trimmedText) || 
+                          /```[^`]*[^`]{10,}$/.test(trimmedText);
+  
+  // Check for obviously incomplete sentences (more refined)
+  const lastSentence = trimmedText.split(/[.!?]/).pop()?.trim() || '';
+  const endsIncomplete = lastSentence.length > 20 && // Substantial content
+                        !/[.!?"`]$/.test(trimmedText) && // No proper ending
+                        /[a-zA-Z]$/.test(trimmedText) && // Ends with letter
+                        (
+                          lastSentence.split(' ').length < 5 || // Very short "sentence"
+                          /\b(the|and|or|but|with|for|to|in|on|at|by)$/i.test(trimmedText) || // Ends with preposition/conjunction
+                          /\b[a-z]+e$/i.test(trimmedText.split(' ').pop() || '') // Ends with what looks like a partial word
+                        );
+  
+  // Check for incomplete formatting
+  const hasIncompleteFormatting = /\*\*[^*]{20,}$/.test(trimmedText) || // Long unclosed bold
+                                 /\([^)]{30,}$/.test(trimmedText); // Long unclosed parenthesis
+  
+  const isTruncated = hasOpenCodeBlock || endsIncomplete || hasIncompleteFormatting;
+  
+  if (isTruncated) {
+    console.log('Truncation detected:', {
+      hasOpenCodeBlock,
+      endsIncomplete,
+      hasIncompleteFormatting,
+      lastChars: trimmedText.slice(-30),
+      lastSentence: lastSentence.slice(-20)
+    });
+  }
+  
+  return isTruncated;
+}
+
+// Simplified API handler with better logging
 ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   
@@ -438,6 +481,8 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   }
   
   try {
+    console.log(`Anthropic API call - ${messages.length} messages`);
+    
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -446,14 +491,17 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022', // Upgraded to Claude 3.5 Sonnet
-        max_tokens: 8192, // Increased token limit
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
         system: systemPrompt,
         messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
           role: m.role,
           content: m.content
-        }))
-      })
+        })),
+        temperature: 0.7,
+        top_p: 0.9,
+      }),
+      signal: AbortSignal.timeout(60000)
     });
     
     if (!response.ok) {
@@ -463,12 +511,84 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
     
     const data = await response.json() as AnthropicResponse;
     
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      throw new Error('Incomplete response from Anthropic API');
+    }
+    
+    const responseText = data.content[0].text;
+    console.log(`Response received: ${responseText.length} characters`);
+    console.log(`Response ending: "${responseText.slice(-50)}"`);
+    
+    // Check for truncation
+    if (isResponseTruncated(responseText)) {
+      console.warn('Truncation detected, retrying with shorter context...');
+      
+      try {
+        // Single retry with reduced context
+        const shorterMessages = messages.slice(-2); // Even more aggressive reduction
+        const retryResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 3000, // Smaller limit for retry
+            system: systemPrompt,
+            messages: shorterMessages.filter((m: any) => m.role !== 'system').map((m: any) => ({
+              role: m.role,
+              content: m.content
+            })),
+            temperature: 0.7,
+            top_p: 0.9,
+          }),
+          signal: AbortSignal.timeout(45000)
+        });
+        
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json() as AnthropicResponse;
+          if (retryData.content && retryData.content[0] && retryData.content[0].text) {
+            const retryText = retryData.content[0].text;
+            console.log(`Retry successful: ${retryText.length} characters`);
+            
+            // Check if retry is actually better (longer or ends more naturally)
+            const retryLooksComplete = !isResponseTruncated(retryText);
+            const retryIsLonger = retryText.length > responseText.length;
+            
+            if (retryLooksComplete || retryIsLonger) {
+              return {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: retryText,
+                timestamp: new Date().toISOString()
+              };
+            }
+          }
+        }
+      } catch (retryError) {
+        console.log('Retry failed, using original response');
+      }
+      
+      // If retry fails or isn't better, return original with note
+      return {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: responseText + '\n\n*[Note: Response may be incomplete]*',
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    // Response looks complete
+    console.log('Response appears complete');
     return {
       id: Date.now().toString(),
       role: 'assistant',
-      content: data.content[0].text,
+      content: responseText,
       timestamp: new Date().toISOString()
     };
+    
   } catch (error) {
     console.error('Anthropic API Error:', error);
     throw error;
