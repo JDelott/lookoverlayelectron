@@ -176,7 +176,7 @@ export class ChatManager {
     const style = document.createElement('style');
     style.id = 'chat-styles';
     style.textContent = `
-      /* Chat Container */
+      /* Chat Container - ISOLATE FROM OTHER PANELS */
       .chat-container {
         height: 100%;
         display: flex;
@@ -184,6 +184,209 @@ export class ChatManager {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #1a1a1a;
         color: #e4e4e7;
+        position: relative;
+        isolation: isolate;
+        z-index: 1;
+      }
+
+      /* Fix Input Container Positioning */
+      .input-container {
+        padding: 1rem;
+        position: relative;
+      }
+
+      .input-wrapper {
+        background: #262626;
+        border: 1px solid #404040;
+        border-radius: 0.75rem;
+        transition: all 0.2s;
+        overflow: hidden;
+        position: relative;
+        isolation: isolate;
+      }
+
+      .input-wrapper:focus-within {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+
+      .textarea-container {
+        position: relative;
+      }
+
+      /* Fix Quick Actions Toggle Positioning */
+      .input-action-btn {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent;
+        border: none;
+        color: #71717a;
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        z-index: 2;
+      }
+
+      .input-action-btn:hover {
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.1);
+      }
+
+      /* CRITICAL: Keep quick actions toggle INSIDE input wrapper */
+      #quick-actions-toggle {
+        left: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        position: absolute !important;
+        z-index: 3 !important;
+      }
+
+      /* Make sure textarea has enough padding to avoid overlap */
+      .chat-input-area textarea {
+        width: 100%;
+        background: transparent;
+        border: none;
+        outline: none;
+        resize: none;
+        padding: 1rem 3rem 1rem 3rem; /* Left padding for quick actions button */
+        color: #e4e4e7;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        font-family: inherit;
+        min-height: 2.5rem;
+        max-height: 150px;
+      }
+
+      .chat-input-area textarea::placeholder {
+        color: #71717a;
+      }
+
+      /* Input Footer */
+      .input-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 1rem;
+        background: #1f1f1f;
+        border-top: 1px solid #404040;
+        position: relative;
+      }
+
+      .char-count {
+        font-size: 0.75rem;
+        color: #71717a;
+      }
+
+      .char-count.warning {
+        color: #f59e0b;
+      }
+
+      .char-count.error {
+        color: #ef4444;
+      }
+
+      .input-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      /* Fix other input buttons */
+      #attach-code {
+        position: static !important;
+        transform: none !important;
+      }
+
+      .send-btn {
+        background: #3b82f6;
+        border: none;
+        border-radius: 0.375rem;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: white;
+        position: static !important;
+        transform: none !important;
+      }
+
+      .send-btn:hover:not(:disabled) {
+        background: #2563eb;
+        transform: scale(1.05);
+      }
+
+      .send-btn:disabled {
+        background: #374151;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .send-icon {
+        font-size: 1rem;
+        font-weight: bold;
+      }
+
+      /* Quick Actions Panel */
+      .quick-actions {
+        padding: 1rem;
+        background: #171717;
+        border-top: 1px solid #262626;
+        border-bottom: 1px solid #262626;
+        position: relative;
+        z-index: 1;
+      }
+
+      .quick-actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.5rem;
+      }
+
+      .quick-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.75rem 0.5rem;
+        background: #262626;
+        border: 1px solid #404040;
+        border-radius: 0.5rem;
+        color: #d4d4d8;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.8125rem;
+        text-align: center;
+        min-height: 44px;
+      }
+
+      .quick-action:hover {
+        background: #404040;
+        border-color: #60a5fa;
+        transform: translateY(-1px);
+      }
+
+      .quick-action:active {
+        transform: translateY(0) scale(0.98);
+      }
+
+      .action-icon {
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+
+      .action-text {
+        font-weight: 500;
+        font-size: 0.75rem;
       }
 
       /* API Key Setup */
@@ -692,195 +895,6 @@ export class ChatManager {
         }
       }
 
-      /* Quick Actions */
-      .quick-actions {
-        padding: 1rem;
-        background: #171717;
-        border-top: 1px solid #262626;
-        border-bottom: 1px solid #262626;
-      }
-
-      .quick-actions-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 0.5rem;
-      }
-
-      .quick-action {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem;
-        background: #262626;
-        border: 1px solid #404040;
-        border-radius: 0.5rem;
-        color: #d4d4d8;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 0.8125rem;
-      }
-
-      .quick-action:hover {
-        background: #404040;
-        border-color: #60a5fa;
-        transform: translateY(-1px);
-      }
-
-      .action-icon {
-        font-size: 1rem;
-      }
-
-      .action-text {
-        font-weight: 500;
-      }
-
-      /* Input Area */
-      .chat-input-area {
-        background: #1a1a1a;
-        border-top: 1px solid #262626;
-      }
-
-      .input-container {
-        padding: 1rem;
-      }
-
-      .input-wrapper {
-        background: #262626;
-        border: 1px solid #404040;
-        border-radius: 0.75rem;
-        transition: all 0.2s;
-        overflow: hidden;
-      }
-
-      .input-wrapper:focus-within {
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-      }
-
-      .textarea-container {
-        position: relative;
-      }
-
-      .chat-input-area textarea {
-        width: 100%;
-        background: transparent;
-        border: none;
-        outline: none;
-        resize: none;
-        padding: 1rem 3rem 1rem 1rem;
-        color: #e4e4e7;
-        font-size: 0.875rem;
-        line-height: 1.5;
-        font-family: inherit;
-        min-height: 2.5rem;
-        max-height: 150px;
-      }
-
-      .chat-input-area textarea::placeholder {
-        color: #71717a;
-      }
-
-      .input-action-btn {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        background: transparent;
-        border: none;
-        color: #71717a;
-        cursor: pointer;
-        padding: 0.5rem;
-        border-radius: 0.25rem;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .input-action-btn:hover {
-        color: #60a5fa;
-        background: #262626;
-      }
-
-      #quick-actions-toggle {
-        left: 0.5rem;
-      }
-
-      .input-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.5rem 1rem;
-        background: #1f1f1f;
-        border-top: 1px solid #404040;
-      }
-
-      .char-count {
-        font-size: 0.75rem;
-        color: #71717a;
-      }
-
-      .char-count.warning {
-        color: #f59e0b;
-      }
-
-      .char-count.error {
-        color: #ef4444;
-      }
-
-      .input-actions {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-      }
-
-      .send-btn {
-        background: #3b82f6;
-        border: none;
-        border-radius: 0.375rem;
-        width: 2rem;
-        height: 2rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        color: white;
-      }
-
-      .send-btn:hover:not(:disabled) {
-        background: #2563eb;
-        transform: scale(1.05);
-      }
-
-      .send-btn:disabled {
-        background: #374151;
-        cursor: not-allowed;
-        transform: none;
-      }
-
-      .send-icon {
-        font-size: 1rem;
-        font-weight: bold;
-      }
-
-      /* Scrollbar */
-      .chat-messages::-webkit-scrollbar {
-        width: 6px;
-      }
-
-      .chat-messages::-webkit-scrollbar-track {
-        background: transparent;
-      }
-
-      .chat-messages::-webkit-scrollbar-thumb {
-        background: #404040;
-        border-radius: 3px;
-      }
-
-      .chat-messages::-webkit-scrollbar-thumb:hover {
-        background: #525252;
-      }
-
       /* Responsive */
       @media (max-width: 400px) {
         .quick-actions-grid {
@@ -955,17 +969,30 @@ export class ChatManager {
       contextToggle.addEventListener('click', () => this.toggleContext());
     }
 
-    // Quick action buttons
-    document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      const quickAction = target.closest('.quick-action') as HTMLElement;
-      if (quickAction) {
-        const action = quickAction.getAttribute('data-action');
-        if (action) {
-          this.handleQuickAction(action);
-        }
-      }
+    // Quick action buttons - fix event delegation
+    const setupQuickActionListeners = () => {
+      const quickActionButtons = document.querySelectorAll('.quick-action');
+      quickActionButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const action = button.getAttribute('data-action');
+          if (action) {
+            this.handleQuickAction(action);
+          }
+        });
+      });
+    };
+
+    // Set up listeners immediately and on mutations
+    setupQuickActionListeners();
+    
+    // Watch for DOM changes to re-setup listeners
+    const observer = new MutationObserver(() => {
+      setupQuickActionListeners();
     });
+    
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   private autoResizeTextarea(textarea: HTMLTextAreaElement): void {

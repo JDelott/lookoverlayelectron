@@ -41,7 +41,6 @@ export class LayoutManager {
     this.injectLayoutStyles();
     this.setupResizeHandlers();
     this.setupViewportObserver();
-    this.setupButtonInteractions();
     this.isInitialized = true;
     
     // Restore AI chat state and apply the correct CSS class
@@ -68,6 +67,94 @@ export class LayoutManager {
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
         --chat-width: ${this.panelSizes.aiChatWidth}px;
+      }
+
+      /* Header Button Styles */
+      .header-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%);
+        border: 1px solid rgb(75 85 99);
+        color: rgb(226 232 240);
+        cursor: pointer;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+
+      .header-btn:hover {
+        background: linear-gradient(135deg, rgb(55 65 81) 0%, rgb(75 85 99) 100%);
+        border-color: rgb(96 165 250);
+        color: rgb(248 250 252);
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      }
+
+      .header-btn:active {
+        transform: translateY(0) scale(0.98);
+      }
+
+      .header-btn.active {
+        background: linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%);
+        border-color: rgb(59 130 246);
+        color: white;
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+        transform: translateY(-1px);
+      }
+
+      /* Terminal Control Button Styles */
+      .terminal-control-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        background: transparent;
+        border: 1px solid rgb(75 85 99);
+        color: rgb(156 163 175);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        transition: all 0.2s;
+        min-width: 24px;
+        height: 24px;
+      }
+
+      .terminal-control-btn:hover {
+        background: rgb(55 65 81);
+        border-color: rgb(96 165 250);
+        color: rgb(226 232 240);
+      }
+
+      /* Chat Control Button Styles */
+      .chat-control-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        background: transparent;
+        border: 1px solid rgb(75 85 99);
+        color: rgb(156 163 175);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .chat-control-btn:hover {
+        background: rgb(55 65 81);
+        border-color: rgb(96 165 250);
+        color: rgb(226 232 240);
       }
 
       /* Project Selector Styles */
@@ -644,6 +731,43 @@ export class LayoutManager {
         font-size: 13px;
         line-height: 1.2;
       }
+
+      /* Scrollbar */
+      .chat-messages::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .chat-messages::-webkit-scrollbar-thumb {
+        background: #404040;
+        border-radius: 3px;
+      }
+
+      .chat-messages::-webkit-scrollbar-thumb:hover {
+        background: #525252;
+      }
+
+      /* Responsive */
+      @media (max-width: 400px) {
+        .input-container {
+          padding: 0.75rem;
+        }
+        
+        .api-key-setup {
+          padding: 1rem;
+        }
+        
+        .api-key-content h3 {
+          font-size: 1.1rem;
+        }
+        
+        .api-key-content p {
+          font-size: 0.75rem;
+        }
+      }
     `;
     
     document.head.appendChild(style);
@@ -661,12 +785,14 @@ export class LayoutManager {
             
             <div class="flex items-center gap-3">
               <button 
+                id="terminal-toggle-btn"
                 onclick="window.layoutManager?.toggleTerminal()"
                 style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
                 Terminal 💻
               </button>
               <button 
+                id="chat-toggle-btn"
                 onclick="window.layoutManager?.toggleAIChat()"
                 style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
               >
@@ -718,17 +844,17 @@ export class LayoutManager {
                   </div>
                   
                   <div class="flex items-center gap-1 terminal-controls">
-                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                    <button class="terminal-control-btn" 
                             onclick="window.layoutManager?.toggleTerminalCollapse()" 
                             title="Collapse/Expand">
                       ${this.terminalCollapsed ? '▲' : '▼'}
                     </button>
-                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                    <button class="terminal-control-btn" 
                             onclick="window.layoutManager?.maximizeTerminal()" 
                             title="Maximize">
                       ⛶
                     </button>
-                    <button class="px-2 py-1 text-xs hover:bg-gray-600 rounded transition-colors" 
+                    <button class="terminal-control-btn" 
                             onclick="window.layoutManager?.hideTerminal()" 
                             title="Close">
                       ×
@@ -754,11 +880,11 @@ export class LayoutManager {
                   AI Assistant
                 </div>
                 <div class="flex gap-1">
-                  <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
+                  <button class="chat-control-btn" 
                           onclick="window.layoutManager?.clearAIChat()">
                     Clear
                   </button>
-                  <button class="px-2 py-1 text-xs border border-gray-600 rounded hover:bg-gray-600 transition-colors" 
+                  <button class="chat-control-btn" 
                           onclick="window.layoutManager?.hideAIChat()">
                     ×
                   </button>
@@ -1049,15 +1175,11 @@ export class LayoutManager {
         terminalBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
         terminalBtn.style.borderColor = 'rgb(59 130 246)';
         terminalBtn.style.color = 'white';
-        terminalBtn.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.1)';
-        terminalBtn.style.transform = 'translateY(-1px)';
       } else {
         terminalBtn.classList.remove('active');
         terminalBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
         terminalBtn.style.borderColor = 'rgb(75 85 99)';
         terminalBtn.style.color = 'rgb(226 232 240)';
-        terminalBtn.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-        terminalBtn.style.transform = 'none';
       }
     }
     
@@ -1067,15 +1189,11 @@ export class LayoutManager {
         chatBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
         chatBtn.style.borderColor = 'rgb(59 130 246)';
         chatBtn.style.color = 'white';
-        chatBtn.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.1)';
-        chatBtn.style.transform = 'translateY(-1px)';
       } else {
         chatBtn.classList.remove('active');
         chatBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
         chatBtn.style.borderColor = 'rgb(75 85 99)';
         chatBtn.style.color = 'rgb(226 232 240)';
-        chatBtn.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-        chatBtn.style.transform = 'none';
       }
     }
   }
@@ -1141,6 +1259,7 @@ export class LayoutManager {
     this.terminalCollapsed = !this.terminalCollapsed;
     this.updateTerminalSize();
     
+    // Update the button content
     const button = document.querySelector('[onclick*="toggleTerminalCollapse"]') as HTMLElement;
     if (button) {
       button.innerHTML = this.terminalCollapsed ? '▲' : '▼';
@@ -1187,58 +1306,6 @@ export class LayoutManager {
       this.resizeObserver = null;
     }
     delete (window as any).layoutManager;
-  }
-
-  private setupButtonInteractions(): void {
-    const terminalBtn = document.getElementById('terminal-toggle-btn');
-    const chatBtn = document.getElementById('chat-toggle-btn');
-    
-    if (terminalBtn) {
-      this.setupButtonHoverEffects(terminalBtn);
-    }
-    if (chatBtn) {
-      this.setupButtonHoverEffects(chatBtn);
-    }
-    
-    // Setup reset button hover effects
-    const resetBtn = document.querySelector('[onclick*="resetLayout"]') as HTMLElement;
-    if (resetBtn) {
-      this.setupButtonHoverEffects(resetBtn);
-    }
-  }
-
-  private setupButtonHoverEffects(button: HTMLElement): void {
-    const originalStyle = button.style.cssText;
-    
-    button.addEventListener('mouseenter', () => {
-      button.style.background = 'linear-gradient(135deg, rgb(55 65 81) 0%, rgb(75 85 99) 100%)';
-      button.style.borderColor = 'rgb(96 165 250)';
-      button.style.color = 'rgb(248 250 252)';
-      button.style.transform = 'translateY(-2px) scale(1.02)';
-      button.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      if (!button.classList.contains('active')) {
-        button.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
-        button.style.borderColor = 'rgb(75 85 99)';
-        button.style.color = 'rgb(226 232 240)';
-        button.style.transform = 'none';
-        button.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-      }
-    });
-    
-    button.addEventListener('mousedown', () => {
-      button.style.transform = 'translateY(0) scale(0.98)';
-    });
-    
-    button.addEventListener('mouseup', () => {
-      if (button.matches(':hover')) {
-        button.style.transform = 'translateY(-2px) scale(1.02)';
-      } else {
-        button.style.transform = 'none';
-      }
-    });
   }
 
   private createProjectSelector(): void {
