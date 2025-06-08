@@ -13,17 +13,11 @@
           sans-serif;
       }
     </style>
-    <!-- Monaco Editor from CDN -->
-    <script src="https://unpkg.com/monaco-editor@0.44.0/min/vs/loader.js"></script>
-    <!-- RequireJS for AMD module loading -->
+    <!-- RequireJS for Monaco Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      require(["./dist/renderer"], function () {
-        console.log("✅ Modular renderer loaded successfully!");
-      });
-    </script>
+    <script type="module" src="./dist/renderer.js"></script>
   </body>
 </html>

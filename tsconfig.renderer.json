@@ -2,30 +2,27 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "outFile": "./dist/renderer.js",
     "target": "ES2020",
-    "module": "AMD",
+    "module": "ES2020",
     "moduleResolution": "node",
     "lib": ["ES2020", "DOM"],
-    "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
-    "resolveJsonModule": false,
-    "typeRoots": ["./node_modules/@types", "./src/types"]
+    "resolveJsonModule": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "noImplicitAny": false
   },
   "include": [
     "src/renderer.ts",
-    "src/modules/**/*"
+    "src/modules/**/*",
+    "src/types/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "src/main.ts",
-    "src/preload.ts",
-    "src/renderer-simple.ts",
-    "src/App.tsx",
-    "src/components/**/*"
+    "src/preload.ts"
   ]
 }

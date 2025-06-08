@@ -984,7 +984,7 @@ export class ChatManager {
     button.innerHTML = '<span class="btn-text">Connecting...</span>';
 
     try {
-      const testResult = await this.electronAPI.callAnthropicAPI(
+      const testResult = await window.electronAPI.callAnthropicAPI(
         [{ role: 'user', content: 'Hello' }],
         'You are a helpful assistant. Respond with just "OK" to confirm the connection.'
       );
@@ -1083,7 +1083,7 @@ I have access to your current file context and can provide tailored assistance. 
         content: msg.content
       }));
 
-      const response = await this.electronAPI.callAnthropicAPI(
+      const response = await window.electronAPI.callAnthropicAPI(
         apiMessages,
         this.getSystemPrompt()
       );

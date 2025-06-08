@@ -1,5 +1,5 @@
-import { OpenTab, AppState } from '../types';
-import { FileSystemManager } from '../fileSystem';
+import { OpenTab, AppState } from '../types/index.js';
+import { FileSystemManager } from '../fileSystem/index.js';
 
 declare const monaco: typeof import('monaco-editor');
 
@@ -14,12 +14,17 @@ export class TabManager {
 
   async openFile(filePath: string): Promise<void> {
     try {
+      console.log('📄 Opening file:', filePath);
+      
       if (this.state.openTabs.has(filePath)) {
+        console.log('📄 File already open, switching to tab');
         this.switchToTab(filePath);
         return;
       }
 
       const content = await this.fileSystem.readFile(filePath);
+      console.log('📄 File content loaded, length:', content.length);
+      
       const fileName = filePath.split('/').pop() || filePath;
       const extension = fileName.split('.').pop() || '';
       const language = this.fileSystem.getLanguageFromExtension(extension);
@@ -35,8 +40,11 @@ export class TabManager {
       this.state.openTabs.set(filePath, tab);
       this.switchToTab(filePath);
       this.renderTabs();
+      
+      console.log('📄 File opened successfully:', fileName);
     } catch (error) {
-      console.error('Failed to open file:', error);
+      console.error('❌ Failed to open file:', error);
+      alert(`Failed to open file: ${error}`);
     }
   }
 
@@ -65,17 +73,51 @@ export class TabManager {
 
   switchToTab(filePath: string): void {
     const tab = this.state.openTabs.get(filePath);
-    if (!tab) return;
+    if (!tab) {
+      console.error('❌ Tab not found:', filePath);
+      return;
+    }
 
+    console.log('📄 Switching to tab:', tab.name);
+    
     this.state.activeTabPath = filePath;
     this.state.currentFile = filePath;
 
     if (this.state.monacoEditor) {
+      // Simple approach: just set the value and language
       this.state.monacoEditor.setValue(tab.content);
-      const model = this.state.monacoEditor.getModel();
-      if (model && monaco) {
-        monaco.editor.setModelLanguage(model, tab.language);
+      
+      if (window.monaco) {
+        const model = this.state.monacoEditor.getModel();
+        if (model) {
+          // Map extensions to Monaco languages
+          const languageMap: { [key: string]: string } = {
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'json': 'json',
+            'css': 'css',
+            'scss': 'scss',
+            'html': 'html',
+            'md': 'markdown',
+            'py': 'python',
+            'java': 'java',
+            'cpp': 'cpp',
+            'c': 'c',
+            'php': 'php',
+            'rb': 'ruby',
+            'go': 'go',
+            'rs': 'rust'
+          };
+          
+          const extension = tab.name.split('.').pop() || '';
+          const monacoLanguage = languageMap[extension] || 'plaintext';
+          window.monaco.editor.setModelLanguage(model, monacoLanguage);
+        }
       }
+    } else {
+      console.warn('⚠️ Monaco editor not available');
     }
 
     this.updateActiveTabStyling();
@@ -83,7 +125,10 @@ export class TabManager {
 
   renderTabs(): void {
     const tabContainer = document.querySelector('.tab-bar');
-    if (!tabContainer) return;
+    if (!tabContainer) {
+      console.error('❌ Tab container not found');
+      return;
+    }
 
     tabContainer.innerHTML = '';
 

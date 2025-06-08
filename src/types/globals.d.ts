@@ -11,12 +11,7 @@ declare global {
       
       // Command execution
       executeCommand: (command: string, workingDir?: string) => Promise<any>;
-      
-      // Process control
       killProcess: (processId?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
-      
-      // External operations
-      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
       
       // Terminal operations
       createTerminal: () => Promise<{ success: boolean; error?: string }>;
@@ -30,10 +25,6 @@ declare global {
       onProcessStarted: (callback: (info: { id: string; command: string }) => void) => void;
       onProcessEnded: (callback: (info: { id: string }) => void) => void;
       
-      // Screen capture
-      getSources: () => Promise<any[]>;
-      getScreenInfo: () => Promise<any>;
-      
       // AI API
       callAnthropicAPI: (messages: any[], systemPrompt?: string) => Promise<any>;
       
@@ -42,6 +33,22 @@ declare global {
       selectProjectDirectory: () => Promise<string | null>;
       getRecentProjects: () => Promise<any[]>;
       saveRecentProject: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
-    }
+      
+      // External operations
+      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
+      getSources: () => Promise<any[]>;
+      getScreenInfo: () => Promise<any>;
+    };
+
+    monaco: typeof import('monaco-editor');
+    require: {
+      config: (options: any) => void;
+      (modules: string[], callback: () => void, errorback?: (error: any) => void): void;
+    };
+
+    // Global app instances
+    app?: any;
+    layoutManager?: any;
+    chatManager?: any;
   }
 }

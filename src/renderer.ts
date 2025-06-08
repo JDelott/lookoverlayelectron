@@ -5,13 +5,13 @@ console.log('🚀 RENDERER SCRIPT STARTING - THIS SHOULD SHOW UP FIRST');
 
 console.log('🚀 Renderer script starting...');
 
-import { AppState } from './modules/types';
-import { FileSystemManager } from './modules/fileSystem';
-import { TabManager } from './modules/tabs';
-import { MonacoEditorManager } from './modules/editor';
-import { TerminalManager } from './modules/terminal';
-import { LayoutManager } from './modules/layout';
-import { ChatManager } from './modules/chat';
+import { AppState } from './modules/types/index.js';
+import { FileSystemManager } from './modules/fileSystem/index.js';
+import { TabManager } from './modules/tabs/index.js';
+import { MonacoEditorManager } from './modules/editor/index.js';
+import { TerminalManager } from './modules/terminal/index.js';
+import { LayoutManager } from './modules/layout/index.js';
+import { ChatManager } from './modules/chat/index.js';
 
 class RendererApp {
   private state: AppState;
