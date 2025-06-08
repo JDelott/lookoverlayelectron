@@ -1115,10 +1115,14 @@ export class LayoutManager {
     this.rebuildLayout();
   }
 
-  clearAIChat(): void {
-    const content = document.getElementById('ai-chat-content');
-    if (content) {
-      content.innerHTML = '<div class="p-4 text-sm text-gray-400">AI Assistant is ready to help!</div>';
+    clearAIChat(): void {
+    if ((window as any).chatManager) {
+      (window as any).chatManager.clearChat();
+    } else {
+      const content = document.getElementById('ai-chat-content');
+      if (content) {
+        content.innerHTML = '<div class="p-4 text-sm text-gray-400">AI Assistant is ready to help!</div>';
+      }
     }
   }
 

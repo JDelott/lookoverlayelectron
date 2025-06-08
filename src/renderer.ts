@@ -11,6 +11,7 @@ import { TabManager } from './modules/tabs';
 import { MonacoEditorManager } from './modules/editor';
 import { TerminalManager } from './modules/terminal';
 import { LayoutManager } from './modules/layout';
+import { ChatManager } from './modules/chat';
 
 class RendererApp {
   private state: AppState;
@@ -19,6 +20,7 @@ class RendererApp {
   private editorManager: MonacoEditorManager;
   private terminalManager: TerminalManager;
   private layoutManager: LayoutManager;
+  private chatManager: ChatManager;
 
   constructor() {
     this.state = {
@@ -41,6 +43,7 @@ class RendererApp {
     this.editorManager = new MonacoEditorManager(this.state, this.tabManager);
     this.terminalManager = new TerminalManager(this.state);
     this.layoutManager = new LayoutManager(this.state);
+    this.chatManager = new ChatManager(this.state);
   }
 
   async initialize(): Promise<void> {
@@ -84,6 +87,10 @@ class RendererApp {
       console.log('🔧 Initializing terminal manager...');
       this.terminalManager.initialize();
       console.log('✅ Terminal manager initialized');
+      
+      console.log('🔧 Initializing chat manager...');
+      this.chatManager.initialize();
+      console.log('✅ Chat manager initialized');
       
       console.log('🔧 Loading file system...');
       await this.loadFileSystem();
