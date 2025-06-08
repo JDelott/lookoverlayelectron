@@ -4,6 +4,7 @@ interface PanelSizes {
   sidebarWidth: number;
   terminalHeight: number;
   aiChatWidth: number;
+  creativeWidth: number;
 }
 
 export class LayoutManager {
@@ -18,7 +19,8 @@ export class LayoutManager {
     this.panelSizes = {
       sidebarWidth: 280,
       terminalHeight: 250,
-      aiChatWidth: 350
+      aiChatWidth: 350,
+      creativeWidth: 350
     };
   }
 
@@ -32,8 +34,9 @@ export class LayoutManager {
       return;
     }
 
-    // Preserve the current AI chat state before rebuilding
+    // Preserve the current panel states before rebuilding
     const wasAIChatVisible = this.state.aiChatVisible;
+    const wasCreativeVisible = this.state.creativeAssistantVisible;
 
     root.className = 'w-full h-screen bg-gray-900 text-gray-300 overflow-hidden p-2';
     root.innerHTML = this.getLayoutHTML();
@@ -43,8 +46,9 @@ export class LayoutManager {
     this.setupViewportObserver();
     this.isInitialized = true;
     
-    // Restore AI chat state and apply the correct CSS class
+    // Restore panel states and apply the correct CSS classes
     this.state.aiChatVisible = wasAIChatVisible;
+    this.state.creativeAssistantVisible = wasCreativeVisible;
     this.updatePanelVisibility();
   }
 
@@ -67,6 +71,7 @@ export class LayoutManager {
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
         --chat-width: ${this.panelSizes.aiChatWidth}px;
+        --creative-width: ${this.panelSizes.creativeWidth}px;
       }
 
       /* Header Button Styles */
@@ -155,6 +160,28 @@ export class LayoutManager {
         background: rgb(55 65 81);
         border-color: rgb(96 165 250);
         color: rgb(226 232 240);
+      }
+
+      /* Creative Assistant Control Button Styles */
+      .creative-control-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        background: transparent;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        color: rgb(196 181 253);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .creative-control-btn:hover {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: rgba(139, 92, 246, 0.5);
+        color: rgb(255 255 255);
       }
 
       /* Project Selector Styles */
@@ -627,6 +654,64 @@ export class LayoutManager {
       .terminal-output-text .bold.cyan { color: #29b8db; }
       .terminal-output-text .bold.white { color: #ffffff; }
 
+      /* Creative Assistant Panel Styles */
+      .handle-creative { 
+        width: 4px;
+        background: rgb(55 65 81);
+        cursor: col-resize;
+        transition: background-color 0.2s ease;
+        user-select: none;
+        flex-shrink: 0;
+        display: none;
+      }
+
+      /* Show creative handle when creative assistant is visible */
+      .ide-container.creative-visible .handle-creative {
+        display: block;
+      }
+
+      .handle-creative:hover { 
+        background: rgb(139 92 246); 
+      }
+      
+      .creative-assistant-area { 
+        width: 0px;
+        min-width: 0px;
+        max-width: 600px;
+        overflow: hidden;
+        display: none;
+        flex-direction: column;
+        background: rgb(31 41 55);
+        border-left: 1px solid rgb(75 85 99);
+        flex-shrink: 0;
+        transition: width 0.3s ease, min-width 0.3s ease;
+      }
+
+      /* Show creative assistant area when creative is visible */
+      .ide-container.creative-visible .creative-assistant-area {
+        display: flex;
+        width: var(--creative-width);
+        min-width: 280px;
+      }
+
+      .creative-assistant-header {
+        height: 40px;
+        padding: 0 12px;
+        background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%);
+        border-bottom: 1px solid rgb(139 92 246);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      .creative-assistant-content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
+      }
+
       /* Chat Panel Styles - Class-based visibility */
       .handle-chat { 
         width: 4px;
@@ -792,6 +877,13 @@ export class LayoutManager {
                 Terminal 💻
               </button>
               <button 
+                id="creative-toggle-btn"
+                onclick="window.layoutManager?.toggleCreativeAssistant()"
+                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
+              >
+                Creative 🎨
+              </button>
+              <button 
                 id="chat-toggle-btn"
                 onclick="window.layoutManager?.toggleAIChat()"
                 style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
@@ -807,7 +899,7 @@ export class LayoutManager {
             </div>
           </div>
 
-          <!-- Content Area (Sidebar + Main + Chat) -->
+          <!-- Content Area (Sidebar + Main + Creative + Chat) -->
           <div class="content-area">
             <!-- Sidebar -->
             <div class="sidebar-area">
@@ -865,6 +957,35 @@ export class LayoutManager {
                 <!-- Terminal Content -->
                 <div class="terminal-output">
                   <!-- Terminal content will be populated here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Creative Assistant Handle -->
+            <div class="handle-creative" data-panel="creative-assistant"></div>
+
+            <!-- Creative Assistant Panel -->
+            <div class="creative-assistant-area">
+              <div class="creative-assistant-header">
+                <div class="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                  <span>🎨</span>
+                  Creative Assistant
+                </div>
+                <div class="flex gap-1">
+                  <button class="creative-control-btn" 
+                          onclick="window.layoutManager?.clearCreativeAssistant()">
+                    Clear
+                  </button>
+                  <button class="creative-control-btn" 
+                          onclick="window.layoutManager?.hideCreativeAssistant()">
+                    ×
+                  </button>
+                </div>
+              </div>
+              
+              <div class="creative-assistant-content" id="creative-assistant-content">
+                <div class="text-sm text-gray-400">
+                  Creative Assistant is ready to help with ideas and brainstorming!
                 </div>
               </div>
             </div>
@@ -948,14 +1069,29 @@ export class LayoutManager {
       this.updatePanelSizes();
     }
 
-    const maxChatWidth = Math.floor(safeWidth * 0.35);
-    if (this.panelSizes.aiChatWidth > maxChatWidth) {
-      this.panelSizes.aiChatWidth = Math.max(280, maxChatWidth);
+    const maxPanelWidth = Math.floor(safeWidth * 0.35);
+    if (this.panelSizes.aiChatWidth > maxPanelWidth) {
+      this.panelSizes.aiChatWidth = Math.max(280, maxPanelWidth);
       this.updatePanelSizes();
     }
 
-    if (safeWidth < 800 && this.state.aiChatVisible) {
+    if (this.panelSizes.creativeWidth > maxPanelWidth) {
+      this.panelSizes.creativeWidth = Math.max(280, maxPanelWidth);
+      this.updatePanelSizes();
+    }
+
+    // Hide panels if viewport is too small
+    if (safeWidth < 1000) {
+      if (this.state.aiChatVisible && this.state.creativeAssistantVisible) {
+        // Hide one of the panels if both are open and viewport is small
+        this.state.creativeAssistantVisible = false;
+        this.updatePanelVisibility();
+      }
+    }
+
+    if (safeWidth < 800 && (this.state.aiChatVisible || this.state.creativeAssistantVisible)) {
       this.state.aiChatVisible = false;
+      this.state.creativeAssistantVisible = false;
       this.updatePanelVisibility();
     }
 
@@ -983,6 +1119,14 @@ export class LayoutManager {
       }
     });
 
+    this.setupResize('creative-assistant', (delta) => {
+      const viewportWidth = window.innerWidth;
+      const maxWidth = Math.floor(viewportWidth * 0.35);
+      const newWidth = Math.max(280, Math.min(maxWidth, this.panelSizes.creativeWidth - delta));
+      this.panelSizes.creativeWidth = newWidth;
+      this.updatePanelSizes();
+    });
+
     this.setupResize('ai-chat', (delta) => {
       const viewportWidth = window.innerWidth;
       const maxWidth = Math.floor(viewportWidth * 0.35);
@@ -1005,7 +1149,7 @@ export class LayoutManager {
       document.body.style.userSelect = 'none';
       document.body.style.cursor = panel === 'terminal' ? 'row-resize' : 'col-resize';
 
-      handle.style.background = 'rgb(59 130 246)';
+      handle.style.background = panel === 'creative-assistant' ? 'rgb(139 92 246)' : 'rgb(59 130 246)';
 
       const onMouseMove = (e: MouseEvent) => {
         if (!isResizing) return;
@@ -1026,6 +1170,13 @@ export class LayoutManager {
           const maxHeight = Math.floor(viewportHeight * 0.6);
           const newHeight = this.panelSizes.terminalHeight - delta;
           if (newHeight >= 100 && newHeight <= maxHeight) {
+            callback(delta);
+            startPos = currentPos;
+          }
+        } else if (panel === 'creative-assistant') {
+          const maxWidth = Math.floor(viewportWidth * 0.35);
+          const newWidth = this.panelSizes.creativeWidth - delta;
+          if (newWidth >= 280 && newWidth <= maxWidth) {
             callback(delta);
             startPos = currentPos;
           }
@@ -1054,11 +1205,12 @@ export class LayoutManager {
     });
   }
 
-  private updatePanelSizes(): void {
+    private updatePanelSizes(): void {
     const root = document.querySelector('.ide-container') as HTMLElement;
     if (root) {
       document.documentElement.style.setProperty('--sidebar-width', `${this.panelSizes.sidebarWidth}px`);
       document.documentElement.style.setProperty('--chat-width', `${this.panelSizes.aiChatWidth}px`);
+      document.documentElement.style.setProperty('--creative-width', `${this.panelSizes.creativeWidth}px`);
     }
     this.triggerEditorResize();
   }
@@ -1066,32 +1218,40 @@ export class LayoutManager {
   public updatePanelVisibility(): void {
     if (!this.isInitialized) return;
 
-    // Use simple class-based approach
     const ideContainer = document.querySelector('.ide-container') as HTMLElement;
     if (!ideContainer) return;
 
+    // Handle AI Chat visibility
     if (this.state.aiChatVisible) {
       ideContainer.classList.add('chat-visible');
       ideContainer.classList.remove('chat-hidden');
-      
-      // Ensure chat manager is ready when panel opens
       this.initializeChatWhenReady();
     } else {
       ideContainer.classList.add('chat-hidden');
       ideContainer.classList.remove('chat-visible');
     }
 
+    // Handle Creative Assistant visibility
+    if (this.state.creativeAssistantVisible) {
+      ideContainer.classList.add('creative-visible');
+      ideContainer.classList.remove('creative-hidden');
+      this.initializeCreativeWhenReady();
+    } else {
+      ideContainer.classList.add('creative-hidden');
+      ideContainer.classList.remove('creative-visible');
+    }
+
     // Update CSS custom properties for sizing
     const root = document.documentElement;
     root.style.setProperty('--sidebar-width', `${this.panelSizes.sidebarWidth}px`);
     root.style.setProperty('--chat-width', `${this.panelSizes.aiChatWidth}px`);
+    root.style.setProperty('--creative-width', `${this.panelSizes.creativeWidth}px`);
 
     this.updateButtonStates();
     this.triggerEditorResize();
   }
 
   private initializeChatWhenReady(): void {
-    // More reliable approach using multiple checks
     let attempts = 0;
     const maxAttempts = 10;
     
@@ -1107,18 +1267,40 @@ export class LayoutManager {
         return;
       }
 
-      // Always reinitialize to ensure fresh state
       console.log('🔧 Initializing chat manager for panel open...');
       chatManager.initialize();
     };
     
-    // Start checking immediately
+    setTimeout(checkAndInit, 50);
+  }
+
+  private initializeCreativeWhenReady(): void {
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const checkAndInit = () => {
+      attempts++;
+      const creativeContent = document.getElementById('creative-assistant-content');
+      const creativeManager = (window as any).creativeAssistantManager;
+      
+      if (!creativeContent || !creativeManager) {
+        if (attempts < maxAttempts) {
+          setTimeout(checkAndInit, 100);
+        }
+        return;
+      }
+
+      console.log('🔧 Initializing creative assistant for panel open...');
+      creativeManager.initialize();
+    };
+    
     setTimeout(checkAndInit, 50);
   }
 
   private needsLayoutRebuild(): boolean {
     const currentChatVisible = document.querySelector('.chat-area') !== null;
-    return currentChatVisible !== this.state.aiChatVisible;
+    const currentCreativeVisible = document.querySelector('.creative-assistant-area') !== null;
+    return currentChatVisible !== this.state.aiChatVisible || currentCreativeVisible !== this.state.creativeAssistantVisible;
   }
 
   private rebuildLayout(): void {
@@ -1167,6 +1349,7 @@ export class LayoutManager {
 
   private updateButtonStates(): void {
     const terminalBtn = document.getElementById('terminal-toggle-btn');
+    const creativeBtn = document.getElementById('creative-toggle-btn');
     const chatBtn = document.getElementById('chat-toggle-btn');
     
     if (terminalBtn) {
@@ -1180,6 +1363,20 @@ export class LayoutManager {
         terminalBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
         terminalBtn.style.borderColor = 'rgb(75 85 99)';
         terminalBtn.style.color = 'rgb(226 232 240)';
+      }
+    }
+    
+    if (creativeBtn) {
+      if (this.state.creativeAssistantVisible) {
+        creativeBtn.classList.add('active');
+        creativeBtn.style.background = 'linear-gradient(135deg, rgb(139 92 246) 0%, rgb(124 58 237) 100%)';
+        creativeBtn.style.borderColor = 'rgb(139 92 246)';
+        creativeBtn.style.color = 'white';
+      } else {
+        creativeBtn.classList.remove('active');
+        creativeBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
+        creativeBtn.style.borderColor = 'rgb(75 85 99)';
+        creativeBtn.style.color = 'rgb(226 232 240)';
       }
     }
     
@@ -1208,7 +1405,7 @@ export class LayoutManager {
     });
   }
 
-  // Public API
+  // Public API methods
   toggleTerminal(): void {
     this.state.terminalVisible = !this.state.terminalVisible;
     
@@ -1216,7 +1413,7 @@ export class LayoutManager {
       this.panelSizes.terminalHeight = 250;
     }
     
-    this.injectLayoutStyles(); // Re-inject styles with new state
+    this.injectLayoutStyles();
     console.log('Terminal toggled:', this.state.terminalVisible);
   }
 
@@ -1228,13 +1425,11 @@ export class LayoutManager {
       this.panelSizes.terminalHeight = 250;
     }
     
-    // Rebuild the layout to apply the new CSS
     this.rebuildLayout();
   }
 
   hideTerminal(): void {
     this.state.terminalVisible = false;
-    // Rebuild the layout to apply the new CSS
     this.rebuildLayout();
   }
 
@@ -1254,12 +1449,38 @@ export class LayoutManager {
     this.updatePanelVisibility();
   }
 
+  // Creative Assistant control methods
+  toggleCreativeAssistant(): void {
+    this.state.creativeAssistantVisible = !this.state.creativeAssistantVisible;
+    this.updatePanelVisibility();
+    console.log('Creative Assistant toggled:', this.state.creativeAssistantVisible);
+  }
+
+  showCreativeAssistant(): void {
+    this.state.creativeAssistantVisible = true;
+    this.updatePanelVisibility();
+  }
+
+  hideCreativeAssistant(): void {
+    this.state.creativeAssistantVisible = false;
+    this.updatePanelVisibility();
+  }
+
+  clearCreativeAssistant(): void {
+    const creativeManager = (window as any).creativeAssistantManager;
+    if (creativeManager) {
+      console.log('🔧 Clearing creative assistant via layout manager');
+      creativeManager.clearChat();
+    } else {
+      console.error('❌ CreativeAssistantManager not available for clearing');
+    }
+  }
+
   toggleTerminalCollapse(): void {
     if (!this.state.terminalVisible) return;
     this.terminalCollapsed = !this.terminalCollapsed;
     this.updateTerminalSize();
     
-    // Update the button content
     const button = document.querySelector('[onclick*="toggleTerminalCollapse"]') as HTMLElement;
     if (button) {
       button.innerHTML = this.terminalCollapsed ? '▲' : '▼';
@@ -1279,10 +1500,10 @@ export class LayoutManager {
     this.panelSizes = {
       sidebarWidth: 280,
       terminalHeight: 250,
-      aiChatWidth: 350
+      aiChatWidth: 350,
+      creativeWidth: 350
     };
     this.terminalCollapsed = false;
-    // Rebuild the layout to apply the new CSS
     this.rebuildLayout();
   }
 
@@ -1312,7 +1533,6 @@ export class LayoutManager {
     const root = document.getElementById('root');
     if (!root) return;
 
-    // Inject styles first
     this.injectLayoutStyles();
 
     root.innerHTML = `
@@ -1364,7 +1584,7 @@ export class LayoutManager {
           <div class="recent-projects">
             <h3>Recent Projects</h3>
             <div class="project-list">
-              ${projects.map((project: any, index: number) => `
+              ${projects.map((project: any) => `
                 <div class="project-item" onclick="window.layoutManager?.selectProject('${project.path}')">
                   <div class="project-info">
                     <div class="project-name">${project.name}</div>
@@ -1435,21 +1655,16 @@ export class LayoutManager {
         return;
       }
 
-      // Set the current directory
       const result = await electronAPI.setCurrentDirectory(projectPath);
       if (result.success) {
-        // Save to recent projects
         await electronAPI.saveRecentProject(projectPath);
         
-        // Update state
         this.state.currentWorkingDirectory = projectPath;
         this.state.showProjectSelector = false;
         
         console.log('🔧 Creating main layout...');
-        // Create the main layout
         this.createLayout();
         
-        // Check if app is available
         const app = (window as any).app;
         console.log('🔧 Window.app available:', !!app);
         

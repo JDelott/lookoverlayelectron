@@ -12,6 +12,7 @@ import { MonacoEditorManager } from './modules/editor/index.js';
 import { TerminalManager } from './modules/terminal/index.js';
 import { LayoutManager } from './modules/layout/index.js';
 import { ChatManager } from './modules/chat/index.js';
+import { CreativeAssistantManager } from './modules/creativeAssistant/index.js';
 
 class RendererApp {
   private state: AppState;
@@ -21,6 +22,7 @@ class RendererApp {
   private terminalManager: TerminalManager;
   private layoutManager: LayoutManager;
   private chatManager: ChatManager;
+  private creativeAssistantManager: CreativeAssistantManager;
 
   constructor() {
     this.state = {
@@ -35,6 +37,7 @@ class RendererApp {
       terminalVisible: false,
       terminalHeight: 200,
       aiChatVisible: false,
+      creativeAssistantVisible: false,
       monacoEditor: null
     };
 
@@ -44,6 +47,7 @@ class RendererApp {
     this.terminalManager = new TerminalManager(this.state);
     this.layoutManager = new LayoutManager(this.state);
     this.chatManager = new ChatManager(this.state);
+    this.creativeAssistantManager = new CreativeAssistantManager(this.state);
   }
 
   async initialize(): Promise<void> {
@@ -92,6 +96,11 @@ class RendererApp {
       this.chatManager.initialize();
       this.chatManager.exposeGlobally();
       console.log('✅ Chat manager initialized');
+      
+      console.log('🔧 Initializing creative assistant manager...');
+      this.creativeAssistantManager.initialize();
+      this.creativeAssistantManager.exposeGlobally();
+      console.log('✅ Creative assistant manager initialized');
       
       console.log('🔧 Loading file system...');
       await this.loadFileSystem();
@@ -216,6 +225,12 @@ class RendererApp {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         this.layoutManager.toggleAIChat();
+      }
+
+      // Ctrl/Cmd + Shift + C for Creative Assistant
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        this.layoutManager.toggleCreativeAssistant();
       }
     });
 
