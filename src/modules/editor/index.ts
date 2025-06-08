@@ -152,8 +152,72 @@ export class MonacoEditorManager {
     this.addAllTypes();
     this.setupLanguageDetection();
     this.setupCustomValidation();
+    this.setupESLintStyleRules();
 
     console.log('✅ Monaco TypeScript/JSX configuration complete');
+  }
+
+  private setupESLintStyleRules(): void {
+    if (!window.monaco) return;
+
+    // Register a custom linter for React/ESLint-style rules
+    window.monaco.languages.registerCodeActionProvider('typescript', {
+      provideCodeActions: (model, range, context) => {
+        const actions: any[] = [];
+        const text = model.getValue();
+        
+        // Check for unescaped entities in JSX
+        const unescapedEntityRegex = /(?:>|^)[^<]*['"`](?:[^<]|$)/g;
+        const matches = [...text.matchAll(unescapedEntityRegex)];
+        
+        if (matches.length > 0) {
+          actions.push({
+            title: 'Fix all unescaped entities',
+            kind: 'quickfix',
+            edit: {
+              edits: [{
+                resource: model.uri,
+                edit: {
+                  range: new window.monaco.Range(1, 1, model.getLineCount(), model.getLineMaxColumn(model.getLineCount())),
+                  text: this.fixUnescapedEntities(text)
+                }
+              }]
+            }
+          });
+        }
+
+        return { actions, dispose: () => {} };
+      }
+    });
+
+    // Register hover provider for ESLint-style hints
+    window.monaco.languages.registerHoverProvider('typescript', {
+      provideHover: (model, position) => {
+        const word = model.getWordAtPosition(position);
+        if (!word) return null;
+
+        const line = model.getLineContent(position.lineNumber);
+        
+        // Check if this line contains unescaped entities
+        if (line.includes("'") || line.includes('"')) {
+          return {
+            contents: [
+              { value: '**ESLint: react/no-unescaped-entities**' },
+              { value: 'Unescaped entities should be escaped:\n- `\'` → `&apos;` or `&#39;`\n- `"` → `&quot;` or `&#34;`' }
+            ]
+          };
+        }
+
+        return null;
+      }
+    });
+  }
+
+  private fixUnescapedEntities(text: string): string {
+    // This is a basic implementation - you might want to make it more sophisticated
+    return text
+      .replace(/(?<!&\w{0,10})'/g, '&apos;')  // Replace ' with &apos; (not already escaped)
+      .replace(/(?<!&\w{0,10})"/g, '&quot;'); // Replace " with &quot; (not already escaped)
   }
 
   private setupLanguageDetection(): void {
