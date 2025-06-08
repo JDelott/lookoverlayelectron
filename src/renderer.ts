@@ -229,6 +229,22 @@ class RendererApp {
         }
       }
     });
+
+    // Listen for file tree refresh requests
+    document.addEventListener('refresh-file-tree', async () => {
+      console.log('🔄 Refreshing file tree due to terminal command...');
+      try {
+        await this.loadFileSystem();
+        console.log('✅ File tree refreshed successfully');
+      } catch (error) {
+        console.error('❌ Failed to refresh file tree:', error);
+      }
+    });
+
+    document.addEventListener('file-tree-updated', (event: any) => {
+      console.log('🔄 File tree updated, re-rendering...');
+      this.renderFileTree(event.detail);
+    });
   }
 
   private setupGlobalFunctions(): void {

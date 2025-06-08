@@ -37,6 +37,9 @@ let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
 let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running processes
 
+// Global working directory tracking for terminal sessions
+let terminalWorkingDirectories = new Map<string, string>();
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -96,22 +99,208 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
-// Execute single commands with better long-running process support
-ipcMain.handle('execute-command', async (event, command: string, workingDir?: string) => {
+// Execute single commands with enhanced cd and file operations support
+ipcMain.handle('execute-command', async (event, command: string, workingDir?: string, terminalId?: string) => {
   try {
     return new Promise((resolve) => {
+      let currentWorkingDir = workingDir || process.cwd();
+      
+      console.log(`🔧 Executing command: "${command}"`);
+      console.log(`🔧 Working dir passed: ${workingDir}`);
+      console.log(`🔧 Terminal ID: ${terminalId}`);
+      console.log(`🔧 Current working dir: ${currentWorkingDir}`);
+      
+      // Use terminal-specific working directory if available
+      if (terminalId && terminalWorkingDirectories.has(terminalId)) {
+        currentWorkingDir = terminalWorkingDirectories.get(terminalId)!;
+        console.log(`🔧 Using terminal-specific working dir: ${currentWorkingDir}`);
+      }
+
+      const trimmedCommand = command.trim();
+
+      // Handle cd command specially for proper directory navigation
+      if (trimmedCommand.startsWith('cd ')) {
+        const cdPath = trimmedCommand.substring(3).trim();
+        let targetPath: string;
+        
+        console.log(`🔧 CD command detected, path: "${cdPath}"`);
+        
+        if (path.isAbsolute(cdPath)) {
+          targetPath = cdPath;
+        } else if (cdPath === '..') {
+          targetPath = path.dirname(currentWorkingDir);
+        } else if (cdPath === '~' || cdPath === '') {
+          targetPath = os.homedir();
+        } else {
+          targetPath = path.resolve(currentWorkingDir, cdPath);
+        }
+        
+        console.log(`🔧 Target path resolved to: ${targetPath}`);
+        
+        // Validate directory exists and is accessible
+        try {
+          const stats = fs.statSync(targetPath);
+          if (!stats.isDirectory()) {
+            resolve({
+              success: false,
+              output: `cd: not a directory: ${cdPath}`,
+              code: 1,
+              workingDir: currentWorkingDir
+            });
+            return;
+          }
+          
+          // Update working directory for this terminal
+          if (terminalId) {
+            terminalWorkingDirectories.set(terminalId, targetPath);
+            console.log(`🔧 Updated terminal ${terminalId} working dir to: ${targetPath}`);
+          }
+          
+          resolve({
+            success: true,
+            output: `Changed directory to ${targetPath}`,
+            code: 0,
+            workingDir: targetPath
+          });
+        } catch (err) {
+          resolve({
+            success: false,
+            output: `cd: no such file or directory: ${cdPath}`,
+            code: 1,
+            workingDir: currentWorkingDir
+          });
+        }
+        return;
+      }
+
+      // Handle pwd command
+      if (trimmedCommand === 'pwd') {
+        resolve({
+          success: true,
+          output: currentWorkingDir,
+          code: 0,
+          workingDir: currentWorkingDir
+        });
+        return;
+      }
+
+      // Handle mkdir command for directory creation
+      if (trimmedCommand.startsWith('mkdir ')) {
+        const dirName = trimmedCommand.substring(6).trim();
+        const targetPath = path.resolve(currentWorkingDir, dirName);
+        
+        try {
+          fs.mkdirSync(targetPath, { recursive: true });
+          // Notify renderer to refresh file tree
+          mainWindow?.webContents.send('file-system-changed', { 
+            type: 'mkdir', 
+            path: targetPath,
+            parentPath: currentWorkingDir
+          });
+          resolve({
+            success: true,
+            output: `Directory created: ${dirName}`,
+            code: 0,
+            workingDir: currentWorkingDir
+          });
+        } catch (err: any) {
+          resolve({
+            success: false,
+            output: `mkdir: ${err.message}`,
+            code: 1,
+            workingDir: currentWorkingDir
+          });
+        }
+        return;
+      }
+
+      // Handle touch command for file creation
+      if (trimmedCommand.startsWith('touch ')) {
+        const fileName = trimmedCommand.substring(6).trim();
+        const targetPath = path.resolve(currentWorkingDir, fileName);
+        
+        try {
+          fs.writeFileSync(targetPath, '');
+          // Notify renderer to refresh file tree
+          mainWindow?.webContents.send('file-system-changed', { 
+            type: 'touch', 
+            path: targetPath,
+            parentPath: currentWorkingDir
+          });
+          resolve({
+            success: true,
+            output: `File created: ${fileName}`,
+            code: 0,
+            workingDir: currentWorkingDir
+          });
+        } catch (err: any) {
+          resolve({
+            success: false,
+            output: `touch: ${err.message}`,
+            code: 1,
+            workingDir: currentWorkingDir
+          });
+        }
+        return;
+      }
+
+      // Enhanced ls command with proper formatting
+      if (trimmedCommand === 'ls' || trimmedCommand.startsWith('ls ')) {
+        const args = trimmedCommand.split(' ').slice(1);
+        const showHidden = args.includes('-a') || args.includes('-la') || args.includes('-al');
+        const longFormat = args.includes('-l') || args.includes('-la') || args.includes('-al');
+        
+        try {
+          const files = fs.readdirSync(currentWorkingDir);
+          let output = '';
+          let filteredFiles = showHidden ? files : files.filter(f => !f.startsWith('.'));
+          
+          if (longFormat) {
+            for (const file of filteredFiles) {
+              const filePath = path.join(currentWorkingDir, file);
+              try {
+                const stats = fs.statSync(filePath);
+                const isDir = stats.isDirectory();
+                const size = stats.size;
+                const modified = stats.mtime.toLocaleDateString();
+                const permissions = isDir ? 'drwxr-xr-x' : '-rw-r--r--';
+                output += `${permissions}  1 user user ${size.toString().padStart(8)} ${modified} ${file}\n`;
+              } catch (e) {
+                output += `?????????? ?? ???? ???? ???????? ???????? ${file}\n`;
+              }
+            }
+          } else {
+            output = filteredFiles.join('  ') + '\n';
+          }
+
+          resolve({
+            success: true,
+            output: output,
+            code: 0,
+            workingDir: currentWorkingDir
+          });
+        } catch (err) {
+          resolve({
+            success: false,
+            output: `ls: ${(err as Error).message}`,
+            code: 1,
+            workingDir: currentWorkingDir
+          });
+        }
+        return;
+      }
+
+      // For all other commands, execute in the current working directory
       const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['/c', command] : ['-c', command];
       
-      const cwd = workingDir || process.cwd();
-      
-      console.log(`Executing command: ${command} in directory: ${cwd}`);
+      console.log(`Executing command: ${command} in directory: ${currentWorkingDir}`);
       
       const childProcess = spawn(shell, args, {
-        cwd: cwd,
+        cwd: currentWorkingDir,
         env: {
           ...process.env,
-          FORCE_COLOR: '1', // Enable colors for better output
+          FORCE_COLOR: '1',
           NODE_ENV: process.env.NODE_ENV || 'development'
         },
         stdio: ['pipe', 'pipe', 'pipe']
@@ -180,7 +369,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
           success: code === 0,
           output: output + error,
           code,
-          workingDir: cwd,
+          workingDir: currentWorkingDir,
           isLongRunning: false // Mark as completed
         });
       });
@@ -192,7 +381,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
           success: false,
           output: `Error: ${err.message}`,
           code: -1,
-          workingDir: cwd
+          workingDir: currentWorkingDir
         });
       });
 
@@ -208,7 +397,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
               success: false,
               output: 'Process started but no output received',
               code: -1,
-              workingDir: cwd
+              workingDir: currentWorkingDir
             });
           }
         }, 5000);
@@ -222,6 +411,18 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
       workingDir: workingDir || process.cwd()
     };
   }
+});
+
+// Initialize terminal working directory
+ipcMain.handle('init-terminal-working-dir', async (event, terminalId: string, workingDir: string) => {
+  console.log(`Initializing terminal ${terminalId} working directory to: ${workingDir}`);
+  terminalWorkingDirectories.set(terminalId, workingDir);
+  return { success: true };
+});
+
+// Get terminal working directory
+ipcMain.handle('get-terminal-working-dir', async (event, terminalId: string) => {
+  return terminalWorkingDirectories.get(terminalId) || process.cwd();
 });
 
 // Persistent terminal operations

@@ -7,8 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke('write-file', filePath, content),
   getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
   
-  // Single command execution with working directory support
-  executeCommand: (command: string, workingDir?: string) => ipcRenderer.invoke('execute-command', command, workingDir),
+  // Enhanced command execution with terminal ID support
+  executeCommand: (command: string, workingDir?: string, terminalId?: string) => 
+    ipcRenderer.invoke('execute-command', command, workingDir, terminalId),
   
   // Process control
   killProcess: (processId?: string) => ipcRenderer.invoke('kill-process', processId),
@@ -54,5 +55,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCurrentDirectory: (directoryPath: string) => ipcRenderer.invoke('set-current-directory', directoryPath),
   selectProjectDirectory: () => ipcRenderer.invoke('select-project-directory'),
   getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
-  saveRecentProject: (projectPath: string) => ipcRenderer.invoke('save-recent-project', projectPath)
+  saveRecentProject: (projectPath: string) => ipcRenderer.invoke('save-recent-project', projectPath),
+  
+  // Terminal working directory management
+  initTerminalWorkingDir: (terminalId: string, workingDir: string) => ipcRenderer.invoke('init-terminal-working-dir', terminalId, workingDir),
+  getTerminalWorkingDir: (terminalId: string) => ipcRenderer.invoke('get-terminal-working-dir', terminalId),
+  
+  // File system change events
+  onFileSystemChanged: (callback: (event: { type: string; path: string; parentPath: string }) => void) => {
+    ipcRenderer.on('file-system-changed', (event, data) => callback(data));
+  },
 });

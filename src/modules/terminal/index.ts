@@ -15,6 +15,7 @@ export class TerminalManager {
   initialize(): void {
     this.createNewTerminal();
     this.setupStreamingHandlers();
+    this.setupFileSystemChangeListener();
   }
 
   private setupStreamingHandlers(): void {
@@ -55,6 +56,17 @@ export class TerminalManager {
 
     this.state.terminals.set(terminalId, terminal);
     this.state.activeTerminalId = terminalId;
+    
+    // Initialize the working directory for this terminal in the main process
+    if (this.electronAPI && this.electronAPI.initTerminalWorkingDir) {
+      this.electronAPI.initTerminalWorkingDir(terminalId, terminal.workingDirectory)
+        .then(() => {
+          console.log(`✅ Terminal ${terminalId} working directory initialized`);
+        })
+        .catch((error: any) => {
+          console.error(`❌ Failed to initialize terminal working directory:`, error);
+        });
+    }
     
     this.renderTerminalTabs();
     this.initializeTerminalSession(terminalId);
@@ -107,18 +119,29 @@ export class TerminalManager {
 
     try {
       if (this.electronAPI) {
-        const result = await this.electronAPI.executeCommand(command, activeTerminal.workingDirectory);
+        // Pass terminal ID for proper working directory tracking
+        const result = await this.electronAPI.executeCommand(
+          command, 
+          activeTerminal.workingDirectory,
+          activeTerminal.id
+        );
         
         if (result.success) {
           if (result.output) {
             activeTerminal.output += result.output + '\n';
           }
-          // Update working directory if it changed
-          if (result.workingDir) {
+          
+          // Update working directory if it changed (especially for cd commands)
+          if (result.workingDir && result.workingDir !== activeTerminal.workingDirectory) {
+            console.log(`🔄 Working directory changed from ${activeTerminal.workingDirectory} to ${result.workingDir}`);
             activeTerminal.workingDirectory = result.workingDir;
+            this.state.currentWorkingDirectory = result.workingDir;
+            
+            // Refresh file tree when directory changes
+            this.triggerFileTreeRefresh();
           }
         } else {
-          activeTerminal.output += `\x1b[91m❌ Error: ${result.output}\x1b[0m\n`;
+          activeTerminal.output += `\x1b[91m❌ ${result.output}\x1b[0m\n`;
         }
       } else {
         activeTerminal.output += '\x1b[91m❌ Error: Electron API not available\x1b[0m\n';
@@ -367,6 +390,34 @@ export class TerminalManager {
     } else {
       this.state.terminalVisible = !this.state.terminalVisible;
       console.warn('Layout manager not available, using fallback toggle');
+    }
+  }
+
+  private async refreshFileTree(): Promise<void> {
+    // Trigger file tree refresh
+    const event = new CustomEvent('refresh-file-tree');
+    document.dispatchEvent(event);
+  }
+
+  private triggerFileTreeRefresh(): void {
+    // Trigger file tree refresh
+    const event = new CustomEvent('refresh-file-tree');
+    document.dispatchEvent(event);
+    console.log('🔄 Triggered file tree refresh');
+  }
+
+  // Add method to handle file system changes
+  handleFileSystemChange(event: { type: string; path: string }): void {
+    console.log('File system changed:', event);
+    this.refreshFileTree();
+  }
+
+  private setupFileSystemChangeListener(): void {
+    if (this.electronAPI && this.electronAPI.onFileSystemChanged) {
+      this.electronAPI.onFileSystemChanged((event: { type: string; path: string; parentPath: string }) => {
+        console.log('📁 File system changed:', event);
+        this.triggerFileTreeRefresh();
+      });
     }
   }
 }

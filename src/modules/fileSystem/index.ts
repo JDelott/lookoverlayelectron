@@ -178,4 +178,14 @@ export class FileSystemManager {
   getFileTree(): FileItem[] {
     return this.fileTree;
   }
+
+  async refreshFileTree(): Promise<void> {
+    // Clear current tree and reload
+    this.fileTree = [];
+    const files = await this.loadFileSystem();
+    
+    // Dispatch event to trigger re-render
+    const event = new CustomEvent('file-tree-updated', { detail: files });
+    document.dispatchEvent(event);
+  }
 }
