@@ -90,6 +90,7 @@ class RendererApp {
       
       console.log('🔧 Initializing chat manager...');
       this.chatManager.initialize();
+      this.chatManager.exposeGlobally();
       console.log('✅ Chat manager initialized');
       
       console.log('🔧 Loading file system...');

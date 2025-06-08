@@ -44,7 +44,7 @@ export class LayoutManager {
     this.setupButtonInteractions();
     this.isInitialized = true;
     
-    // Restore AI chat state after layout rebuild
+    // Restore AI chat state and apply the correct CSS class
     this.state.aiChatVisible = wasAIChatVisible;
     this.updatePanelVisibility();
   }
@@ -540,30 +540,44 @@ export class LayoutManager {
       .terminal-output-text .bold.cyan { color: #29b8db; }
       .terminal-output-text .bold.white { color: #ffffff; }
 
-      /* Chat Panel Styles */
+      /* Chat Panel Styles - Class-based visibility */
       .handle-chat { 
         width: 4px;
         background: rgb(55 65 81);
         cursor: col-resize;
-        transition: background-color 0.2s;
+        transition: background-color 0.2s ease;
         user-select: none;
         flex-shrink: 0;
-        display: ${this.state.aiChatVisible ? 'block' : 'none'};
+        display: none;
       }
+
+      /* Show chat handle when chat is visible */
+      .ide-container.chat-visible .handle-chat {
+        display: block;
+      }
+
       .handle-chat:hover { 
         background: rgb(59 130 246); 
       }
       
       .chat-area { 
-        width: ${this.state.aiChatVisible ? 'var(--chat-width)' : '0px'};
-        min-width: ${this.state.aiChatVisible ? '280px' : '0px'};
+        width: 0px;
+        min-width: 0px;
         max-width: 600px;
         overflow: hidden;
-        display: ${this.state.aiChatVisible ? 'flex' : 'none'};
+        display: none;
         flex-direction: column;
         background: rgb(31 41 55);
         border-left: 1px solid rgb(75 85 99);
         flex-shrink: 0;
+        transition: width 0.3s ease, min-width 0.3s ease;
+      }
+
+      /* Show chat area when chat is visible */
+      .ide-container.chat-visible .chat-area {
+        display: flex;
+        width: var(--chat-width);
+        min-width: 280px;
       }
       
       .chat-header {
@@ -926,13 +940,54 @@ export class LayoutManager {
   public updatePanelVisibility(): void {
     if (!this.isInitialized) return;
 
-    // Just update the CSS custom properties
+    // Use simple class-based approach
+    const ideContainer = document.querySelector('.ide-container') as HTMLElement;
+    if (!ideContainer) return;
+
+    if (this.state.aiChatVisible) {
+      ideContainer.classList.add('chat-visible');
+      ideContainer.classList.remove('chat-hidden');
+      
+      // Ensure chat manager is ready when panel opens
+      this.initializeChatWhenReady();
+    } else {
+      ideContainer.classList.add('chat-hidden');
+      ideContainer.classList.remove('chat-visible');
+    }
+
+    // Update CSS custom properties for sizing
     const root = document.documentElement;
     root.style.setProperty('--sidebar-width', `${this.panelSizes.sidebarWidth}px`);
     root.style.setProperty('--chat-width', `${this.panelSizes.aiChatWidth}px`);
 
     this.updateButtonStates();
     this.triggerEditorResize();
+  }
+
+  private initializeChatWhenReady(): void {
+    // More reliable approach using multiple checks
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const checkAndInit = () => {
+      attempts++;
+      const chatContent = document.getElementById('ai-chat-content');
+      const chatManager = (window as any).chatManager;
+      
+      if (!chatContent || !chatManager) {
+        if (attempts < maxAttempts) {
+          setTimeout(checkAndInit, 100);
+        }
+        return;
+      }
+
+      // Always reinitialize to ensure fresh state
+      console.log('🔧 Initializing chat manager for panel open...');
+      chatManager.initialize();
+    };
+    
+    // Start checking immediately
+    setTimeout(checkAndInit, 50);
   }
 
   private needsLayoutRebuild(): boolean {
@@ -1067,21 +1122,18 @@ export class LayoutManager {
 
   toggleAIChat(): void {
     this.state.aiChatVisible = !this.state.aiChatVisible;
-    
-    this.injectLayoutStyles(); // Re-inject styles with new state
+    this.updatePanelVisibility();
     console.log('AI Chat toggled:', this.state.aiChatVisible);
   }
 
   showAIChat(): void {
     this.state.aiChatVisible = true;
-    // Rebuild the layout to apply the new CSS
-    this.rebuildLayout();
+    this.updatePanelVisibility();
   }
 
   hideAIChat(): void {
     this.state.aiChatVisible = false;
-    // Rebuild the layout to apply the new CSS
-    this.rebuildLayout();
+    this.updatePanelVisibility();
   }
 
   toggleTerminalCollapse(): void {
@@ -1115,14 +1167,13 @@ export class LayoutManager {
     this.rebuildLayout();
   }
 
-    clearAIChat(): void {
-    if ((window as any).chatManager) {
-      (window as any).chatManager.clearChat();
+  clearAIChat(): void {
+    const chatManager = (window as any).chatManager;
+    if (chatManager) {
+      console.log('🔧 Clearing chat via layout manager');
+      chatManager.clearChat();
     } else {
-      const content = document.getElementById('ai-chat-content');
-      if (content) {
-        content.innerHTML = '<div class="p-4 text-sm text-gray-400">AI Assistant is ready to help!</div>';
-      }
+      console.error('❌ ChatManager not available for clearing');
     }
   }
 

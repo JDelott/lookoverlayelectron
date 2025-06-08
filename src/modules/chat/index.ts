@@ -23,6 +23,7 @@ export class ChatManager {
   private state: AppState;
   private electronAPI: any;
   private chatState: ChatState;
+  private isUIReady = false;
 
   constructor(state: AppState) {
     this.state = state;
@@ -35,14 +36,28 @@ export class ChatManager {
   }
 
   initialize(): void {
+    console.log('🔧 ChatManager initialize called');
+    
+    // Always expose globally first
+    this.exposeGlobally();
+    
     this.setupInitialUI();
     this.checkAPIKey();
+    this.isUIReady = true;
+    
+    console.log('✅ ChatManager initialization complete');
   }
 
   private setupInitialUI(): void {
     const chatContent = document.getElementById('ai-chat-content');
-    if (!chatContent) return;
+    if (!chatContent) {
+      console.log('❌ ai-chat-content not found');
+      return;
+    }
 
+    console.log('🔧 Setting up chat UI...');
+    
+    // Always set up the UI fresh
     chatContent.innerHTML = `
       <div class="chat-container">
         <!-- API Key Setup -->
@@ -148,6 +163,7 @@ export class ChatManager {
       </div>
     `;
 
+    // Set up event listeners and styles
     this.setupEventListeners();
     this.injectChatStyles();
     this.updateContextDisplay();
@@ -1006,8 +1022,12 @@ export class ChatManager {
   }
 
   private checkAPIKey(): void {
-    // For now, always show API key setup
-    this.showAPIKeySetup();
+    // If API key is already configured, show chat interface
+    if (this.chatState.apiKeyConfigured) {
+      this.showChatInterface();
+    } else {
+      this.showAPIKeySetup();
+    }
   }
 
   private showAPIKeySetup(): void {
@@ -1542,13 +1562,29 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   }
 
   clearChat(): void {
+    console.log('🔧 ChatManager clearChat called');
+    
+    // Clear the state
     this.chatState.messages = [];
-    this.renderMessages();
+    
+    // Clear the UI
+    const container = document.getElementById('messages-container');
+    if (container) {
+      container.innerHTML = '';
+      console.log('✅ Messages container cleared');
+    } else {
+      console.log('❌ Messages container not found');
+    }
+    
+    // Add welcome message back
     this.addWelcomeMessage();
+    
+    console.log('✅ Chat cleared successfully');
   }
 
   exposeGlobally(): void {
     (window as any).chatManager = this;
+    console.log('✅ ChatManager exposed globally');
   }
 
   dispose(): void {
@@ -1566,5 +1602,27 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     console.log('Content preview:', content?.substring(0, 100));
     console.log('Content ending:', content?.slice(-100));
     console.log('=== END DEBUG ===');
+  }
+
+  // Add method to get current state
+  getState(): ChatState {
+    return { ...this.chatState };
+  }
+
+  // Add method to restore state
+  setState(state: ChatState): void {
+    this.chatState = { ...state };
+  }
+
+  // Add a method to check if chat is properly set up
+  isReady(): boolean {
+    const chatContent = document.getElementById('ai-chat-content');
+    const hasProperStructure = chatContent?.querySelector('.chat-container');
+    return this.isUIReady && !!hasProperStructure;
+  }
+
+  // Expose the chat state so layout manager can check it
+  getChatState(): ChatState {
+    return this.chatState;
   }
 }
