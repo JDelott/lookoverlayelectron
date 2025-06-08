@@ -1680,7 +1680,10 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add styles for the modal
     this.injectInsertionPreviewStyles();
 
-    // Setup tab switching
+    // Store data for tab switching
+    (modal as any)._insertionData = { code, currentContent, selection, cursorPosition };
+
+    // Setup tab switching with proper data
     this.setupPreviewTabs(modal);
     
     // Initialize with smart insert preview
@@ -1696,6 +1699,392 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       this.performInsertion(activeTab, code, selection, cursorPosition, { formatOnInsert, addImports });
       overlay.remove();
     };
+
+    // Add keyboard shortcuts
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        overlay.remove();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        confirmBtn.click();
+      }
+    });
+
+    // Focus the modal for keyboard navigation
+    modal.tabIndex = -1;
+    modal.focus();
+  }
+
+  private setupPreviewTabs(modal: HTMLElement): void {
+    const tabs = modal.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs
+        tabs.forEach(t => t.classList.remove('active'));
+        // Add active class to clicked tab
+        tab.classList.add('active');
+        
+        // Get stored data
+        const data = (modal as any)._insertionData;
+        if (!data) return;
+
+        // Update preview based on selected tab with real data
+        const tabType = tab.getAttribute('data-tab') || 'smart';
+        this.updateInsertionPreview(tabType, data.code, data.currentContent, data.selection, data.cursorPosition);
+        
+        // Update button text based on mode
+        this.updateInsertButtonText(modal, tabType);
+      });
+    });
+  }
+
+  private updateInsertButtonText(modal: HTMLElement, mode: string): void {
+    const insertBtn = modal.querySelector('#confirm-insert') as HTMLButtonElement;
+    if (!insertBtn) return;
+
+    const buttonText = {
+      'smart': 'Smart Insert',
+      'replace': 'Replace Selection',
+      'append': 'Append to File'
+    };
+
+    insertBtn.textContent = buttonText[mode as keyof typeof buttonText] || 'Insert Code';
+  }
+
+  private updateInsertionPreview(mode: string, code: string, currentContent: string, selection: any, cursorPosition: any): void {
+    const diffContainer = document.getElementById('diff-container');
+    if (!diffContainer) return;
+
+    // Show loading state
+    diffContainer.innerHTML = '<div class="diff-loading">Generating preview...</div>';
+
+    // Small delay to show loading state
+    setTimeout(() => {
+    const lines = currentContent.split('\n');
+    const newCodeLines = code.split('\n');
+    
+    let previewHTML = '';
+    
+    if (mode === 'smart') {
+      const insertionPoint = this.findSmartInsertionPoint(code, currentContent, cursorPosition);
+      previewHTML = this.generateSmartInsertionPreview(lines, newCodeLines, insertionPoint);
+    } else if (mode === 'replace') {
+        // Check if there's actually a selection
+        if (this.hasValidSelection(selection)) {
+      previewHTML = this.generateReplacementPreview(lines, newCodeLines, selection);
+        } else {
+          previewHTML = this.generateNoSelectionMessage();
+        }
+    } else if (mode === 'append') {
+      previewHTML = this.generateAppendPreview(lines, newCodeLines);
+    }
+    
+    diffContainer.innerHTML = previewHTML;
+    }, 100);
+  }
+
+  private hasValidSelection(selection: any): boolean {
+    if (!selection) return false;
+    
+    // Check if there's actually text selected
+    return selection.startLineNumber !== selection.endLineNumber || 
+           selection.startColumn !== selection.endColumn;
+  }
+
+  private generateNoSelectionMessage(): string {
+    return `
+      <div class="no-selection-message">
+        <div class="warning-icon">⚠️</div>
+        <div class="warning-text">
+          <strong>No text selected</strong><br>
+          Please select text in the editor to use Replace Selection mode.
+        </div>
+      </div>
+    `;
+  }
+
+  private findSmartInsertionPoint(code: string, currentContent: string, cursorPosition: any): { line: number; column: number; reason: string } {
+    const lines = currentContent.split('\n');
+    const currentLine = (cursorPosition?.lineNumber || 1) - 1; // Convert to 0-based
+    
+    // More sophisticated heuristics for smart insertion
+    if (code.includes('import ') || code.includes('require(')) {
+      // Find the last import statement or beginning of file
+      let insertLine = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line && !line.startsWith('import') && !line.startsWith('//') && !line.startsWith('/*') && !line.includes('require(')) {
+          insertLine = i;
+          break;
+        }
+        if (line.startsWith('import') || line.includes('require(')) {
+          insertLine = i + 1;
+        }
+      }
+      return { line: insertLine, column: 0, reason: 'Import statements should be grouped at the top' };
+    }
+    
+    // Check for React component patterns
+    if (code.includes('export default') || code.includes('export const') || code.includes('export function')) {
+      // Insert at the end of the file for exports
+      return { line: lines.length, column: 0, reason: 'Export statements should be at the end' };
+    }
+    
+    if (code.includes('function ') || code.includes('const ') || code.includes('let ') || code.includes('var ')) {
+      // Insert at current cursor position with proper spacing
+      let insertLine = currentLine;
+      
+      // Try to find a good spot near the cursor
+      while (insertLine > 0 && lines[insertLine - 1].trim() === '') {
+        insertLine--;
+      }
+      
+      return { line: insertLine, column: 0, reason: 'Function/variable declaration near cursor position' };
+    }
+    
+    if (code.includes('class ')) {
+      // Insert classes with proper spacing
+      return { line: currentLine, column: 0, reason: 'Class declaration at cursor position' };
+    }
+    
+    // Default: insert at cursor with smart spacing
+    let insertLine = currentLine;
+    
+    // Don't insert in the middle of a block
+    const currentLineText = lines[currentLine]?.trim() || '';
+    if (currentLineText && !currentLineText.endsWith('{') && !currentLineText.endsWith(';')) {
+      // Find next appropriate line
+      while (insertLine < lines.length && lines[insertLine].trim() !== '') {
+        insertLine++;
+      }
+    }
+    
+    return { line: insertLine, column: 0, reason: 'Insert at cursor position with smart spacing' };
+  }
+
+  private generateSmartInsertionPreview(lines: string[], newCodeLines: string[], insertionPoint: { line: number; column: number; reason: string }): string {
+    let preview = '';
+    const contextLines = 4;
+    
+    const startLine = Math.max(0, insertionPoint.line - contextLines);
+    const endLine = Math.min(lines.length, insertionPoint.line + contextLines + newCodeLines.length + 2);
+    
+    // Add reason header
+    preview += `<div class="preview-reason">${insertionPoint.reason}</div>`;
+    
+    for (let i = startLine; i < endLine; i++) {
+      if (i === insertionPoint.line) {
+        // Add empty line before insertion if needed
+        if (i > 0 && lines[i - 1].trim() !== '') {
+          preview += `<div class="diff-line added empty-line" data-line="+">""</div>`;
+        }
+        
+        // Show insertion point
+        newCodeLines.forEach((codeLine, idx) => {
+          const lineNumber = `+${insertionPoint.line + idx + 1}`;
+          preview += `<div class="diff-line added" data-line="${lineNumber}">${this.escapeHtml(codeLine)}</div>`;
+        });
+        
+        // Add empty line after insertion if needed
+        if (i < lines.length && lines[i].trim() !== '') {
+          preview += `<div class="diff-line added empty-line" data-line="+">""</div>`;
+        }
+      }
+      
+      if (i < lines.length) {
+        const className = 'context';
+        preview += `<div class="diff-line ${className}" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
+  }
+}
+
+    return preview;
+  }
+
+  private generateReplacementPreview(lines: string[], newCodeLines: string[], selection: any): string {
+    let preview = '';
+    const startLine = selection.startLineNumber - 1; // Convert to 0-based
+    const endLine = selection.endLineNumber - 1;
+    const startColumn = selection.startColumn - 1;
+    const endColumn = selection.endColumn - 1;
+    const contextLines = 3;
+    
+    const previewStart = Math.max(0, startLine - contextLines);
+    const previewEnd = Math.min(lines.length, endLine + contextLines + 1);
+    
+    // Add replacement info header
+    preview += `<div class="preview-reason">Replacing ${endLine - startLine + 1} line(s) of selected text</div>`;
+    
+    for (let i = previewStart; i < previewEnd; i++) {
+      if (i >= startLine && i <= endLine) {
+        // Handle partial line selection
+        let lineContent = lines[i];
+        
+        if (i === startLine && i === endLine) {
+          // Single line selection
+          const before = lineContent.substring(0, startColumn);
+          const selected = lineContent.substring(startColumn, endColumn);
+          const after = lineContent.substring(endColumn);
+          
+          if (before) {
+            preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(before)}<span class="selection-highlight">${this.escapeHtml(selected)}</span>${this.escapeHtml(after)}</div>`;
+          }
+          
+          // Show removed content
+          preview += `<div class="diff-line removed" data-line="-${i + 1}">${this.escapeHtml(selected)}</div>`;
+          
+          // Show new content
+          newCodeLines.forEach((codeLine, idx) => {
+            preview += `<div class="diff-line added" data-line="+${i + idx + 1}">${this.escapeHtml(codeLine)}</div>`;
+          });
+          
+        } else if (i === startLine) {
+          // First line of multi-line selection
+          const before = lineContent.substring(0, startColumn);
+          const selected = lineContent.substring(startColumn);
+          
+          if (before) {
+            preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(before)}<span class="selection-highlight">${this.escapeHtml(selected)}</span></div>`;
+          }
+          preview += `<div class="diff-line removed" data-line="-${i + 1}">${this.escapeHtml(selected)}</div>`;
+          
+          // Show new content (only once)
+          newCodeLines.forEach((codeLine, idx) => {
+            preview += `<div class="diff-line added" data-line="+${i + idx + 1}">${this.escapeHtml(codeLine)}</div>`;
+          });
+          
+        } else if (i === endLine) {
+          // Last line of multi-line selection
+          const selected = lineContent.substring(0, endColumn);
+          const after = lineContent.substring(endColumn);
+          
+          preview += `<div class="diff-line removed" data-line="-${i + 1}">${this.escapeHtml(selected)}</div>`;
+          
+          if (after) {
+            preview += `<div class="diff-line context" data-line="${i + 1}"><span class="selection-highlight">${this.escapeHtml(selected)}</span>${this.escapeHtml(after)}</div>`;
+          }
+          
+        } else {
+          // Full line in the middle of selection
+          preview += `<div class="diff-line removed" data-line="-${i + 1}">${this.escapeHtml(lineContent)}</div>`;
+        }
+      } else {
+        // Context lines
+        preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
+      }
+    }
+    
+    return preview;
+  }
+
+  private performInsertion(mode: string, code: string, selection: any, cursorPosition: any, options: { formatOnInsert: boolean; addImports: boolean }): void {
+    if (!this.state.monacoEditor) return;
+
+    let insertOperation;
+    
+    try {
+      switch (mode) {
+        case 'smart':
+          const insertionPoint = this.findSmartInsertionPoint(code, this.state.monacoEditor.getValue(), cursorPosition);
+          insertOperation = {
+            range: {
+              startLineNumber: insertionPoint.line + 1,
+              startColumn: 1,
+              endLineNumber: insertionPoint.line + 1,
+              endColumn: 1
+            },
+            text: (insertionPoint.line > 0 ? '\n' : '') + code + '\n'
+          };
+          break;
+          
+        case 'replace':
+          if (!this.hasValidSelection(selection)) {
+            this.showError('No text selected. Please select text to replace.');
+            return;
+          }
+          
+          insertOperation = {
+            range: {
+              startLineNumber: selection.startLineNumber,
+              startColumn: selection.startColumn,
+              endLineNumber: selection.endLineNumber,
+              endColumn: selection.endColumn
+            },
+            text: code
+          };
+          break;
+          
+        case 'append':
+          const model = this.state.monacoEditor.getModel();
+          if (!model) return;
+          
+          const lineCount = model.getLineCount();
+          const lastLineContent = model.getLineContent(lineCount);
+          const needsNewline = lastLineContent.trim() !== '';
+          
+          insertOperation = {
+            range: {
+              startLineNumber: lineCount,
+              startColumn: model.getLineMaxColumn(lineCount),
+              endLineNumber: lineCount,
+              endColumn: model.getLineMaxColumn(lineCount)
+            },
+            text: (needsNewline ? '\n\n' : '\n') + code
+          };
+          break;
+          
+        default:
+          return;
+      }
+
+      // Perform the insertion
+      this.state.monacoEditor.executeEdits('ai-assistant', [insertOperation]);
+
+      // Format if requested
+      if (options.formatOnInsert) {
+        setTimeout(() => {
+          this.state.monacoEditor?.getAction('editor.action.formatDocument')?.run();
+        }, 100);
+      }
+
+      // Focus the editor and position cursor
+      this.state.monacoEditor.focus();
+      
+      // Position cursor at the end of inserted content
+      if (mode === 'replace' || mode === 'smart') {
+        const insertedLines = code.split('\n');
+        const newPosition = {
+          lineNumber: (insertOperation.range.startLineNumber) + insertedLines.length - 1,
+          column: insertedLines[insertedLines.length - 1].length + 1
+        };
+        this.state.monacoEditor.setPosition(newPosition);
+      }
+
+      // Show success indicator
+      this.showInsertionSuccess(mode);
+      
+    } catch (error) {
+      console.error('Insertion failed:', error);
+      this.showError('Failed to insert code. Please try again.');
+    }
+  }
+
+  private showError(message: string): void {
+    const indicator = document.createElement('div');
+    indicator.textContent = `❌ ${message}`;
+    indicator.style.cssText = `
+      position: fixed; top: 20px; right: 20px; background: #ef4444;
+      color: white; padding: 12px 16px; border-radius: 6px; z-index: 10001;
+      font-size: 0.875rem; font-weight: 500;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      animation: slideInRight 0.3s ease-out;
+      max-width: 300px;
+    `;
+    
+    document.body.appendChild(indicator);
+    
+    setTimeout(() => {
+      indicator.style.animation = 'slideInRight 0.3s ease-out reverse';
+      setTimeout(() => indicator.remove(), 300);
+    }, 4000);
   }
 
   private injectInsertionPreviewStyles(): void {
@@ -1723,11 +2112,12 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         border: 1px solid #404040;
         border-radius: 12px;
         width: 90%;
-        max-width: 800px;
+        max-width: 900px;
         max-height: 80%;
         display: flex;
         flex-direction: column;
         animation: slideIn 0.3s ease-out;
+        outline: none;
       }
 
       @keyframes fadeIn {
@@ -1786,6 +2176,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         font-size: 0.875rem;
         border-bottom: 2px solid transparent;
         transition: all 0.2s;
+        position: relative;
       }
 
       .tab-btn:hover {
@@ -1833,6 +2224,22 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         line-height: 1.5;
       }
 
+      .preview-reason {
+        padding: 0.75rem 1rem;
+        background: #1f2937;
+        border-bottom: 1px solid #30363d;
+        color: #60a5fa;
+        font-size: 0.8125rem;
+        font-weight: 500;
+      }
+
+      .diff-loading {
+        padding: 2rem;
+        text-align: center;
+        color: #71717a;
+        font-style: italic;
+      }
+
       .diff-line {
         padding: 0.25rem 2.5rem 0.25rem 0.75rem;
         position: relative;
@@ -1872,25 +2279,44 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         color: #e6edf3;
       }
 
-      .insertion-cursor {
-        position: relative;
+      .diff-line.empty-line {
+        font-style: italic;
+        opacity: 0.6;
       }
 
-      .insertion-cursor::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 2px;
-        background: #60a5fa;
-        animation: blink 1s infinite;
+      .selection-highlight {
+        background: rgba(255, 255, 0, 0.2);
+        border-radius: 2px;
+        padding: 0 2px;
+      }
+
+      .no-selection-message {
+        padding: 2rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        color: #71717a;
+      }
+
+      .warning-icon {
+        font-size: 2rem;
+      }
+
+      .warning-text {
+        font-size: 0.875rem;
+        line-height: 1.5;
       }
 
       .insertion-options {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        padding: 1rem;
+        background: #171717;
+        border-radius: 6px;
+        border: 1px solid #374151;
       }
 
       .option {
@@ -1900,6 +2326,11 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         color: #d4d4d8;
         font-size: 0.875rem;
         cursor: pointer;
+        transition: color 0.2s;
+      }
+
+      .option:hover {
+        color: #e4e4e7;
       }
 
       .option input[type="checkbox"] {
@@ -1913,7 +2344,13 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         border-top: 1px solid #404040;
         display: flex;
         gap: 0.75rem;
-        justify-content: flex-end;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .keyboard-hint {
+        color: #71717a;
+        font-size: 0.75rem;
       }
 
       .btn-secondary, .btn-primary {
@@ -1924,6 +2361,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         cursor: pointer;
         transition: all 0.2s;
         border: none;
+        min-width: 100px;
       }
 
       .btn-secondary {
@@ -1942,234 +2380,16 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
 
       .btn-primary:hover {
         background: #3b82f6;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(96, 165, 250, 0.3);
+      }
+
+      .btn-primary:active {
+        transform: translateY(0);
       }
     `;
 
     document.head.appendChild(style);
-  }
-
-  private setupPreviewTabs(modal: HTMLElement): void {
-    const tabs = modal.querySelectorAll('.tab-btn');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        // Remove active class from all tabs
-        tabs.forEach(t => t.classList.remove('active'));
-        // Add active class to clicked tab
-        tab.classList.add('active');
-        
-        // Update preview based on selected tab
-        const tabType = tab.getAttribute('data-tab') || 'smart';
-        // You can implement different preview types here
-        this.updatePreviewForTab(tabType, modal);
-      });
-    });
-  }
-
-  private updatePreviewForTab(tabType: string, modal: HTMLElement): void {
-    const diffContainer = modal.querySelector('#diff-container');
-    if (!diffContainer) return;
-
-    // Update the preview based on the tab type
-    switch (tabType) {
-      case 'smart':
-        diffContainer.innerHTML = '<div class="diff-line context" data-line="1">Smart insertion will analyze context and find the best location...</div>';
-        break;
-      case 'replace':
-        diffContainer.innerHTML = '<div class="diff-line removed" data-line="1">- Selected text will be replaced</div><div class="diff-line added" data-line="2">+ With the new code</div>';
-        break;
-      case 'append':
-        diffContainer.innerHTML = '<div class="diff-line context" data-line="...">...existing file content</div><div class="diff-line added" data-line="EOF">+ New code will be added at end</div>';
-        break;
-    }
-  }
-
-  private updateInsertionPreview(mode: string, code: string, currentContent: string, selection: any, cursorPosition: any): void {
-    const diffContainer = document.getElementById('diff-container');
-    if (!diffContainer) return;
-
-    const lines = currentContent.split('\n');
-    const newCodeLines = code.split('\n');
-    
-    let previewHTML = '';
-    
-    if (mode === 'smart') {
-      // Smart insertion: analyze the code and find the best insertion point
-      const insertionPoint = this.findSmartInsertionPoint(code, currentContent, cursorPosition);
-      previewHTML = this.generateSmartInsertionPreview(lines, newCodeLines, insertionPoint);
-    } else if (mode === 'replace') {
-      // Replace selection
-      previewHTML = this.generateReplacementPreview(lines, newCodeLines, selection);
-    } else if (mode === 'append') {
-      // Append to end
-      previewHTML = this.generateAppendPreview(lines, newCodeLines);
-    }
-    
-    diffContainer.innerHTML = previewHTML;
-  }
-
-  private findSmartInsertionPoint(code: string, currentContent: string, cursorPosition: any): { line: number; column: number; reason: string } {
-    const lines = currentContent.split('\n');
-    const currentLine = cursorPosition?.lineNumber || 1;
-    
-    // Simple heuristics for smart insertion
-    if (code.includes('import ') || code.includes('require(')) {
-      // Insert imports at the top
-      let insertLine = 0;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim() && !lines[i].includes('import') && !lines[i].includes('require')) {
-          insertLine = i;
-          break;
-        }
-      }
-      return { line: insertLine, column: 0, reason: 'Import statements should be at the top' };
-    }
-    
-    if (code.includes('function ') || code.includes('const ') || code.includes('class ')) {
-      // Insert at current cursor position with proper spacing
-      return { line: currentLine, column: 0, reason: 'Function/variable declaration at cursor position' };
-    }
-    
-    // Default: insert at cursor
-    return { line: currentLine, column: cursorPosition?.column || 0, reason: 'Insert at cursor position' };
-  }
-
-  private generateSmartInsertionPreview(lines: string[], newCodeLines: string[], insertionPoint: { line: number; column: number; reason: string }): string {
-    let preview = '';
-    const maxLines = 20; // Limit preview lines
-    const contextLines = 3;
-    
-    const startLine = Math.max(0, insertionPoint.line - contextLines);
-    const endLine = Math.min(lines.length, insertionPoint.line + contextLines + newCodeLines.length + 3);
-    
-    for (let i = startLine; i < endLine; i++) {
-      if (i === insertionPoint.line) {
-        // Show insertion point
-        newCodeLines.forEach((codeLine, idx) => {
-          preview += `<div class="diff-line added" data-line="+${idx + 1}">${this.escapeHtml(codeLine)}</div>`;
-        });
-      }
-      
-      if (i < lines.length) {
-        const isContext = Math.abs(i - insertionPoint.line) <= contextLines;
-        const className = i === insertionPoint.line ? 'insertion-cursor' : (isContext ? 'context' : 'context');
-        preview += `<div class="diff-line ${className}" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
-      }
-    }
-    
-    return `<div style="padding: 0.5rem; color: #60a5fa; font-size: 0.75rem; border-bottom: 1px solid #30363d;">${insertionPoint.reason}</div>` + preview;
-  }
-
-  private generateReplacementPreview(lines: string[], newCodeLines: string[], selection: any): string {
-    let preview = '';
-    const startLine = selection.startLineNumber - 1;
-    const endLine = selection.endLineNumber - 1;
-    const contextLines = 3;
-    
-    const previewStart = Math.max(0, startLine - contextLines);
-    const previewEnd = Math.min(lines.length, endLine + contextLines + 1);
-    
-    for (let i = previewStart; i < previewEnd; i++) {
-      if (i >= startLine && i <= endLine) {
-        // Show removed lines
-        preview += `<div class="diff-line removed" data-line="-${i + 1}">${this.escapeHtml(lines[i])}</div>`;
-        
-        // Show new lines (only once, at the first removed line)
-        if (i === startLine) {
-          newCodeLines.forEach((codeLine, idx) => {
-            preview += `<div class="diff-line added" data-line="+${startLine + idx + 1}">${this.escapeHtml(codeLine)}</div>`;
-          });
-        }
-      } else {
-        // Context lines
-        preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
-      }
-    }
-    
-    return preview;
-  }
-
-  private generateAppendPreview(lines: string[], newCodeLines: string[]): string {
-    let preview = '';
-    const contextLines = 5;
-    const startLine = Math.max(0, lines.length - contextLines);
-    
-    // Show last few lines of current content
-    for (let i = startLine; i < lines.length; i++) {
-      preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
-    }
-    
-    // Show new code being appended
-    newCodeLines.forEach((codeLine, idx) => {
-      preview += `<div class="diff-line added" data-line="+${lines.length + idx + 1}">${this.escapeHtml(codeLine)}</div>`;
-    });
-    
-    return preview;
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  private performInsertion(mode: string, code: string, selection: any, cursorPosition: any, options: { formatOnInsert: boolean; addImports: boolean }): void {
-    if (!this.state.monacoEditor) return;
-
-    let insertOperation;
-    
-    switch (mode) {
-      case 'smart':
-        const insertionPoint = this.findSmartInsertionPoint(code, this.state.monacoEditor.getValue(), cursorPosition);
-        insertOperation = {
-          range: {
-            startLineNumber: insertionPoint.line + 1,
-            startColumn: 1,
-            endLineNumber: insertionPoint.line + 1,
-            endColumn: 1
-          },
-          text: code + '\n'
-        };
-        break;
-        
-      case 'replace':
-        insertOperation = {
-          range: selection,
-          text: code
-        };
-        break;
-        
-      case 'append':
-        const lineCount = this.state.monacoEditor.getModel()?.getLineCount() || 1;
-        insertOperation = {
-          range: {
-            startLineNumber: lineCount,
-            startColumn: this.state.monacoEditor.getModel()?.getLineMaxColumn(lineCount) || 1,
-            endLineNumber: lineCount,
-            endColumn: this.state.monacoEditor.getModel()?.getLineMaxColumn(lineCount) || 1
-          },
-          text: '\n' + code
-        };
-        break;
-        
-      default:
-        return;
-    }
-
-    // Perform the insertion
-    this.state.monacoEditor.executeEdits('ai-assistant', [insertOperation]);
-
-    // Format if requested
-    if (options.formatOnInsert) {
-      setTimeout(() => {
-        this.state.monacoEditor?.getAction('editor.action.formatDocument')?.run();
-      }, 100);
-    }
-
-    // Focus the editor
-    this.state.monacoEditor.focus();
-
-    // Show success indicator
-    this.showInsertionSuccess(mode);
   }
 
   private showInsertionSuccess(mode: string): void {
@@ -2648,5 +2868,37 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.chatState.messages.push(errorMessage);
     this.hideTypingIndicator();
     this.renderMessages();
+  }
+
+  private generateAppendPreview(lines: string[], newCodeLines: string[]): string {
+    let preview = '';
+    const contextLines = 5;
+    const startLine = Math.max(0, lines.length - contextLines);
+    
+    // Add append info header
+    preview += `<div class="preview-reason">Appending ${newCodeLines.length} line(s) to end of file</div>`;
+    
+    // Show last few lines of current content
+    for (let i = startLine; i < lines.length; i++) {
+      preview += `<div class="diff-line context" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
+    }
+    
+    // Add separator if file doesn't end with empty line
+    if (lines.length > 0 && lines[lines.length - 1].trim() !== '') {
+      preview += `<div class="diff-line added empty-line" data-line="+">""</div>`;
+    }
+    
+    // Show new code being appended
+    newCodeLines.forEach((codeLine, idx) => {
+      preview += `<div class="diff-line added" data-line="+${lines.length + idx + 1}">${this.escapeHtml(codeLine)}</div>`;
+    });
+    
+    return preview;
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }
