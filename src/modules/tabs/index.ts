@@ -84,20 +84,25 @@ export class TabManager {
     this.state.currentFile = filePath;
 
     if (this.state.monacoEditor) {
-      // Enhanced language detection
+      // Enhanced language detection - aggressive TypeScript detection
       const getMonacoLanguage = (fileName: string, content: string): string => {
         const extension = fileName.split('.').pop()?.toLowerCase() || '';
         
-        // Enhanced language mapping with better TypeScript/JSX support
+        // Always use TypeScript for JS/TS/JSX/TSX files for maximum feature support
+        const tsExtensions = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'];
+        if (tsExtensions.includes(extension)) {
+          return 'typescript';
+        }
+        
+        // Other language mapping
         const languageMap: { [key: string]: string } = {
-          'js': content.includes('interface ') || content.includes('type ') || content.includes(': ') ? 'typescript' : 'javascript',
-          'jsx': 'typescript', // Always use TypeScript for JSX files
-          'ts': 'typescript',
-          'tsx': 'typescript',
           'json': 'json',
           'css': 'css',
           'scss': 'scss',
+          'less': 'less',
           'html': 'html',
+          'htm': 'html',
+          'xml': 'xml',
           'md': 'markdown',
           'py': 'python',
           'java': 'java',
@@ -106,22 +111,30 @@ export class TabManager {
           'php': 'php',
           'rb': 'ruby',
           'go': 'go',
-          'rs': 'rust'
+          'rs': 'rust',
+          'sh': 'shell',
+          'bash': 'shell',
+          'yml': 'yaml',
+          'yaml': 'yaml'
         };
         
-        // Content-based detection for files without clear extensions
-        if (!languageMap[extension]) {
-          if (content.includes('interface ') || 
-              content.includes('type ') || 
-              content.includes(': ') ||
-              content.includes('React') ||
-              content.includes('JSX') ||
-              content.includes('<') && content.includes('>')) {
-            return 'typescript';
-          }
+        // Enhanced content-based TypeScript detection
+        const tsFeatures = [
+          'interface ', 'type ', 'enum ', 'namespace ', 'declare ',
+          'satisfies', 'as const', 'as any', 'as unknown',
+          ': string', ': number', ': boolean', ': object',
+          'implements ', 'extends ', 'abstract ', 'readonly ',
+          'public ', 'private ', 'protected ', 'static ',
+          'import type', 'export type', 'keyof ', 'typeof ',
+          'React.', 'JSX.', '</', 'useState', 'useEffect',
+          'Props', 'Component', 'FC<', 'FunctionComponent'
+        ];
+        
+        if (tsFeatures.some(feature => content.includes(feature))) {
+          return 'typescript';
         }
         
-        return languageMap[extension] || 'typescript'; // Default to TypeScript for better syntax support
+        return languageMap[extension] || 'typescript'; // Default to TypeScript for better support
       };
 
       const monacoLanguage = getMonacoLanguage(tab.name, tab.content);
