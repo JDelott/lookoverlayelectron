@@ -192,33 +192,33 @@ export class ChatManager {
         align-items: center;
         justify-content: center;
         height: 100%;
-        padding: 2rem;
+        padding: 1.5rem;
       }
 
       .api-key-content {
         text-align: center;
-        max-width: 400px;
+        max-width: 100%;
         width: 100%;
       }
 
       .api-key-icon {
-        font-size: 3rem;
+        font-size: 2.5rem;
         margin-bottom: 1rem;
         opacity: 0.8;
       }
 
       .api-key-content h3 {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
         font-weight: 600;
         margin: 0 0 0.5rem 0;
         color: #ffffff;
       }
 
       .api-key-content p {
-        font-size: 0.875rem;
+        font-size: 0.8rem;
         color: #a1a1aa;
-        margin: 0 0 2rem 0;
-        line-height: 1.5;
+        margin: 0 0 1.5rem 0;
+        line-height: 1.4;
       }
 
       .api-key-form {
@@ -229,24 +229,26 @@ export class ChatManager {
 
       .input-group {
         display: flex;
-        gap: 0.5rem;
+        flex-direction: column;
+        gap: 0.75rem;
       }
 
       .input-group input {
-        flex: 1;
+        width: 100%;
         background: #262626;
         border: 1px solid #404040;
         border-radius: 0.5rem;
-        padding: 0.75rem 1rem;
+        padding: 0.75rem;
         color: #e4e4e7;
-        font-size: 0.875rem;
+        font-size: 0.8rem;
         outline: none;
         transition: all 0.2s;
+        box-sizing: border-box;
       }
 
       .input-group input:focus {
         border-color: #3b82f6;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
       }
 
       .primary-btn {
@@ -254,12 +256,13 @@ export class ChatManager {
         color: white;
         border: none;
         border-radius: 0.5rem;
-        padding: 0.75rem 1.5rem;
-        font-size: 0.875rem;
+        padding: 0.75rem 1rem;
+        font-size: 0.8rem;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s;
-        white-space: nowrap;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       .primary-btn:hover:not(:disabled) {
@@ -278,8 +281,9 @@ export class ChatManager {
         align-items: center;
         justify-content: center;
         gap: 0.25rem;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: #71717a;
+        flex-wrap: wrap;
       }
 
       .api-key-help a {
@@ -885,6 +889,18 @@ export class ChatManager {
         
         .input-container {
           padding: 0.75rem;
+        }
+        
+        .api-key-setup {
+          padding: 1rem;
+        }
+        
+        .api-key-content h3 {
+          font-size: 1.1rem;
+        }
+        
+        .api-key-content p {
+          font-size: 0.75rem;
         }
       }
     `;
