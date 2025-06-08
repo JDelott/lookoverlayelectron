@@ -642,7 +642,7 @@ export class LayoutManager {
           <!-- Header -->
           <div class="header-area">
             <div class="flex items-center">
-              <span class="text-lg font-bold text-gray-200">LookOverlay IDE</span>
+              <span class="text-lg font-bold text-gray-200">Satellite Ai</span>
             </div>
             
             <div class="flex items-center gap-3">

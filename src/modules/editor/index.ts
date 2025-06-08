@@ -57,8 +57,8 @@ export class MonacoEditorManager {
 
     console.log('🔧 Setting up Monaco TypeScript/JSX configuration...');
 
-    // Configure TypeScript compiler options
-    window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    // Configure TypeScript compiler options with more permissive settings
+    const compilerOptions = {
       target: window.monaco.languages.typescript.ScriptTarget.ES2020,
       module: window.monaco.languages.typescript.ModuleKind.ESNext,
       moduleResolution: window.monaco.languages.typescript.ModuleResolutionKind.NodeJs,
@@ -94,9 +94,13 @@ export class MonacoEditorManager {
       suppressImplicitAnyIndexErrors: true,
       suppressExcessPropertyErrors: true,
       forceConsistentCasingInFileNames: false
-    });
+    };
 
-    // Configure diagnostic options to suppress errors
+    // Apply to both TypeScript and JavaScript defaults
+    window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+    window.monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
+
+    // Configure diagnostic options to suppress common errors
     const diagnosticOptions = {
       noSemanticValidation: false,
       noSyntaxValidation: false,
@@ -104,7 +108,9 @@ export class MonacoEditorManager {
       diagnosticCodesToIgnore: [
         1108, 1109, 1005, 1161, 2304, 2307, 2339, 2345, 2531, 2532, 2580, 2584, 2585,
         2686, 2688, 2749, 2750, 2792, 2793, 2794, 6133, 6196, 7027, 7028, 80001, 80002,
-        80005, 80006, 17004, 17009, 18002, 18003
+        80005, 80006, 17004, 17009, 18002, 18003,
+        // Add these specific error codes for interface and type annotations
+        8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010
       ]
     };
 
@@ -112,9 +118,59 @@ export class MonacoEditorManager {
     window.monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
 
     this.addAllTypes();
+    this.setupLanguageDetection();
     this.setupCustomValidation();
 
     console.log('✅ Monaco TypeScript/JSX configuration complete');
+  }
+
+  private setupLanguageDetection(): void {
+    if (!window.monaco) return;
+
+    // Override the model creation to ensure proper language detection
+    const originalCreateModel = window.monaco.editor.createModel;
+    window.monaco.editor.createModel = (value: string, language?: string, uri?: any) => {
+      // Auto-detect language based on content and URI
+      if (uri && !language) {
+        const path = uri.toString();
+        const extension = path.split('.').pop()?.toLowerCase();
+        
+        // Enhanced language detection
+        const languageMap: { [key: string]: string } = {
+          'js': 'javascript',
+          'jsx': 'typescript', // Treat JSX as TypeScript for better support
+          'ts': 'typescript',
+          'tsx': 'typescript',
+          'json': 'json',
+          'css': 'css',
+          'scss': 'scss',
+          'html': 'html',
+          'md': 'markdown',
+          'py': 'python',
+          'java': 'java',
+          'cpp': 'cpp',
+          'c': 'c',
+          'php': 'php',
+          'rb': 'ruby',
+          'go': 'go',
+          'rs': 'rust'
+        };
+        
+        language = languageMap[extension || ''] || 'typescript'; // Default to TypeScript
+      }
+      
+      // If content contains TypeScript/JSX syntax, use TypeScript
+      if (!language && value) {
+        if (value.includes('interface ') || 
+            value.includes('type ') || 
+            value.includes(': ') || 
+            value.includes('<') && value.includes('>') && value.includes('=')) {
+          language = 'typescript';
+        }
+      }
+      
+      return originalCreateModel.call(this, value, language || 'typescript', uri);
+    };
   }
 
   private addAllTypes(): void {

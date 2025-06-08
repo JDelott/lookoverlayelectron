@@ -84,36 +84,57 @@ export class TabManager {
     this.state.currentFile = filePath;
 
     if (this.state.monacoEditor) {
-      // Simple approach: just set the value and language
+      // Enhanced language detection
+      const getMonacoLanguage = (fileName: string, content: string): string => {
+        const extension = fileName.split('.').pop()?.toLowerCase() || '';
+        
+        // Enhanced language mapping with better TypeScript/JSX support
+        const languageMap: { [key: string]: string } = {
+          'js': content.includes('interface ') || content.includes('type ') || content.includes(': ') ? 'typescript' : 'javascript',
+          'jsx': 'typescript', // Always use TypeScript for JSX files
+          'ts': 'typescript',
+          'tsx': 'typescript',
+          'json': 'json',
+          'css': 'css',
+          'scss': 'scss',
+          'html': 'html',
+          'md': 'markdown',
+          'py': 'python',
+          'java': 'java',
+          'cpp': 'cpp',
+          'c': 'c',
+          'php': 'php',
+          'rb': 'ruby',
+          'go': 'go',
+          'rs': 'rust'
+        };
+        
+        // Content-based detection for files without clear extensions
+        if (!languageMap[extension]) {
+          if (content.includes('interface ') || 
+              content.includes('type ') || 
+              content.includes(': ') ||
+              content.includes('React') ||
+              content.includes('JSX') ||
+              content.includes('<') && content.includes('>')) {
+            return 'typescript';
+          }
+        }
+        
+        return languageMap[extension] || 'typescript'; // Default to TypeScript for better syntax support
+      };
+
+      const monacoLanguage = getMonacoLanguage(tab.name, tab.content);
+      
+      // Set the content first
       this.state.monacoEditor.setValue(tab.content);
       
+      // Then set the language
       if (window.monaco) {
         const model = this.state.monacoEditor.getModel();
         if (model) {
-          // Map extensions to Monaco languages
-          const languageMap: { [key: string]: string } = {
-            'js': 'javascript',
-            'jsx': 'javascript',
-            'ts': 'typescript',
-            'tsx': 'typescript',
-            'json': 'json',
-            'css': 'css',
-            'scss': 'scss',
-            'html': 'html',
-            'md': 'markdown',
-            'py': 'python',
-            'java': 'java',
-            'cpp': 'cpp',
-            'c': 'c',
-            'php': 'php',
-            'rb': 'ruby',
-            'go': 'go',
-            'rs': 'rust'
-          };
-          
-          const extension = tab.name.split('.').pop() || '';
-          const monacoLanguage = languageMap[extension] || 'plaintext';
           window.monaco.editor.setModelLanguage(model, monacoLanguage);
+          console.log('📄 Set language to:', monacoLanguage, 'for file:', tab.name);
         }
       }
     } else {
