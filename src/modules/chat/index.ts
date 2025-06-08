@@ -27,6 +27,10 @@ export class ChatManager {
   private currentStreamingMessage: ChatMessage | null = null;
   private currentStreamSessionId: string | null = null;
   private streamingMessageElement: HTMLElement | null = null;
+  private streamingContentContainer: HTMLElement | null = null;
+  private currentCodeBlock: HTMLElement | null = null;
+  private isInCodeBlock = false;
+  private codeBlockBuffer = '';
   private typingSpeed = 20; // ms between characters for typing effect
 
   constructor(state: AppState) {
@@ -903,17 +907,12 @@ export class ChatManager {
       }
 
       /* Typing cursor effect */
-      .typing-cursor::after,
-      .typing-cursor-inline::after {
+      .typing-cursor::after {
         content: '▊';
         color: #60a5fa;
         animation: blink 1s infinite;
         margin-left: 2px;
         font-weight: normal;
-      }
-
-      .typing-cursor-inline {
-        display: inline;
       }
 
       @keyframes blink {
@@ -933,6 +932,41 @@ export class ChatManager {
       @keyframes shimmer {
         0% { background-position: -200% 0; }
         100% { background-position: 200% 0; }
+      }
+
+      /* Streaming content container */
+      .streaming-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      /* Streaming code blocks */
+      .streaming-code {
+        border: 2px solid #3b82f6 !important;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.2) !important;
+      }
+
+      .streaming-code-text {
+        position: relative;
+      }
+
+      /* Enhanced typing cursor for code */
+      .streaming-code-text.typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 1px;
+        font-weight: normal;
+      }
+
+      /* Multiple text containers in streaming */
+      .streaming-content .message-text {
+        margin: 0;
+      }
+
+      .streaming-content .message-text:not(:last-child) {
+        margin-bottom: 0.5rem;
       }
     `;
     
@@ -1704,7 +1738,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add empty message to state
     this.chatState.messages.push(this.currentStreamingMessage);
     
-    // Create the message element directly without full re-render
+    // Create the message element with proper structure
     this.createStreamingMessageElement();
   }
 
@@ -1746,13 +1780,17 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     header.appendChild(role);
     header.appendChild(time);
 
-    // Message text container
+    // Create a flexible content container that can hold both text and code blocks
+    const streamingContent = document.createElement('div');
+    streamingContent.className = 'streaming-content';
+
+    // Initial text container
     const textDiv = document.createElement('div');
     textDiv.className = 'message-text typing-cursor';
-    textDiv.textContent = ''; // Start empty
+    streamingContent.appendChild(textDiv);
 
     contentDiv.appendChild(header);
-    contentDiv.appendChild(textDiv);
+    contentDiv.appendChild(streamingContent);
 
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(contentDiv);
@@ -1760,58 +1798,39 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add to container
     container.appendChild(messageDiv);
 
-    // Store reference
+    // Store references
     this.streamingMessageElement = messageDiv;
+    this.streamingContentContainer = streamingContent;
+    this.currentCodeBlock = null;
+    this.isInCodeBlock = false;
+    this.codeBlockBuffer = '';
 
     // Scroll to bottom
     this.scrollToBottom();
   }
 
   private handleStreamToken(token: string): void {
-    if (!this.currentStreamingMessage || !this.streamingMessageElement) return;
+    if (!this.currentStreamingMessage || !this.streamingContentContainer) return;
 
     // Add token to message content
     this.currentStreamingMessage.content += token;
     
-    // Update the streaming message element directly
-    this.updateStreamingMessageContent();
+    // Process the token for progressive rendering
+    this.processStreamingToken(token);
   }
 
-  private updateStreamingMessageContent(): void {
-    if (!this.currentStreamingMessage || !this.streamingMessageElement) return;
+  private processStreamingToken(token: string): void {
+    if (!this.streamingContentContainer) return;
 
-    // Find the text element within the message
-    const textElement = this.streamingMessageElement.querySelector('.message-text') as HTMLElement;
-    if (!textElement) return;
-
-    // Check if content has code blocks
-    const hasCodeBlocks = /```[\s\S]*?```/.test(this.currentStreamingMessage.content);
-    
-    if (hasCodeBlocks) {
-      // For content with code blocks, we need to handle this specially
-      // Remove typing cursor temporarily
-      textElement.classList.remove('typing-cursor');
-      
-      // Process and update content
-      const processedContent = this.processMarkdownWithCodeBlocks(this.currentStreamingMessage.content);
-      textElement.innerHTML = '';
-      textElement.appendChild(processedContent);
-      
-      // Re-add typing cursor to the text element (not code blocks)
-      const lastTextElement = this.findLastTextNode(textElement);
-      if (lastTextElement && lastTextElement.nodeType === Node.TEXT_NODE) {
-        // Create a span for the cursor
-        const cursorSpan = document.createElement('span');
-        cursorSpan.className = 'typing-cursor-inline';
-        lastTextElement.parentNode?.insertBefore(cursorSpan, lastTextElement.nextSibling);
-      }
+    // Check for code block markers
+    if (token.includes('```')) {
+      this.handleCodeBlockTransition(token);
     } else {
-      // For simple text, just update with markdown processing
-      textElement.innerHTML = this.processSimpleMarkdown(this.currentStreamingMessage.content);
-      
-      // Keep typing cursor
-      if (!textElement.classList.contains('typing-cursor')) {
-        textElement.classList.add('typing-cursor');
+      // Regular content processing
+      if (this.isInCodeBlock) {
+        this.appendToCodeBlock(token);
+      } else {
+        this.appendToTextContent(token);
       }
     }
 
@@ -1819,19 +1838,169 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.scrollToBottom();
   }
 
-  private findLastTextNode(element: HTMLElement): Node | null {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null
-    );
+  private handleCodeBlockTransition(token: string): void {
+    const parts = token.split('```');
     
-    let lastTextNode = null;
-    let node;
-    while (node = walker.nextNode()) {
-      lastTextNode = node;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      
+      if (i > 0) {
+        // We hit a ``` marker
+        if (!this.isInCodeBlock) {
+          // Starting a code block
+          this.startCodeBlock(part);
+        } else {
+          // Ending a code block
+          this.endCodeBlock();
+          if (part) {
+            this.appendToTextContent(part);
+          }
+        }
+      } else {
+        // Content before ``` marker
+        if (part) {
+          if (this.isInCodeBlock) {
+            this.appendToCodeBlock(part);
+          } else {
+            this.appendToTextContent(part);
+          }
+        }
+      }
     }
-    return lastTextNode;
+  }
+
+  private startCodeBlock(languageAndCode: string): void {
+    if (!this.streamingContentContainer) return;
+
+    this.isInCodeBlock = true;
+    
+    // Extract language from first line
+    const lines = languageAndCode.split('\n');
+    const language = lines[0].trim() || 'text';
+    const initialCode = lines.slice(1).join('\n');
+
+    // Create code block structure
+    const codeBlock = document.createElement('div');
+    codeBlock.className = 'code-block streaming-code';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'code-header';
+
+    const langSpan = document.createElement('span');
+    langSpan.className = 'code-language';
+    langSpan.textContent = language.toUpperCase();
+
+    const actions = document.createElement('div');
+    actions.className = 'code-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'code-action';
+
+    const insertBtn = document.createElement('button');
+    insertBtn.className = 'code-action';
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(insertBtn);
+
+    header.appendChild(langSpan);
+    header.appendChild(actions);
+
+    // Content
+    const content = document.createElement('div');
+    content.className = 'code-content';
+
+    const pre = document.createElement('pre');
+    const codeElement = document.createElement('code');
+    codeElement.className = 'streaming-code-text';
+    
+    pre.appendChild(codeElement);
+    content.appendChild(pre);
+
+    codeBlock.appendChild(header);
+    codeBlock.appendChild(content);
+
+    // Add to streaming container
+    this.streamingContentContainer.appendChild(codeBlock);
+    this.currentCodeBlock = codeElement;
+
+    // Add initial code if any
+    if (initialCode) {
+      this.appendToCodeBlock(initialCode);
+    }
+
+    // Remove typing cursor from text element
+    const textElement = this.streamingContentContainer.querySelector('.message-text');
+    textElement?.classList.remove('typing-cursor');
+  }
+
+  private appendToCodeBlock(text: string): void {
+    if (!this.currentCodeBlock) return;
+
+    this.codeBlockBuffer += text;
+    this.currentCodeBlock.textContent = this.codeBlockBuffer;
+    
+    // Add typing cursor to code block
+    this.currentCodeBlock.classList.add('typing-cursor');
+  }
+
+  private endCodeBlock(): void {
+    if (!this.currentCodeBlock) return;
+
+    this.isInCodeBlock = false;
+    this.currentCodeBlock.classList.remove('typing-cursor');
+    
+    // Set up copy and insert functionality
+    const codeBlock = this.currentCodeBlock.closest('.code-block');
+    if (codeBlock) {
+      const copyBtn = codeBlock.querySelector('.code-action');
+      const insertBtn = codeBlock.querySelectorAll('.code-action')[1];
+      
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => this.copyCodeToClipboard(this.codeBlockBuffer));
+      }
+      if (insertBtn) {
+        insertBtn.addEventListener('click', () => this.insertCodeIntoEditor(this.codeBlockBuffer));
+      }
+      
+      codeBlock.classList.remove('streaming-code');
+    }
+
+    this.currentCodeBlock = null;
+    this.codeBlockBuffer = '';
+
+    // Create new text container for content after code block
+    this.createNewTextContainer();
+  }
+
+  private appendToTextContent(text: string): void {
+    if (!this.streamingContentContainer) return;
+
+    // Find the last text container
+    let textContainer = this.streamingContentContainer.querySelector('.message-text:last-of-type') as HTMLElement;
+    
+    if (!textContainer) {
+      this.createNewTextContainer();
+      textContainer = this.streamingContentContainer.querySelector('.message-text:last-of-type') as HTMLElement;
+    }
+
+    if (textContainer) {
+      // Process simple markdown for the text
+      const currentText = textContainer.innerHTML.replace(/<span class="typing-cursor[^"]*"[^>]*><\/span>/g, '');
+      const newText = currentText + text;
+      textContainer.innerHTML = this.processSimpleMarkdown(newText);
+      
+      // Ensure typing cursor is present
+      textContainer.classList.add('typing-cursor');
+    }
+  }
+
+  private createNewTextContainer(): void {
+    if (!this.streamingContentContainer) return;
+
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text typing-cursor';
+    this.streamingContentContainer.appendChild(textDiv);
   }
 
   private handleStreamEnd(): void {
@@ -1839,21 +2008,27 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     if (this.streamingMessageElement) {
       this.streamingMessageElement.classList.remove('streaming');
       
-      // Remove typing cursor
-      const textElement = this.streamingMessageElement.querySelector('.message-text');
-      textElement?.classList.remove('typing-cursor');
-      
-      // Remove inline cursor spans if any
-      const inlineCursors = this.streamingMessageElement.querySelectorAll('.typing-cursor-inline');
-      inlineCursors.forEach(cursor => cursor.remove());
+      // Remove all typing cursors
+      const cursors = this.streamingMessageElement.querySelectorAll('.typing-cursor');
+      cursors.forEach(cursor => cursor.classList.remove('typing-cursor'));
+    }
+
+    // Clean up streaming-specific classes
+    if (this.streamingContentContainer) {
+      const streamingCodes = this.streamingContentContainer.querySelectorAll('.streaming-code');
+      streamingCodes.forEach(code => code.classList.remove('streaming-code'));
     }
 
     this.currentStreamingMessage = null;
     this.currentStreamSessionId = null;
     this.streamingMessageElement = null;
+    this.streamingContentContainer = null;
+    this.currentCodeBlock = null;
+    this.isInCodeBlock = false;
+    this.codeBlockBuffer = '';
     this.chatState.isLoading = false;
 
-    // Do a final render to ensure proper formatting
+    // Final render to ensure everything is properly formatted
     this.renderMessages();
   }
 
@@ -1877,6 +2052,10 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.currentStreamingMessage = null;
     this.currentStreamSessionId = null;
     this.streamingMessageElement = null;
+    this.streamingContentContainer = null;
+    this.currentCodeBlock = null;
+    this.isInCodeBlock = false;
+    this.codeBlockBuffer = '';
     this.chatState.isLoading = false;
     
     // Add error message and render
