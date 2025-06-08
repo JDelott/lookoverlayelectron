@@ -33,6 +33,20 @@ interface Project {
   lastOpened: string;
 }
 
+// Add streaming interface for tokens
+interface StreamingToken {
+  type: 'content_block_delta' | 'content_block_start' | 'content_block_stop' | 'message_start' | 'message_delta' | 'message_stop' | 'ping';
+  index?: number;
+  delta?: {
+    type: 'text_delta';
+    text: string;
+  };
+  content_block?: {
+    type: 'text';
+    text: string;
+  };
+}
+
 let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
 let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running processes
@@ -792,6 +806,127 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
     
   } catch (error) {
     console.error('Anthropic API Error:', error);
+    throw error;
+  }
+});
+
+// Add streaming API handler
+ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not found in environment variables');
+  }
+  
+  try {
+    console.log(`Anthropic Streaming API call - ${messages.length} messages`);
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
+          role: m.role,
+          content: m.content
+        })),
+        temperature: 0.7,
+        top_p: 0.9,
+        stream: true, // Enable streaming
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    
+    if (!response.body) {
+      throw new Error('No response body for streaming');
+    }
+    
+    // Generate unique session ID for this stream
+    const sessionId = Date.now().toString();
+    
+    // Send stream start event
+    mainWindow?.webContents.send('ai-stream-start', { sessionId });
+    
+    // Process the streaming response
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          // Send stream end event
+          mainWindow?.webContents.send('ai-stream-end', { sessionId });
+          break;
+        }
+        
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        // Process complete lines
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6); // Remove 'data: ' prefix
+            
+            if (data === '[DONE]') {
+              mainWindow?.webContents.send('ai-stream-end', { sessionId });
+              return { success: true, sessionId };
+            }
+            
+            try {
+              const parsed: StreamingToken = JSON.parse(data);
+              
+              // Handle different event types
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                // Send token to renderer
+                mainWindow?.webContents.send('ai-stream-token', {
+                  sessionId,
+                  token: parsed.delta.text,
+                  type: 'text'
+                });
+              } else if (parsed.type === 'content_block_start' && parsed.content_block?.text) {
+                // Initial content block
+                mainWindow?.webContents.send('ai-stream-token', {
+                  sessionId,
+                  token: parsed.content_block.text,
+                  type: 'text'
+                });
+              }
+            } catch (parseError) {
+              console.log('Failed to parse streaming data:', data);
+              // Continue processing other lines
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    
+    return { success: true, sessionId };
+    
+  } catch (error) {
+    console.error('Anthropic Streaming API Error:', error);
+    // Send error to renderer
+    mainWindow?.webContents.send('ai-stream-error', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
     throw error;
   }
 });

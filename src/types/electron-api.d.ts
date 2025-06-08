@@ -37,6 +37,13 @@ declare global {
       // AI API
       callAnthropicAPI: (messages: any[], systemPrompt?: string) => Promise<any>;
       
+      // AI Streaming API
+      callAnthropicAPIStream: (messages: any[], systemPrompt?: string) => Promise<{ success: boolean; sessionId: string }>;
+      onAIStreamStart: (callback: (data: { sessionId: string }) => void) => void;
+      onAIStreamToken: (callback: (data: { sessionId: string; token: string; type: string }) => void) => void;
+      onAIStreamEnd: (callback: (data: { sessionId: string }) => void) => void;
+      onAIStreamError: (callback: (data: { error: string }) => void) => void;
+      
       // Project management
       setCurrentDirectory: (directoryPath: string) => Promise<{ success: boolean; currentDirectory?: string; error?: string }>;
       selectProjectDirectory: () => Promise<string | null>;

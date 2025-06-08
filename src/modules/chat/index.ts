@@ -24,6 +24,10 @@ export class ChatManager {
   private electronAPI: any;
   private chatState: ChatState;
   private isUIReady = false;
+  private currentStreamingMessage: ChatMessage | null = null;
+  private currentStreamSessionId: string | null = null;
+  private streamingMessageElement: HTMLElement | null = null;
+  private typingSpeed = 20; // ms between characters for typing effect
 
   constructor(state: AppState) {
     this.state = state;
@@ -33,6 +37,7 @@ export class ChatManager {
       isLoading: false,
       apiKeyConfigured: false
     };
+    this.setupStreamingListeners();
   }
 
   initialize(): void {
@@ -886,6 +891,44 @@ export class ChatManager {
           font-size: 0.75rem;
         }
       }
+
+      /* Streaming message effects */
+      .message.streaming {
+        animation: streamingGlow 2s ease-in-out infinite;
+      }
+
+      @keyframes streamingGlow {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.85; }
+      }
+
+      /* Typing cursor effect */
+      .typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+        font-weight: normal;
+      }
+
+      @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
+      /* Enhanced typing indicator for streaming */
+      .typing-indicator.streaming {
+        background: linear-gradient(90deg, #374151, #4b5563, #374151);
+        background-size: 200% 100%;
+        animation: shimmer 2s ease-in-out infinite;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+      }
+
+      @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
     `;
     
     document.head.appendChild(style);
@@ -1104,7 +1147,7 @@ I have access to your current file context and can provide tailored assistance. 
     this.chatState.messages.push(userMessage);
     this.renderMessages();
 
-    // Show typing indicator
+    // Show typing indicator and prepare for streaming
     this.chatState.isLoading = true;
     this.showTypingIndicator();
 
@@ -1115,43 +1158,17 @@ I have access to your current file context and can provide tailored assistance. 
         content: msg.content
       }));
 
-      const response = await window.electronAPI.callAnthropicAPI(
+      // Use streaming API
+      await window.electronAPI.callAnthropicAPIStream(
         apiMessages,
         this.getSystemPrompt()
       );
 
-      // Debug logging (can remove later)
-      this.logResponseDetails(response);
-
-      const assistantMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: typeof response === 'string' ? response : response.content || JSON.stringify(response),
-        timestamp: new Date()
-      };
-
-      this.chatState.messages.push(assistantMessage);
+      // Note: Response handling is now done via streaming events
       
     } catch (error) {
-      console.error('Failed to get AI response:', error);
-      
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `❌ **Error**: ${this.getErrorMessage(error as Error)}
-
-**Suggestions:**
-• Try asking a more specific question
-• Check your internet connection
-• Ensure your API key is valid`,
-        timestamp: new Date()
-      };
-
-      this.chatState.messages.push(errorMessage);
-    } finally {
-      this.chatState.isLoading = false;
-      this.hideTypingIndicator();
-      this.renderMessages();
+      console.error('Failed to start streaming:', error);
+      this.handleStreamError(error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
@@ -1636,5 +1653,152 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   // Expose the chat state so layout manager can check it
   getChatState(): ChatState {
     return this.chatState;
+  }
+
+  private setupStreamingListeners(): void {
+    if (!window.electronAPI) return;
+
+    // Set up streaming event listeners
+    window.electronAPI.onAIStreamStart?.((data: { sessionId: string }) => {
+      console.log('🚀 Stream started:', data.sessionId);
+      this.handleStreamStart(data.sessionId);
+    });
+
+    window.electronAPI.onAIStreamToken?.((data: { sessionId: string; token: string; type: string }) => {
+      if (data.sessionId === this.currentStreamSessionId) {
+        this.handleStreamToken(data.token);
+      }
+    });
+
+    window.electronAPI.onAIStreamEnd?.((data: { sessionId: string }) => {
+      if (data.sessionId === this.currentStreamSessionId) {
+        console.log('✅ Stream completed:', data.sessionId);
+        this.handleStreamEnd();
+      }
+    });
+
+    window.electronAPI.onAIStreamError?.((data: { error: string }) => {
+      console.error('❌ Stream error:', data.error);
+      this.handleStreamError(data.error);
+    });
+  }
+
+  private handleStreamStart(sessionId: string): void {
+    // Hide typing indicator
+    this.hideTypingIndicator();
+    
+    // Create streaming message
+    this.currentStreamSessionId = sessionId;
+    this.currentStreamingMessage = {
+      id: sessionId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date()
+    };
+
+    // Add empty message to state and render
+    this.chatState.messages.push(this.currentStreamingMessage);
+    this.renderMessages();
+    
+    // Find the message element that was just created
+    const container = document.getElementById('messages-container');
+    if (container) {
+      const messageElements = container.querySelectorAll('.message.assistant');
+      this.streamingMessageElement = messageElements[messageElements.length - 1] as HTMLElement;
+      
+      // Add streaming class for visual effects
+      this.streamingMessageElement?.classList.add('streaming');
+    }
+  }
+
+  private handleStreamToken(token: string): void {
+    if (!this.currentStreamingMessage || !this.streamingMessageElement) return;
+
+    // Add token to message content
+    this.currentStreamingMessage.content += token;
+    
+    // Update the message element progressively with typing effect
+    this.updateStreamingMessage();
+  }
+
+  private updateStreamingMessage(): void {
+    if (!this.currentStreamingMessage || !this.streamingMessageElement) return;
+
+    // Find the text element within the message
+    const textElement = this.streamingMessageElement.querySelector('.message-text') as HTMLElement;
+    if (!textElement) return;
+
+    // Check if content has code blocks
+    const hasCodeBlocks = /```[\s\S]*?```/.test(this.currentStreamingMessage.content);
+    
+    if (hasCodeBlocks) {
+      // For content with code blocks, use the full markdown processing
+      const processedContent = this.processMarkdownWithCodeBlocks(this.currentStreamingMessage.content);
+      textElement.innerHTML = '';
+      textElement.appendChild(processedContent);
+    } else {
+      // For simple text, apply simple markdown processing
+      textElement.innerHTML = this.processSimpleMarkdown(this.currentStreamingMessage.content);
+    }
+
+    // Add cursor effect for streaming
+    textElement.classList.add('typing-cursor');
+    
+    // Scroll to bottom
+    this.scrollToBottom();
+  }
+
+  private handleStreamEnd(): void {
+    // Clean up streaming state
+    if (this.streamingMessageElement) {
+      this.streamingMessageElement.classList.remove('streaming');
+      
+      // Remove typing cursor
+      const textElement = this.streamingMessageElement.querySelector('.message-text');
+      textElement?.classList.remove('typing-cursor');
+    }
+
+    this.currentStreamingMessage = null;
+    this.currentStreamSessionId = null;
+    this.streamingMessageElement = null;
+    this.chatState.isLoading = false;
+
+    // Final render to ensure everything is properly formatted
+    this.renderMessages();
+  }
+
+  private handleStreamError(error: string): void {
+    console.error('Stream error:', error);
+    
+    // Clean up streaming state
+    this.currentStreamingMessage = null;
+    this.currentStreamSessionId = null;
+    this.streamingMessageElement = null;
+    this.chatState.isLoading = false;
+    
+    // Remove any partial streaming message
+    if (this.chatState.messages.length > 0) {
+      const lastMessage = this.chatState.messages[this.chatState.messages.length - 1];
+      if (lastMessage.role === 'assistant' && lastMessage.content === '') {
+        this.chatState.messages.pop();
+      }
+    }
+    
+    // Add error message
+    const errorMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `❌ **Error**: ${this.getErrorMessage(new Error(error))}
+
+**Suggestions:**
+• Try asking a more specific question
+• Check your internet connection
+• Ensure your API key is valid`,
+      timestamp: new Date()
+    };
+
+    this.chatState.messages.push(errorMessage);
+    this.hideTypingIndicator();
+    this.renderMessages();
   }
 }

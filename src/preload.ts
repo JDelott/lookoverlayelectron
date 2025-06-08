@@ -47,9 +47,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSources: () => ipcRenderer.invoke('get-sources'),
   getScreenInfo: () => ipcRenderer.invoke('get-screen-info'),
   
-  // Add secure AI API call
+  // AI API calls
   callAnthropicAPI: (messages: any[], systemPrompt?: string) => 
     ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt),
+  
+  // AI Streaming API calls
+  callAnthropicAPIStream: (messages: any[], systemPrompt?: string) => 
+    ipcRenderer.invoke('anthropic-api-call-stream', messages, systemPrompt),
+  
+  // AI Streaming event listeners
+  onAIStreamStart: (callback: (data: { sessionId: string }) => void) => {
+    ipcRenderer.on('ai-stream-start', (event, data) => callback(data));
+  },
+  onAIStreamToken: (callback: (data: { sessionId: string; token: string; type: string }) => void) => {
+    ipcRenderer.on('ai-stream-token', (event, data) => callback(data));
+  },
+  onAIStreamEnd: (callback: (data: { sessionId: string }) => void) => {
+    ipcRenderer.on('ai-stream-end', (event, data) => callback(data));
+  },
+  onAIStreamError: (callback: (data: { error: string }) => void) => {
+    ipcRenderer.on('ai-stream-error', (event, data) => callback(data));
+  },
   
   // Project management
   setCurrentDirectory: (directoryPath: string) => ipcRenderer.invoke('set-current-directory', directoryPath),
