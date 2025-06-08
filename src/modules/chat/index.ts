@@ -99,44 +99,41 @@ export class ChatManager {
             <div class="messages-container" id="messages-container"></div>
           </div>
 
+          <!-- Quick Actions (hidden by default) -->
+          <div id="quick-actions" class="quick-actions" style="display: none;">
+            <div class="quick-actions-grid">
+              <button class="quick-action" data-action="explain">
+                <span class="action-icon">💡</span>
+                <span class="action-text">Explain Code</span>
+              </button>
+              <button class="quick-action" data-action="debug">
+                <span class="action-icon">🐛</span>
+                <span class="action-text">Find Issues</span>
+              </button>
+              <button class="quick-action" data-action="optimize">
+                <span class="action-icon">⚡</span>
+                <span class="action-text">Optimize</span>
+              </button>
+              <button class="quick-action" data-action="test">
+                <span class="action-icon">🧪</span>
+                <span class="action-text">Write Tests</span>
+              </button>
+              <button class="quick-action" data-action="comment">
+                <span class="action-icon">💬</span>
+                <span class="action-text">Add Comments</span>
+              </button>
+              <button class="quick-action" data-action="refactor">
+                <span class="action-icon">🔄</span>
+                <span class="action-text">Refactor</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Input Area -->
           <div class="chat-input-area">
-            <!-- Quick Actions (hidden by default) -->
-            <div id="quick-actions" class="quick-actions" style="display: none;">
-              <div class="quick-actions-grid">
-                <button class="quick-action" data-action="explain">
-                  <span class="action-icon">💡</span>
-                  <span class="action-text">Explain Code</span>
-                </button>
-                <button class="quick-action" data-action="debug">
-                  <span class="action-icon">🐛</span>
-                  <span class="action-text">Find Issues</span>
-                </button>
-                <button class="quick-action" data-action="optimize">
-                  <span class="action-icon">⚡</span>
-                  <span class="action-text">Optimize</span>
-                </button>
-                <button class="quick-action" data-action="test">
-                  <span class="action-icon">🧪</span>
-                  <span class="action-text">Write Tests</span>
-                </button>
-                <button class="quick-action" data-action="comment">
-                  <span class="action-icon">💬</span>
-                  <span class="action-text">Add Comments</span>
-                </button>
-                <button class="quick-action" data-action="refactor">
-                  <span class="action-icon">🔄</span>
-                  <span class="action-text">Refactor</span>
-                </button>
-              </div>
-            </div>
-
             <!-- Input Container -->
             <div class="input-container">
               <div class="input-wrapper">
-                <button id="quick-actions-toggle" class="input-action-btn" title="Quick Actions">
-                  <span class="action-icon">⚡</span>
-                </button>
                 <div class="textarea-container">
                   <textarea 
                     id="chat-input" 
@@ -147,6 +144,9 @@ export class ChatManager {
                   <div class="input-footer">
                     <span class="char-count" id="char-count">0 / 50,000</span>
                     <div class="input-actions">
+                      <button id="quick-actions-toggle" class="input-action-btn" title="Quick Actions">
+                        <span class="action-icon">⚡</span>
+                      </button>
                       <button id="attach-code" class="input-action-btn" title="Attach Current Code">
                         <span class="action-icon">📎</span>
                       </button>
@@ -176,7 +176,7 @@ export class ChatManager {
     const style = document.createElement('style');
     style.id = 'chat-styles';
     style.textContent = `
-      /* Chat Container - ISOLATE FROM OTHER PANELS */
+      /* Chat Container */
       .chat-container {
         height: 100%;
         display: flex;
@@ -185,14 +185,16 @@ export class ChatManager {
         background: #1a1a1a;
         color: #e4e4e7;
         position: relative;
-        isolation: isolate;
-        z-index: 1;
       }
 
-      /* Fix Input Container Positioning */
+      /* Input Area */
+      .chat-input-area {
+        background: #1a1a1a;
+        border-top: 1px solid #262626;
+      }
+
       .input-container {
         padding: 1rem;
-        position: relative;
       }
 
       .input-wrapper {
@@ -201,8 +203,6 @@ export class ChatManager {
         border-radius: 0.75rem;
         transition: all 0.2s;
         overflow: hidden;
-        position: relative;
-        isolation: isolate;
       }
 
       .input-wrapper:focus-within {
@@ -214,48 +214,14 @@ export class ChatManager {
         position: relative;
       }
 
-      /* Fix Quick Actions Toggle Positioning */
-      .input-action-btn {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        background: transparent;
-        border: none;
-        color: #71717a;
-        cursor: pointer;
-        padding: 0.5rem;
-        border-radius: 0.25rem;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 2rem;
-        height: 2rem;
-        z-index: 2;
-      }
-
-      .input-action-btn:hover {
-        color: #60a5fa;
-        background: rgba(96, 165, 250, 0.1);
-      }
-
-      /* CRITICAL: Keep quick actions toggle INSIDE input wrapper */
-      #quick-actions-toggle {
-        left: 0.5rem;
-        top: 50%;
-        transform: translateY(-50%);
-        position: absolute !important;
-        z-index: 3 !important;
-      }
-
-      /* Make sure textarea has enough padding to avoid overlap */
+      /* Clean textarea styling */
       .chat-input-area textarea {
         width: 100%;
         background: transparent;
         border: none;
         outline: none;
         resize: none;
-        padding: 1rem 3rem 1rem 3rem; /* Left padding for quick actions button */
+        padding: 1rem;
         color: #e4e4e7;
         font-size: 0.875rem;
         line-height: 1.5;
@@ -268,7 +234,7 @@ export class ChatManager {
         color: #71717a;
       }
 
-      /* Input Footer */
+      /* Input Footer with all buttons */
       .input-footer {
         display: flex;
         align-items: center;
@@ -276,7 +242,6 @@ export class ChatManager {
         padding: 0.5rem 1rem;
         background: #1f1f1f;
         border-top: 1px solid #404040;
-        position: relative;
       }
 
       .char-count {
@@ -298,10 +263,27 @@ export class ChatManager {
         align-items: center;
       }
 
-      /* Fix other input buttons */
-      #attach-code {
-        position: static !important;
-        transform: none !important;
+      /* All action buttons styled consistently */
+      .input-action-btn {
+        background: transparent;
+        border: 1px solid #404040;
+        color: #71717a;
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.875rem;
+      }
+
+      .input-action-btn:hover {
+        color: #60a5fa;
+        border-color: #60a5fa;
+        background: rgba(96, 165, 250, 0.1);
       }
 
       .send-btn {
@@ -316,8 +298,6 @@ export class ChatManager {
         cursor: pointer;
         transition: all 0.2s;
         color: white;
-        position: static !important;
-        transform: none !important;
       }
 
       .send-btn:hover:not(:disabled) {
@@ -331,19 +311,12 @@ export class ChatManager {
         transform: none;
       }
 
-      .send-icon {
-        font-size: 1rem;
-        font-weight: bold;
-      }
-
       /* Quick Actions Panel */
       .quick-actions {
         padding: 1rem;
         background: #171717;
         border-top: 1px solid #262626;
         border-bottom: 1px solid #262626;
-        position: relative;
-        z-index: 1;
       }
 
       .quick-actions-grid {
@@ -373,10 +346,6 @@ export class ChatManager {
         background: #404040;
         border-color: #60a5fa;
         transform: translateY(-1px);
-      }
-
-      .quick-action:active {
-        transform: translateY(0) scale(0.98);
       }
 
       .action-icon {
@@ -918,7 +887,7 @@ export class ChatManager {
         }
       }
     `;
-
+    
     document.head.appendChild(style);
   }
 
