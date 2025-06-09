@@ -54,6 +54,11 @@ let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running pr
 // Global working directory tracking for terminal sessions
 let terminalWorkingDirectories = new Map<string, string>();
 
+// Add these new imports for speech recognition
+let isRecording = false;
+let audioProcess: ChildProcess | null = null;
+let currentRecordingPath: string | null = null;
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -1006,6 +1011,237 @@ ipcMain.handle('save-recent-project', async (event, projectPath: string) => {
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 });
+
+// Start audio recording
+ipcMain.handle('start-recording', async (event) => {
+  try {
+    if (isRecording) {
+      return { success: false, error: 'Already recording' };
+    }
+
+    console.log('🎤 Starting audio recording...');
+    
+    // Create temp directory for recordings
+    const tempDir = path.join(os.tmpdir(), 'whisper-recordings');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `recording-${timestamp}.wav`;
+    currentRecordingPath = path.join(tempDir, filename);
+    
+    // Use different recording commands based on platform
+    let recordCommand: string;
+    let recordArgs: string[];
+    
+    if (os.platform() === 'darwin') {
+      // macOS - use sox (you might need to install with: brew install sox)
+      recordCommand = 'sox';
+      recordArgs = [
+        '-t', 'coreaudio', 'default', // Input from default audio device
+        '-r', '16000', // Sample rate 16kHz (required by Whisper)
+        '-c', '1', // Mono
+        '-b', '16', // 16-bit
+        currentRecordingPath
+      ];
+    } else if (os.platform() === 'linux') {
+      // Linux - use arecord
+      recordCommand = 'arecord';
+      recordArgs = [
+        '-f', 'S16_LE', // 16-bit little-endian
+        '-r', '16000', // Sample rate 16kHz
+        '-c', '1', // Mono
+        '-t', 'wav', // WAV format
+        currentRecordingPath
+      ];
+    } else {
+      // Windows - use SoX or fallback
+      recordCommand = 'sox';
+      recordArgs = [
+        '-t', 'waveaudio', 'default',
+        '-r', '16000',
+        '-c', '1',
+        '-b', '16',
+        currentRecordingPath
+      ];
+    }
+    
+    console.log(`🎤 Recording command: ${recordCommand} ${recordArgs.join(' ')}`);
+    
+    audioProcess = spawn(recordCommand, recordArgs);
+    
+    audioProcess.on('error', (error) => {
+      console.error('🎤 Recording error:', error);
+      isRecording = false;
+      audioProcess = null;
+      mainWindow?.webContents.send('recording-state-changed', { 
+        isRecording: false, 
+        error: `Recording failed: ${error.message}. Make sure audio recording tools are installed.` 
+      });
+    });
+    
+    audioProcess.on('close', (code) => {
+      console.log(`🎤 Recording process closed with code: ${code}`);
+      isRecording = false;
+      audioProcess = null;
+      mainWindow?.webContents.send('recording-state-changed', { isRecording: false });
+    });
+    
+    isRecording = true;
+    mainWindow?.webContents.send('recording-state-changed', { isRecording: true });
+    
+    console.log('✅ Recording started successfully');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Failed to start recording:', error);
+    isRecording = false;
+    audioProcess = null;
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Stop audio recording
+ipcMain.handle('stop-recording', async (event) => {
+  try {
+    if (!isRecording || !audioProcess) {
+      return { success: false, error: 'Not currently recording' };
+    }
+    
+    console.log('🎤 Stopping audio recording...');
+    
+    // Send SIGINT to gracefully stop recording
+    audioProcess.kill('SIGINT');
+    
+    // Wait a moment for the process to close
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('✅ Recording stopped');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Failed to stop recording:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Transcribe audio using Whisper
+ipcMain.handle('transcribe-audio', async (event, audioFilePath?: string) => {
+  try {
+    const targetPath = audioFilePath || currentRecordingPath;
+    
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return { success: false, error: 'No audio file found to transcribe' };
+    }
+    
+    console.log('🎤 Transcribing audio file:', targetPath);
+    
+    // Dynamically import nodejs-whisper
+    const { nodewhisper } = await import('nodejs-whisper');
+    
+    const result = await nodewhisper(targetPath, {
+      modelName: 'base.en', // Fast, good quality model
+      whisperOptions: {
+        outputInJson: false,
+        outputInText: true,
+        wordTimestamps: false, // Disable word timestamps
+        translateToEnglish: false,
+        language: 'auto'
+      }
+    });
+    
+    // Extract text from result with proper typing and timestamp cleaning
+    let transcription = '';
+    if (Array.isArray(result)) {
+      transcription = result.map((segment: any) => {
+        if (typeof segment === 'string') return segment;
+        if (segment && typeof segment === 'object') {
+          return segment.speech || segment.text || segment.transcript || '';
+        }
+        return '';
+      }).join(' ');
+    } else if (typeof result === 'string') {
+      transcription = result;
+    } else if (result && typeof result === 'object') {
+      // Handle object result with multiple possible properties
+      const resultObj = result as any;
+      transcription = resultObj.text || resultObj.transcript || resultObj.speech || '';
+    }
+    
+    // Clean up timestamps and formatting
+    transcription = cleanTranscriptionText(transcription);
+    
+    // Clean up the recording file
+    if (targetPath === currentRecordingPath) {
+      try {
+        fs.unlinkSync(targetPath);
+        currentRecordingPath = null;
+      } catch (cleanupError) {
+        console.warn('⚠️ Failed to cleanup recording file:', cleanupError);
+      }
+    }
+    
+    console.log('✅ Transcription completed:', transcription.substring(0, 100) + '...');
+    
+    if (!transcription) {
+      return { success: false, error: 'No speech detected in the recording' };
+    }
+    
+    return { success: true, text: transcription };
+    
+  } catch (error) {
+    console.error('❌ Transcription failed:', error);
+    
+    // Clean up on error
+    if (currentRecordingPath && fs.existsSync(currentRecordingPath)) {
+      try {
+        fs.unlinkSync(currentRecordingPath);
+        currentRecordingPath = null;
+      } catch (cleanupError) {
+        console.warn('⚠️ Failed to cleanup recording file on error:', cleanupError);
+      }
+    }
+    
+    return { success: false, error: `Transcription failed: ${(error as Error).message}` };
+  }
+});
+
+// Add this helper function to clean up transcription text
+function cleanTranscriptionText(text: string): string {
+  if (!text) return '';
+  
+  // Remove SRT-style timestamps: [00:00:00.000 --> 00:00:01.000]
+  let cleaned = text.replace(/\[[\d:.,\s\->&]+\]/g, '');
+  
+  // Remove VTT-style timestamps: 00:00:00.000 --> 00:00:01.000
+  cleaned = cleaned.replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}/g, '');
+  
+  // Remove standalone timestamps: 00:00:00.000
+  cleaned = cleaned.replace(/\d{2}:\d{2}:\d{2}\.\d{3}/g, '');
+  
+  // Remove multiple spaces and newlines
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  
+  // Remove leading/trailing whitespace
+  cleaned = cleaned.trim();
+  
+  // Capitalize first letter
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  
+  // Ensure proper sentence ending
+  if (cleaned.length > 0 && !cleaned.match(/[.!?]$/)) {
+    // Only add period if it doesn't end with punctuation and is substantial text
+    if (cleaned.length > 5) {
+      cleaned += '.';
+    }
+  }
+  
+  return cleaned;
+}
 
 app.whenReady().then(createWindow);
 

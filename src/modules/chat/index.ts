@@ -32,6 +32,8 @@ export class ChatManager {
   private isInCodeBlock = false;
   private codeBlockBuffer = '';
   private typingSpeed = 20; // ms between characters for typing effect
+  private isRecording = false;
+  private recordingStartTime: number = 0;
 
   constructor(state: AppState) {
     this.state = state;
@@ -42,6 +44,7 @@ export class ChatManager {
       apiKeyConfigured: false
     };
     this.setupStreamingListeners();
+    this.setupSpeechListeners(); // Add this
   }
 
   initialize(): void {
@@ -66,7 +69,6 @@ export class ChatManager {
 
     console.log('🔧 Setting up chat UI...');
     
-    // Always set up the UI fresh
     chatContent.innerHTML = `
       <div class="chat-container">
         <!-- API Key Setup -->
@@ -155,6 +157,9 @@ export class ChatManager {
                     <div class="input-actions">
                       <button id="quick-actions-toggle" class="input-action-btn" title="Quick Actions">
                         <span class="action-icon">⚡</span>
+                      </button>
+                      <button id="microphone-btn" class="input-action-btn" title="Voice input">
+                        <span class="action-icon">🎤</span>
                       </button>
                       <button id="attach-code" class="input-action-btn" title="Attach Current Code">
                         <span class="action-icon">📎</span>
@@ -968,6 +973,105 @@ export class ChatManager {
       .streaming-content .message-text:not(:last-child) {
         margin-bottom: 0.5rem;
       }
+
+      /* Microphone button special states */
+      .input-action-btn.recording {
+        color: #ef4444 !important;
+        border-color: #ef4444 !important;
+        background: rgba(239, 68, 68, 0.1) !important;
+        animation: recordingPulse 1.5s ease-in-out infinite;
+      }
+
+      @keyframes recordingPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(1.05); }
+      }
+
+      /* Speech feedback */
+      .speech-feedback {
+        padding: 0.75rem 1rem;
+        background: #1f1f1f;
+        border-top: 1px solid #404040;
+        border-bottom: 1px solid #404040;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      .speech-feedback-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #d4d4d8;
+        font-size: 0.875rem;
+      }
+
+      .speech-feedback-content.recording {
+        color: #f59e0b;
+      }
+
+      .speech-feedback-content.processing {
+        color: #3b82f6;
+      }
+
+      .recording-animation {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: recordingBlink 1s ease-in-out infinite;
+      }
+
+      @keyframes recordingBlink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+
+      .processing-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #404040;
+        border-top: 2px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Speech notifications */
+      .speech-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 500;
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        max-width: 300px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+
+      .speech-notification.success {
+        background: #10b981;
+      }
+
+      .speech-notification.error {
+        background: #ef4444;
+      }
+
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
     `;
     
     document.head.appendChild(style);
@@ -1044,6 +1148,12 @@ export class ChatManager {
     });
     
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // Add microphone button listener
+    const microphoneBtn = document.getElementById('microphone-btn') as HTMLButtonElement;
+    if (microphoneBtn) {
+      microphoneBtn.addEventListener('click', () => this.toggleRecording());
+    }
   }
 
   private autoResizeTextarea(textarea: HTMLTextAreaElement): void {
@@ -2900,5 +3010,177 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  private setupSpeechListeners(): void {
+    if (!this.electronAPI.onRecordingStateChanged) return;
+
+    this.electronAPI.onRecordingStateChanged((data: { isRecording: boolean; error?: string }) => {
+      this.isRecording = data.isRecording;
+      this.updateMicrophoneButton();
+      
+      if (data.error) {
+        this.showSpeechError(data.error);
+      }
+    });
+  }
+
+  private async toggleRecording(): Promise<void> {
+    if (this.isRecording) {
+      await this.stopRecording();
+    } else {
+      await this.startRecording();
+    }
+  }
+
+  private async startRecording(): Promise<void> {
+    try {
+      this.recordingStartTime = Date.now();
+      const result = await this.electronAPI.startRecording();
+      
+      if (!result.success) {
+        this.showSpeechError(result.error || 'Failed to start recording');
+        return;
+      }
+      
+      this.showRecordingFeedback();
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      this.showSpeechError('Failed to start recording. Make sure microphone access is granted.');
+    }
+  }
+
+  private async stopRecording(): Promise<void> {
+    try {
+      const result = await this.electronAPI.stopRecording();
+      
+      if (!result.success) {
+        this.showSpeechError(result.error || 'Failed to stop recording');
+        return;
+      }
+      
+      this.hideRecordingFeedback();
+      this.showTranscriptionFeedback();
+      
+      // Start transcription
+      await this.transcribeRecording();
+      
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      this.showSpeechError('Failed to stop recording');
+    }
+  }
+
+  private async transcribeRecording(): Promise<void> {
+    try {
+      const result = await this.electronAPI.transcribeAudio();
+      
+      this.hideTranscriptionFeedback();
+      
+      if (!result.success) {
+        this.showSpeechError(result.error || 'Transcription failed');
+        return;
+      }
+      
+      if (result.text) {
+        // Insert transcribed text into the input
+        const input = document.getElementById('chat-input') as HTMLTextAreaElement;
+        if (input) {
+          const currentValue = input.value;
+          const newValue = currentValue ? `${currentValue} ${result.text}` : result.text;
+          input.value = newValue;
+          this.autoResizeTextarea(input);
+          this.updateCharCount(input);
+          input.focus();
+          
+          // Show success feedback
+          this.showSpeechSuccess('Speech converted to text!');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Transcription failed:', error);
+      this.hideTranscriptionFeedback();
+      this.showSpeechError('Transcription failed');
+    }
+  }
+
+  private updateMicrophoneButton(): void {
+    const micBtn = document.getElementById('microphone-btn');
+    if (!micBtn) return;
+
+    if (this.isRecording) {
+      micBtn.innerHTML = '<span class="action-icon recording">🔴</span>';
+      micBtn.classList.add('recording');
+      micBtn.title = 'Stop recording';
+    } else {
+      micBtn.innerHTML = '<span class="action-icon">🎤</span>';
+      micBtn.classList.remove('recording');
+      micBtn.title = 'Start voice input';
+    }
+  }
+
+  private showRecordingFeedback(): void {
+    this.showSpeechFeedback('🎤 Recording... Click to stop', 'recording');
+  }
+
+  private hideRecordingFeedback(): void {
+    this.hideSpeechFeedback();
+  }
+
+  private showTranscriptionFeedback(): void {
+    this.showSpeechFeedback('🔄 Converting speech to text...', 'processing');
+  }
+
+  private hideTranscriptionFeedback(): void {
+    this.hideSpeechFeedback();
+  }
+
+  private showSpeechFeedback(message: string, type: 'recording' | 'processing' = 'recording'): void {
+    // Remove existing feedback
+    this.hideSpeechFeedback();
+
+    const feedback = document.createElement('div');
+    feedback.className = 'speech-feedback';
+    feedback.innerHTML = `
+      <div class="speech-feedback-content ${type}">
+        <span class="speech-message">${message}</span>
+        ${type === 'recording' ? `<div class="recording-animation"></div>` : '<div class="processing-spinner"></div>'}
+      </div>
+    `;
+
+    const inputArea = document.querySelector('.chat-input-area');
+    if (inputArea) {
+      inputArea.insertBefore(feedback, inputArea.firstChild);
+    }
+  }
+
+  private hideSpeechFeedback(): void {
+    const feedback = document.querySelector('.speech-feedback');
+    if (feedback) {
+      feedback.remove();
+    }
+  }
+
+  private showSpeechError(message: string): void {
+    this.showNotification(`❌ ${message}`, 'error');
+  }
+
+  private showSpeechSuccess(message: string): void {
+    this.showNotification(`✅ ${message}`, 'success');
+  }
+
+  private showNotification(message: string, type: 'success' | 'error'): void {
+    const notification = document.createElement('div');
+    notification.className = `speech-notification ${type}`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+      notification.style.animation = 'slideOut 0.3s ease-out';
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
   }
 }

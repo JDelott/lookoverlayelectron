@@ -79,6 +79,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   initTerminalWorkingDir: (terminalId: string, workingDir: string) => ipcRenderer.invoke('init-terminal-working-dir', terminalId, workingDir),
   getTerminalWorkingDir: (terminalId: string) => ipcRenderer.invoke('get-terminal-working-dir', terminalId),
   
+  // Speech recognition and recording
+  startRecording: () => ipcRenderer.invoke('start-recording'),
+  stopRecording: () => ipcRenderer.invoke('stop-recording'),
+  transcribeAudio: (audioFilePath?: string) => ipcRenderer.invoke('transcribe-audio', audioFilePath),
+  
+  // Recording state change listener
+  onRecordingStateChanged: (callback: (data: { isRecording: boolean; error?: string }) => void) => {
+    ipcRenderer.on('recording-state-changed', (event, data) => callback(data));
+  },
+  
   // File system change events
   onFileSystemChanged: (callback: (event: { type: string; path: string; parentPath: string }) => void) => {
     ipcRenderer.on('file-system-changed', (event, data) => callback(data));

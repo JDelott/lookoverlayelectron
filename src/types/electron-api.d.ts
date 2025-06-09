@@ -44,6 +44,12 @@ declare global {
       onAIStreamEnd: (callback: (data: { sessionId: string }) => void) => void;
       onAIStreamError: (callback: (data: { error: string }) => void) => void;
       
+      // Speech Recognition
+      startRecording: () => Promise<{ success: boolean; error?: string }>;
+      stopRecording: () => Promise<{ success: boolean; error?: string }>;
+      transcribeAudio: (audioFilePath: string) => Promise<{ success: boolean; text?: string; error?: string }>;
+      onRecordingStateChanged: (callback: (data: { isRecording: boolean; error?: string }) => void) => void;
+      
       // Project management
       setCurrentDirectory: (directoryPath: string) => Promise<{ success: boolean; currentDirectory?: string; error?: string }>;
       selectProjectDirectory: () => Promise<string | null>;
