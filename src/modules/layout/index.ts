@@ -1155,21 +1155,15 @@ export class LayoutManager {
         background-color: rgba(0, 122, 204, 0.05);
       }
 
-      .file-item[data-file-type="directory"]:hover::before {
-        content: "Drop files here";
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 10px;
-        color: #666;
-        opacity: 0;
-        transition: opacity 0.2s;
-        pointer-events: none;
+      /* Very subtle directory hover indication - no text needed */
+      .file-item[data-file-type="directory"]:hover {
+        background-color: rgba(90, 93, 94, 0.31);
       }
 
-      .file-item[data-file-type="directory"]:hover::before {
-        opacity: 0.7;
+      /* Subtle drag target indication */
+      body.drag-active .file-item[data-file-type="directory"]:hover {
+        background-color: rgba(59, 130, 246, 0.15);
+        border-left: 2px solid rgba(59, 130, 246, 0.4);
       }
     `;
     
