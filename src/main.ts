@@ -1376,6 +1376,90 @@ ipcMain.handle('rename-file', async (event, oldPath: string, newPath: string) =>
   }
 });
 
+// Copy external file to project directory
+ipcMain.handle('copy-external-file', async (event, sourcePath: string, targetDir: string, fileName?: string) => {
+  try {
+    // Use the original filename if no custom name provided
+    const finalFileName = fileName || path.basename(sourcePath);
+    const targetPath = path.join(targetDir, finalFileName);
+    
+    console.log(`Copying file from ${sourcePath} to ${targetPath}`);
+    
+    // Check if source file exists
+    if (!fs.existsSync(sourcePath)) {
+      return { success: false, error: 'Source file does not exist' };
+    }
+    
+    // Create target directory if it doesn't exist
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    
+    // Copy the file
+    await fs.promises.copyFile(sourcePath, targetPath);
+    
+    console.log(`✅ File copied successfully: ${targetPath}`);
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'copy-external', 
+      path: targetPath,
+      parentPath: targetDir
+    });
+    
+    return { success: true, targetPath };
+  } catch (error) {
+    console.error('Error copying external file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Handle file drop with base64 data (for when file paths aren't available)
+ipcMain.handle('save-dropped-file', async (event, targetDir: string, fileName: string, fileData: string, isBase64: boolean = false) => {
+  try {
+    const targetPath = path.join(targetDir, fileName);
+    
+    console.log(`Saving dropped file to ${targetPath}`);
+    
+    // Create target directory if it doesn't exist
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    
+    if (isBase64) {
+      // Handle binary files (images, etc.)
+      const buffer = Buffer.from(fileData, 'base64');
+      await fs.promises.writeFile(targetPath, buffer);
+    } else {
+      // Handle text files
+      await fs.promises.writeFile(targetPath, fileData, 'utf-8');
+    }
+    
+    console.log(`✅ Dropped file saved successfully: ${targetPath}`);
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'save-dropped', 
+      path: targetPath,
+      parentPath: targetDir
+    });
+    
+    return { success: true, targetPath };
+  } catch (error) {
+    console.error('Error saving dropped file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Write binary file operation (for drag and drop)
+ipcMain.handle('write-binary-file', async (event, filePath: string, base64Data: string) => {
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.promises.writeFile(filePath, buffer);
+    console.log(`Binary file saved: ${filePath}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error writing binary file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

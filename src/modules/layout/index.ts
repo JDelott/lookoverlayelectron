@@ -1121,6 +1121,56 @@ export class LayoutManager {
         border-color: #007acc !important;
         box-shadow: 0 0 0 1px #007acc !important;
       }
+
+      /* Drag and Drop Styles */
+      .file-item.drag-over {
+        background-color: rgba(0, 122, 204, 0.2) !important;
+        border: 2px dashed #007acc !important;
+        border-radius: 4px;
+      }
+
+      .file-item.drag-processing {
+        background-color: rgba(255, 193, 7, 0.2) !important;
+        position: relative;
+      }
+
+      .file-item.drag-processing::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        animation: drag-processing 1.5s infinite;
+      }
+
+      @keyframes drag-processing {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+
+      /* Global drag over styling */
+      body.drag-active {
+        background-color: rgba(0, 122, 204, 0.05);
+      }
+
+      .file-item[data-file-type="directory"]:hover::before {
+        content: "Drop files here";
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10px;
+        color: #666;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+
+      .file-item[data-file-type="directory"]:hover::before {
+        opacity: 0.7;
+      }
     `;
     
     document.head.appendChild(style);

@@ -214,7 +214,6 @@ class RendererApp {
         console.log('📁 Clicking directory:', item.name);
         try {
           await this.fileSystem.toggleDirectory(item);
-          // Just re-render the file tree - don't touch layout
           const updatedFiles = this.fileSystem.getFileTree();
           this.renderFileTree(updatedFiles);
         } catch (error) {
@@ -237,7 +236,133 @@ class RendererApp {
       this.showContextMenu(e, item);
     });
 
+    // Add drag and drop functionality for directories
+    if (isDirectory) {
+      this.setupDragAndDrop(element, item);
+    }
+
     return element;
+  }
+
+  private setupDragAndDrop(element: HTMLElement, item: any): void {
+    let dragCounter = 0;
+
+    element.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      element.classList.add('drag-over');
+    });
+
+    element.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+    });
+
+    element.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter === 0) {
+        element.classList.remove('drag-over');
+      }
+    });
+
+    element.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      element.classList.remove('drag-over');
+
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length === 0) return;
+
+      console.log('🗂️ Files dropped on folder:', item.name, 'Files:', files.map(f => f.name));
+
+      // Show loading state
+      element.classList.add('drag-processing');
+      
+      try {
+        for (const file of files) {
+          console.log('📁 Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
+          
+          let success = false;
+          
+          // Try using file path first (if available in Electron)
+          const filePath = (file as any).path;
+          if (filePath) {
+            console.log('📁 Using file path:', filePath);
+            success = await this.fileSystem.copyExternalFile(filePath, item.path, file.name);
+          } else {
+            // Fallback: read file content and save
+            console.log('📁 Reading file content for:', file.name);
+            success = await this.saveFileContent(file, item.path);
+          }
+          
+          if (success) {
+            console.log('✅ Successfully processed:', file.name);
+            
+            // If it's an image and the target is public folder
+            if (this.isImageFile(file.name) && item.name.toLowerCase().includes('public')) {
+              console.log('🖼️ Image added to public folder:', file.name);
+            }
+          } else {
+            console.error('❌ Failed to process:', file.name);
+            alert(`Failed to copy ${file.name}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error processing dropped files:', error);
+        alert('Error processing dropped files: ' + error);
+      } finally {
+        element.classList.remove('drag-processing');
+      }
+    });
+  }
+
+  private async saveFileContent(file: File, targetDir: string): Promise<boolean> {
+    try {
+      const isImage = this.isImageFile(file.name);
+      const isBinary = this.isBinaryFile(file.name);
+      
+      if (isImage || isBinary) {
+        // Handle binary files (images, etc.) using browser-compatible base64 conversion
+        const arrayBuffer = await file.arrayBuffer();
+        const base64Data = this.arrayBufferToBase64(arrayBuffer);
+        return await this.fileSystem.saveDroppedFile(targetDir, file.name, base64Data, true);
+      } else {
+        // Handle text files
+        const textContent = await file.text();
+        return await this.fileSystem.saveDroppedFile(targetDir, file.name, textContent, false);
+      }
+    } catch (error) {
+      console.error('Error reading file content:', error);
+      return false;
+    }
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  private isBinaryFile(fileName: string): boolean {
+    const binaryExtensions = [
+      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.zip', '.rar', '.7z', '.tar', '.gz',
+      '.mp3', '.mp4', '.avi', '.mov', '.wav',
+      '.exe', '.dmg', '.app', '.deb', '.rpm'
+    ];
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return binaryExtensions.includes(extension);
+  }
+
+  private isImageFile(fileName: string): boolean {
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico'];
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return imageExtensions.includes(extension);
   }
 
   private setupGlobalEventListeners(): void {
@@ -298,6 +423,32 @@ class RendererApp {
           }
         }, 100);
       }
+    });
+
+    // Global drag and drop detection
+    let dragCounter = 0;
+    
+    document.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      document.body.classList.add('drag-active');
+    });
+    
+    document.addEventListener('dragleave', (e) => {
+      dragCounter--;
+      if (dragCounter === 0) {
+        document.body.classList.remove('drag-active');
+      }
+    });
+    
+    document.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      document.body.classList.remove('drag-active');
     });
   }
 

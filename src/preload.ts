@@ -5,10 +5,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDirectoryContents: (path?: string) => ipcRenderer.invoke('get-directory-contents', path),
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke('write-file', filePath, content),
+  writeBinaryFile: (filePath: string, base64Data: string) => ipcRenderer.invoke('write-binary-file', filePath, base64Data),
   createFile: (filePath: string) => ipcRenderer.invoke('create-file', filePath),
   createFolder: (folderPath: string) => ipcRenderer.invoke('create-folder', folderPath),
   deleteFile: (filePath: string) => ipcRenderer.invoke('delete-file', filePath),
   renameFile: (oldPath: string, newPath: string) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+  copyExternalFile: (sourcePath: string, targetDir: string, fileName?: string) => ipcRenderer.invoke('copy-external-file', sourcePath, targetDir, fileName),
+  saveDroppedFile: (targetDir: string, fileName: string, fileData: string, isBase64?: boolean) => ipcRenderer.invoke('save-dropped-file', targetDir, fileName, fileData, isBase64),
   getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
   
   // Enhanced command execution with terminal ID support

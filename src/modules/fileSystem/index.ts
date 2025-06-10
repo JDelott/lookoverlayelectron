@@ -490,4 +490,62 @@ export class FileSystemManager {
       fileTreeContainer.style.pointerEvents = 'auto';
     }
   }
+
+  async copyExternalFile(sourcePath: string, targetDir: string, fileName?: string): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      console.log('🔧 Copying external file:', sourcePath, 'to:', targetDir);
+
+      const result = await this.electronAPI.copyExternalFile(sourcePath, targetDir, fileName);
+      if (result.success) {
+        console.log('✅ External file copied successfully:', result.targetPath);
+        
+        // Ensure target directory is expanded before refreshing
+        await this.ensureParentExpanded(targetDir);
+        
+        // Refresh the file tree while preserving states
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to copy external file:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error copying external file:', error);
+      return false;
+    }
+  }
+
+  async saveDroppedFile(targetDir: string, fileName: string, fileData: string, isBase64: boolean = false): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      console.log('🔧 Saving dropped file:', fileName, 'to:', targetDir);
+
+      const result = await this.electronAPI.saveDroppedFile(targetDir, fileName, fileData, isBase64);
+      if (result.success) {
+        console.log('✅ Dropped file saved successfully:', result.targetPath);
+        
+        // Ensure target directory is expanded before refreshing
+        await this.ensureParentExpanded(targetDir);
+        
+        // Refresh the file tree while preserving states
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to save dropped file:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving dropped file:', error);
+      return false;
+    }
+  }
 }
