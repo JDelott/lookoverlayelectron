@@ -38,6 +38,9 @@ declare global {
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
       getSources: () => Promise<any[]>;
       getScreenInfo: () => Promise<any>;
+      
+      // Git operations
+      executeGitCommand: (command: string) => Promise<{ success: boolean; output: string; code: number }>;
     };
 
     monaco: typeof import('monaco-editor');
@@ -50,5 +53,6 @@ declare global {
     app?: any;
     layoutManager?: any;
     chatManager?: any;
+    gitManager?: any;
   }
 }

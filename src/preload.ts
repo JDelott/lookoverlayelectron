@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeCommand: (command: string, workingDir?: string, terminalId?: string) => 
     ipcRenderer.invoke('execute-command', command, workingDir, terminalId),
   
+  // Git operations
+  executeGitCommand: (command: string) => ipcRenderer.invoke('execute-git-command', command),
+  
   // Process control
   killProcess: (processId?: string) => ipcRenderer.invoke('kill-process', processId),
   

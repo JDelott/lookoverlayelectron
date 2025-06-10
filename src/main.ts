@@ -432,6 +432,60 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
   }
 });
 
+// Add this new IPC handler after the existing execute-command handler
+ipcMain.handle('execute-git-command', async (event, command: string) => {
+  try {
+    return new Promise((resolve) => {
+      const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
+      const args = os.platform() === 'win32' ? ['/c', `git ${command}`] : ['-c', `git ${command}`];
+      
+      console.log(`Executing git command: git ${command}`);
+      
+      const childProcess = spawn(shell, args, {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0' // Disable colors for cleaner parsing
+        },
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let error = '';
+
+      childProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      childProcess.stderr?.on('data', (data) => {
+        error += data.toString();
+      });
+
+      childProcess.on('close', (code) => {
+        resolve({
+          success: code === 0,
+          output: output + error,
+          code
+        });
+      });
+
+      childProcess.on('error', (err) => {
+        resolve({
+          success: false,
+          output: `Error: ${err.message}`,
+          code: -1
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      output: `Error: ${(error as Error).message}`,
+      code: -1
+    };
+  }
+});
+
 // Initialize terminal working directory
 ipcMain.handle('init-terminal-working-dir', async (event, terminalId: string, workingDir: string) => {
   console.log(`Initializing terminal ${terminalId} working directory to: ${workingDir}`);

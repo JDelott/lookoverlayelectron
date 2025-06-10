@@ -824,6 +824,100 @@ export class LayoutManager {
         font-size: 11px;
         font-weight: 500;
       }
+
+      /* Sidebar Tab Styles */
+      .sidebar-tabs {
+        display: flex;
+        border-bottom: 1px solid rgb(75 85 99);
+      }
+
+      .sidebar-tab {
+        flex: 1;
+        padding: 8px;
+        background: transparent;
+        border: none;
+        color: rgb(156 163 175);
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+      }
+
+      .sidebar-tab:hover {
+        background: rgba(55, 65, 81, 0.5);
+        color: rgb(209 213 219);
+      }
+
+      .sidebar-tab.active {
+        color: rgb(96 165 250);
+        border-bottom-color: rgb(96 165 250);
+        background: rgba(59, 130, 246, 0.1);
+      }
+
+      /* Sidebar Panel Styles */
+      .sidebar-panel {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .sidebar-panel.active {
+        display: flex;
+      }
+
+      /* Git Panel Styles */
+      .git-section {
+        margin-bottom: 1rem;
+      }
+
+      .git-file-list {
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .git-file-item {
+        transition: background-color 0.2s;
+      }
+
+      .git-file-item:hover {
+        background-color: rgba(55, 65, 81, 0.8);
+      }
+
+      .git-commit-section textarea {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      /* Git status indicators in file tree */
+      .git-status-indicator {
+        font-weight: bold;
+        font-size: 10px;
+        padding: 1px 3px;
+        border-radius: 2px;
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      /* Add padding to git panel */
+      #git-panel {
+        padding: 8px;
+        overflow-y: auto;
+      }
+
+      .git-branch-info {
+        margin-bottom: 16px;
+      }
+
+      .git-commit-section {
+        margin-top: 16px;
+      }
+
+      .git-file-list {
+        border-radius: 0 0 8px 8px;
+      }
+
+      .git-section:last-child {
+        margin-bottom: 0;
+      }
     `;
     
     document.head.appendChild(style);
@@ -839,7 +933,6 @@ export class LayoutManager {
               <span class="text-lg font-bold text-gray-200">Satellite Ai</span>
             </div>
             
-            <!-- Simplified header - removed buttons -->
             <div class="flex items-center gap-3">
               <!-- Header buttons removed -->
             </div>
@@ -849,11 +942,37 @@ export class LayoutManager {
           <div class="content-area">
             <!-- Sidebar -->
             <div class="sidebar-area">
-              <div class="sidebar-header">
-                Explorer
+              <!-- Sidebar Tabs -->
+              <div class="sidebar-tabs flex bg-gray-800">
+                <button 
+                  id="explorer-tab"
+                  class="sidebar-tab active"
+                  onclick="window.layoutManager?.switchSidebarTab('explorer')"
+                >
+                  📁
+                </button>
+                <button 
+                  id="git-tab"
+                  class="sidebar-tab"
+                  onclick="window.layoutManager?.switchSidebarTab('git')"
+                >
+                  🌿
+                </button>
               </div>
-              <div class="sidebar-content" id="file-tree">
-                <!-- File tree content will be populated here -->
+
+              <!-- Explorer Panel -->
+              <div id="explorer-panel" class="sidebar-panel active">
+                <div class="sidebar-header">
+                  Explorer
+                </div>
+                <div class="sidebar-content" id="file-tree">
+                  <!-- File tree content will be populated here -->
+                </div>
+              </div>
+
+              <!-- Git Panel -->
+              <div id="git-panel" class="sidebar-panel">
+                <!-- Git content will be populated here -->
               </div>
               
               <!-- Sidebar Controls at bottom -->
@@ -1521,5 +1640,36 @@ export class LayoutManager {
   showProjectSelector(): void {
     this.state.showProjectSelector = true;
     this.createProjectSelector();
+  }
+
+  switchSidebarTab(tab: 'explorer' | 'git'): void {
+    // Update tab active states
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(`${tab}-tab`)?.classList.add('active');
+    
+    // Update panel visibility
+    document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`${tab}-panel`)?.classList.add('active');
+
+    // Trigger git status refresh when git tab is selected
+    if (tab === 'git') {
+      const gitManager = (window as any).gitManager;
+      if (gitManager) {
+        console.log('🔧 Refreshing git status for panel...');
+        gitManager.refreshGitStatus();
+      } else {
+        console.log('⚠️ Git manager not available yet');
+        // Show a loading message
+        const gitPanel = document.getElementById('git-panel');
+        if (gitPanel) {
+          gitPanel.innerHTML = `
+            <div class="text-center text-gray-500 text-sm p-4">
+              <div class="mb-2">🔄</div>
+              <div>Loading Git status...</div>
+            </div>
+          `;
+        }
+      }
+    }
   }
 }
