@@ -258,14 +258,76 @@ export class FileSystemManager {
     return this.fileTree;
   }
 
-  async refreshFileTree(): Promise<void> {
-    // Clear current tree and reload
-    this.fileTree = [];
-    const files = await this.loadFileSystem();
+  // Helper method to collect expanded folder states
+  private collectExpandedStates(items: FileItem[]): Map<string, boolean> {
+    const expandedStates = new Map<string, boolean>();
     
-    // Dispatch event to trigger re-render
-    const event = new CustomEvent('file-tree-updated', { detail: files });
-    document.dispatchEvent(event);
+    const collectStates = (fileItems: FileItem[]) => {
+      fileItems.forEach(item => {
+        if (item.type === 'directory') {
+          expandedStates.set(item.path, item.isExpanded || false);
+          if (item.children && item.children.length > 0) {
+            collectStates(item.children);
+          }
+        }
+      });
+    };
+    
+    collectStates(items);
+    return expandedStates;
+  }
+
+  // Helper method to restore expanded folder states
+  private async restoreExpandedStates(items: FileItem[], expandedStates: Map<string, boolean>): Promise<void> {
+    for (const item of items) {
+      if (item.type === 'directory') {
+        const wasExpanded = expandedStates.get(item.path);
+        if (wasExpanded) {
+          // Load children for this directory
+          try {
+            const children = await this.electronAPI.getDirectoryContents(item.path);
+            item.children = this.processFileItems(children || []);
+            item.isExpanded = true;
+            
+            // Recursively restore states for children
+            if (item.children && item.children.length > 0) {
+              await this.restoreExpandedStates(item.children, expandedStates);
+            }
+          } catch (error) {
+            console.warn('Could not restore expanded state for:', item.path, error);
+          }
+        }
+      }
+    }
+  }
+
+  async refreshFileTree(): Promise<void> {
+    try {
+      // Collect current expanded states before refreshing
+      const expandedStates = this.collectExpandedStates(this.fileTree);
+      console.log('🔧 Preserving expanded states for', expandedStates.size, 'folders');
+      
+      // Clear current tree and reload root
+      this.fileTree = [];
+      const rootFiles = await this.loadFileSystem();
+      
+      // Restore expanded states
+      await this.restoreExpandedStates(this.fileTree, expandedStates);
+      
+      // Dispatch event to trigger re-render
+      const event = new CustomEvent('file-tree-updated', { detail: this.fileTree });
+      document.dispatchEvent(event);
+      
+      console.log('✅ File tree refreshed with preserved states');
+    } catch (error) {
+      console.error('❌ Error refreshing file tree:', error);
+      
+      // Fallback - just reload without state preservation
+      this.fileTree = [];
+      const files = await this.loadFileSystem();
+      const event = new CustomEvent('file-tree-updated', { detail: files });
+      document.dispatchEvent(event);
+    }
   }
 
   // New methods for file/folder operations
@@ -276,13 +338,22 @@ export class FileSystemManager {
         return false;
       }
 
-      const filePath = parentPath.endsWith('/') ? 
-        parentPath + fileName : 
-        parentPath + '/' + fileName;
+      // Normalize path separators and construct file path
+      const normalizedParentPath = parentPath.replace(/\\/g, '/');
+      const filePath = normalizedParentPath.endsWith('/') ? 
+        normalizedParentPath + fileName : 
+        normalizedParentPath + '/' + fileName;
+
+      console.log('🔧 Creating file:', filePath);
 
       const result = await this.electronAPI.createFile(filePath);
       if (result.success) {
-        // Refresh the file tree
+        console.log('✅ File created successfully:', filePath);
+        
+        // Ensure parent directory is expanded before refreshing
+        await this.ensureParentExpanded(normalizedParentPath);
+        
+        // Refresh the file tree while preserving states
         await this.refreshFileTree();
         return true;
       } else {
@@ -302,13 +373,22 @@ export class FileSystemManager {
         return false;
       }
 
-      const folderPath = parentPath.endsWith('/') ? 
-        parentPath + folderName : 
-        parentPath + '/' + folderName;
+      // Normalize path separators and construct folder path
+      const normalizedParentPath = parentPath.replace(/\\/g, '/');
+      const folderPath = normalizedParentPath.endsWith('/') ? 
+        normalizedParentPath + folderName : 
+        normalizedParentPath + '/' + folderName;
+
+      console.log('🔧 Creating folder:', folderPath);
 
       const result = await this.electronAPI.createFolder(folderPath);
       if (result.success) {
-        // Refresh the file tree
+        console.log('✅ Folder created successfully:', folderPath);
+        
+        // Ensure parent directory is expanded before refreshing
+        await this.ensureParentExpanded(normalizedParentPath);
+        
+        // Refresh the file tree while preserving states
         await this.refreshFileTree();
         return true;
       } else {
@@ -330,7 +410,9 @@ export class FileSystemManager {
 
       const result = await this.electronAPI.deleteFile(itemPath);
       if (result.success) {
-        // Refresh the file tree
+        console.log('✅ Item deleted successfully:', itemPath);
+        
+        // Refresh the file tree while preserving states
         await this.refreshFileTree();
         return true;
       } else {
@@ -355,7 +437,9 @@ export class FileSystemManager {
 
       const result = await this.electronAPI.renameFile(oldPath, newPath);
       if (result.success) {
-        // Refresh the file tree
+        console.log('✅ Item renamed successfully:', oldPath, '->', newPath);
+        
+        // Refresh the file tree while preserving states
         await this.refreshFileTree();
         return true;
       } else {
@@ -365,6 +449,45 @@ export class FileSystemManager {
     } catch (error) {
       console.error('Error renaming item:', error);
       return false;
+    }
+  }
+
+  // Helper method to ensure a parent directory is expanded
+  private async ensureParentExpanded(parentPath: string): Promise<void> {
+    const findAndExpandParent = (items: FileItem[], targetPath: string): FileItem | null => {
+      for (const item of items) {
+        if (item.path === targetPath && item.type === 'directory') {
+          return item;
+        }
+        if (item.children && item.children.length > 0) {
+          const found = findAndExpandParent(item.children, targetPath);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const parentItem = findAndExpandParent(this.fileTree, parentPath);
+    if (parentItem && !parentItem.isExpanded) {
+      console.log('🔧 Ensuring parent directory is expanded:', parentPath);
+      await this.toggleDirectory(parentItem);
+    }
+  }
+
+  // Optional: Add loading state management
+  private showLoadingState(): void {
+    const fileTreeContainer = document.getElementById('file-tree');
+    if (fileTreeContainer) {
+      fileTreeContainer.style.opacity = '0.7';
+      fileTreeContainer.style.pointerEvents = 'none';
+    }
+  }
+
+  private hideLoadingState(): void {
+    const fileTreeContainer = document.getElementById('file-tree');
+    if (fileTreeContainer) {
+      fileTreeContainer.style.opacity = '1';
+      fileTreeContainer.style.pointerEvents = 'auto';
     }
   }
 }
