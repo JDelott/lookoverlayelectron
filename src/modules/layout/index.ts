@@ -708,13 +708,18 @@ export class LayoutManager {
       .file-item {
         display: block;
         width: 100%;
-        border-radius: 4px;
-        margin-bottom: 1px;
-        transition: background-color 0.15s;
+        border-radius: 3px;
+        margin-bottom: 0;
+        transition: background-color 0.15s ease;
+        position: relative;
       }
 
       .file-item:hover {
-        background-color: rgba(55, 65, 81, 0.6);
+        background-color: rgba(90, 93, 94, 0.31);
+      }
+
+      .file-item.selected {
+        background-color: rgba(51, 153, 255, 0.31);
       }
 
       .expansion-arrow {
@@ -725,11 +730,58 @@ export class LayoutManager {
         width: 12px;
         height: 12px;
         user-select: none;
+        opacity: 0.8;
+        transition: transform 0.1s ease;
+      }
+
+      .expansion-arrow:hover {
+        opacity: 1;
       }
 
       .file-name {
         font-size: 13px;
-        line-height: 1.2;
+        line-height: 22px;
+        font-weight: 400;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Special file styling */
+      .file-item[data-file-name="package.json"] .file-name,
+      .file-item[data-file-name="package-lock.json"] .file-name,
+      .file-item[data-file-name="yarn.lock"] .file-name {
+        color: #8bc34a;
+        font-weight: 500;
+      }
+
+      .file-item[data-file-name^="README"] .file-name {
+        color: #2196f3;
+        font-weight: 500;
+      }
+
+      .file-item[data-file-name^=".env"] .file-name,
+      .file-item[data-file-name=".gitignore"] .file-name {
+        color: #ff9800;
+      }
+
+      .file-item[data-file-name$=".config.js"] .file-name,
+      .file-item[data-file-name$=".config.ts"] .file-name,
+      .file-item[data-file-name="tsconfig.json"] .file-name {
+        color: #9c27b0;
+      }
+
+      /* Hidden files styling */
+      .file-item[data-file-name^="."] .file-name {
+        opacity: 0.7;
+        font-style: italic;
+      }
+
+      /* Improved indentation */
+      .file-tree-wrapper {
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 13px;
+        line-height: 22px;
       }
 
       /* Scrollbar */

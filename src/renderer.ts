@@ -196,6 +196,7 @@ class RendererApp {
     element.style.paddingLeft = `${depth * 16 + 8}px`;
     element.setAttribute('data-file-path', item.path);
     element.setAttribute('data-file-type', item.type);
+    element.setAttribute('data-file-name', item.name);
     
     element.innerHTML = `
       <div class="flex items-center w-full">

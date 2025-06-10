@@ -29,11 +29,89 @@ export class FileSystemManager {
   }
 
   private processFileItems(items: any[]): FileItem[] {
-    return items.map(item => ({
+    const processedItems = items.map(item => ({
       ...item,
       isExpanded: false,
       children: []
     }));
+    
+    // Sort exactly like VS Code: folders first, then files, alphabetical within each
+    return processedItems.sort((a, b) => {
+      // If types are different, directories come before files
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      
+      // If same type, sort alphabetically (case-insensitive)
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+  }
+
+  private sortFileItems(items: FileItem[]): FileItem[] {
+    return items.sort((a, b) => {
+      // Special files that should appear at the top
+      const specialFiles = [
+        'package.json',
+        'package-lock.json',
+        'yarn.lock',
+        'pnpm-lock.yaml',
+        'README.md',
+        'readme.md',
+        'README',
+        'readme',
+        '.env',
+        '.env.local',
+        '.env.example',
+        '.gitignore',
+        '.gitattributes',
+        'tsconfig.json',
+        'jsconfig.json',
+        'next.config.js',
+        'next.config.ts',
+        'tailwind.config.js',
+        'tailwind.config.ts',
+        'postcss.config.js',
+        'postcss.config.mjs',
+        'eslint.config.js',
+        'eslint.config.mjs',
+        '.eslintrc.js',
+        '.eslintrc.json',
+        'prettier.config.js',
+        '.prettierrc',
+        'vite.config.js',
+        'vite.config.ts',
+        'webpack.config.js',
+        'rollup.config.js'
+      ];
+
+      const aIsSpecial = specialFiles.includes(a.name.toLowerCase());
+      const bIsSpecial = specialFiles.includes(b.name.toLowerCase());
+      
+      // Special files come first
+      if (aIsSpecial && !bIsSpecial) return -1;
+      if (!aIsSpecial && bIsSpecial) return 1;
+      
+      // If both are special, sort by the order in specialFiles array
+      if (aIsSpecial && bIsSpecial) {
+        const aIndex = specialFiles.indexOf(a.name.toLowerCase());
+        const bIndex = specialFiles.indexOf(b.name.toLowerCase());
+        return aIndex - bIndex;
+      }
+
+      // Directories come before files
+      if (a.type === 'directory' && b.type === 'file') return -1;
+      if (a.type === 'file' && b.type === 'directory') return 1;
+
+      // Hidden files/folders (starting with .) come after visible ones within their category
+      const aIsHidden = a.name.startsWith('.');
+      const bIsHidden = b.name.startsWith('.');
+      
+      if (!aIsHidden && bIsHidden) return -1;
+      if (aIsHidden && !bIsHidden) return 1;
+
+      // Sort alphabetically (case-insensitive)
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
   }
 
   async readFile(filePath: string): Promise<string> {
@@ -151,7 +229,8 @@ export class FileSystemManager {
         // Expand: load children
         console.log('🔧 Loading children for:', item.path);
         const children = await this.electronAPI.getDirectoryContents(item.path);
-        item.children = this.processFileItems(children || []);
+        const processedChildren = this.processFileItems(children || []);
+        item.children = processedChildren;
         item.isExpanded = true;
         console.log('📁 Expanded directory:', item.name, 'with', item.children.length, 'children');
       }
