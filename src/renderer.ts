@@ -13,6 +13,7 @@ import { TerminalManager } from './modules/terminal/index.js';
 import { LayoutManager } from './modules/layout/index.js';
 import { ChatManager } from './modules/chat/index.js';
 import { GitManager } from './modules/git/index.js';
+import { SearchManager } from './modules/search/index.js';
 
 class RendererApp {
   private state: AppState;
@@ -23,6 +24,7 @@ class RendererApp {
   private layoutManager: LayoutManager;
   private chatManager: ChatManager;
   private gitManager: GitManager;
+  private searchManager: SearchManager;
 
   constructor() {
     this.state = {
@@ -47,6 +49,7 @@ class RendererApp {
     this.layoutManager = new LayoutManager(this.state);
     this.chatManager = new ChatManager(this.state);
     this.gitManager = new GitManager(this.state);
+    this.searchManager = new SearchManager(this.state);
   }
 
   async initialize(): Promise<void> {
@@ -100,6 +103,11 @@ class RendererApp {
       await this.gitManager.initialize();
       this.gitManager.exposeGlobally();
       console.log('✅ Git manager initialized');
+      
+      console.log('🔧 Initializing Search manager...');
+      this.searchManager.initialize();
+      this.searchManager.exposeGlobally();
+      console.log('✅ Search manager initialized');
       
       console.log('🔧 Loading file system...');
       await this.loadFileSystem();
@@ -252,6 +260,23 @@ class RendererApp {
     document.addEventListener('file-tree-updated', (event: any) => {
       console.log('🔄 File tree updated, re-rendering...');
       this.renderFileTree(event.detail);
+    });
+
+    // Ctrl/Cmd + Shift + F for search
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        this.layoutManager.switchSidebarTab('search');
+        
+        // Focus search input
+        setTimeout(() => {
+          const searchInput = document.getElementById('search-input') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 100);
+      }
     });
   }
 

@@ -27,6 +27,7 @@ export class GitManager {
   private currentBranch = '';
   private branches: GitBranch[] = [];
   private isGitRepo = false;
+  private searchQuery = ''; // Add search query state
 
   constructor(state: AppState) {
     this.state = state;
@@ -166,10 +167,27 @@ export class GitManager {
 
   private renderGitPanel(): void {
     const gitPanel = document.getElementById('git-panel');
-    if (!gitPanel) return;
+    if (!gitPanel) {
+      console.error('Git panel element not found');
+      return;
+    }
 
-    const stagedFiles = this.gitStatus.filter(f => f.status === 'staged' || (f.status === 'added'));
-    const unstagedFiles = this.gitStatus.filter(f => f.status !== 'staged' && f.status !== 'added');
+    console.log('Rendering git panel with search query:', this.searchQuery);
+    console.log('Git status count:', this.gitStatus.length);
+
+    // Filter files based on search query
+    const filteredGitStatus = this.searchQuery 
+      ? this.gitStatus.filter(file => 
+          file.path.toLowerCase().includes(this.searchQuery.toLowerCase())
+        )
+      : this.gitStatus;
+
+    const stagedFiles = filteredGitStatus.filter(f => f.status === 'staged' || (f.status === 'added'));
+    const unstagedFiles = filteredGitStatus.filter(f => f.status !== 'staged' && f.status !== 'added');
+
+    // Get total counts for display (including filtered)
+    const totalStaged = this.gitStatus.filter(f => f.status === 'staged' || (f.status === 'added')).length;
+    const totalUnstaged = this.gitStatus.filter(f => f.status !== 'staged' && f.status !== 'added').length;
 
     gitPanel.innerHTML = `
       <div class="git-branch-info">
@@ -182,10 +200,51 @@ export class GitManager {
         </div>
       </div>
 
+      <!-- Search Input -->
+      ${this.gitStatus.length > 0 ? `
+        <div class="git-search-section mb-3">
+          <div class="relative">
+            <input 
+              type="text" 
+              id="git-search-input"
+              placeholder="Search changed files..."
+              value="${this.searchQuery}"
+              class="w-full px-3 py-2 pl-8 pr-8 text-sm bg-gray-800 border border-gray-600 rounded 
+                     text-gray-300 placeholder-gray-500 focus:outline-none focus:border-blue-500 
+                     focus:ring-1 focus:ring-blue-500"
+              oninput="window.gitManager?.handleSearchInput(this.value)"
+            />
+            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+              <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </div>
+            ${this.searchQuery ? `
+              <button 
+                class="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400 hover:text-gray-200"
+                onclick="window.gitManager?.clearSearch()"
+                title="Clear search"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            ` : ''}
+          </div>
+          ${this.searchQuery && filteredGitStatus.length !== this.gitStatus.length ? `
+            <div class="text-xs text-gray-400 mt-1">
+              Showing ${filteredGitStatus.length} of ${this.gitStatus.length} changed files
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
+
       ${stagedFiles.length > 0 ? `
         <div class="git-section mb-4">
           <div class="flex items-center justify-between p-2 bg-gray-700 rounded-t">
-            <span class="text-sm font-medium text-green-400">Staged Changes (${stagedFiles.length})</span>
+            <span class="text-sm font-medium text-green-400">
+              Staged Changes (${stagedFiles.length}${stagedFiles.length !== totalStaged ? ` of ${totalStaged}` : ''})
+            </span>
             <div class="flex gap-1">
               <button class="text-xs text-gray-400 hover:text-gray-200" onclick="window.gitManager?.unstageAll()" title="Unstage All">
                 ↶
@@ -196,12 +255,25 @@ export class GitManager {
             ${stagedFiles.map(file => this.renderGitFile(file, true)).join('')}
           </div>
         </div>
+      ` : totalStaged > 0 && this.searchQuery ? `
+        <div class="git-section mb-4">
+          <div class="flex items-center justify-between p-2 bg-gray-700 rounded-t">
+            <span class="text-sm font-medium text-green-400">
+              Staged Changes (0 of ${totalStaged} shown)
+            </span>
+          </div>
+          <div class="bg-gray-800 rounded-b p-3 text-center text-gray-500 text-sm">
+            No staged files match search criteria
+          </div>
+        </div>
       ` : ''}
 
       ${unstagedFiles.length > 0 ? `
         <div class="git-section mb-4">
           <div class="flex items-center justify-between p-2 bg-gray-700 rounded-t">
-            <span class="text-sm font-medium text-yellow-400">Changes (${unstagedFiles.length})</span>
+            <span class="text-sm font-medium text-yellow-400">
+              Changes (${unstagedFiles.length}${unstagedFiles.length !== totalUnstaged ? ` of ${totalUnstaged}` : ''})
+            </span>
             <div class="flex gap-1">
               <button class="text-xs text-gray-400 hover:text-gray-200" onclick="window.gitManager?.stageAll()" title="Stage All">
                 +
@@ -213,6 +285,17 @@ export class GitManager {
           </div>
           <div class="git-file-list bg-gray-800 rounded-b">
             ${unstagedFiles.map(file => this.renderGitFile(file, false)).join('')}
+          </div>
+        </div>
+      ` : totalUnstaged > 0 && this.searchQuery ? `
+        <div class="git-section mb-4">
+          <div class="flex items-center justify-between p-2 bg-gray-700 rounded-t">
+            <span class="text-sm font-medium text-yellow-400">
+              Changes (0 of ${totalUnstaged} shown)
+            </span>
+          </div>
+          <div class="bg-gray-800 rounded-b p-3 text-center text-gray-500 text-sm">
+            No unstaged files match search criteria
           </div>
         </div>
       ` : ''}
@@ -253,8 +336,33 @@ export class GitManager {
           <div class="mb-2">✨</div>
           <div>No changes</div>
         </div>
+      ` : filteredGitStatus.length === 0 && this.searchQuery ? `
+        <div class="text-center text-gray-500 text-sm p-4">
+          <div class="mb-2">🔍</div>
+          <div>No files match "${this.searchQuery}"</div>
+          <button 
+            class="mt-2 text-xs text-blue-400 hover:text-blue-300 underline"
+            onclick="window.gitManager?.clearSearch()"
+          >
+            Clear search
+          </button>
+        </div>
       ` : ''}
     `;
+
+    console.log('Git panel rendered successfully');
+
+    // Focus search input if it exists and has content
+    if (this.searchQuery) {
+      setTimeout(() => {
+        const searchInput = document.getElementById('git-search-input') as HTMLInputElement;
+        if (searchInput) {
+          const cursorPos = this.searchQuery.length;
+          searchInput.focus();
+          searchInput.setSelectionRange(cursorPos, cursorPos);
+        }
+      }, 0);
+    }
   }
 
   private renderGitFile(file: GitFileStatus, isStaged: boolean): string {
@@ -263,11 +371,20 @@ export class GitManager {
     const fileName = file.path.split('/').pop() || file.path;
     const filePath = file.path;
 
+    // Highlight search matches in file path
+    const highlightedPath = this.searchQuery 
+      ? this.highlightSearchMatch(filePath, this.searchQuery)
+      : filePath;
+    
+    const highlightedFileName = this.searchQuery 
+      ? this.highlightSearchMatch(fileName, this.searchQuery)
+      : fileName;
+
     return `
       <div class="git-file-item flex items-center p-2 hover:bg-gray-700 cursor-pointer group" 
            onclick="window.gitManager?.openFile('${filePath}')">
         <span class="text-sm ${statusColor} mr-2 w-4">${statusIcon}</span>
-        <span class="flex-1 text-sm text-gray-300 truncate" title="${filePath}">${fileName}</span>
+        <span class="flex-1 text-sm text-gray-300 truncate" title="${highlightedPath}">${highlightedFileName}</span>
         <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           ${isStaged ? `
             <button class="text-xs text-gray-400 hover:text-yellow-400 p-1" 
@@ -652,5 +769,33 @@ export class GitManager {
     if (this.isGitRepo) {
       setTimeout(() => this.refreshGitStatus(), 100);
     }
+  }
+
+  // New search-related methods
+  public handleSearchInput(query: string): void {
+    console.log('Search input changed:', query);
+    this.searchQuery = query;
+    this.renderGitPanel();
+  }
+
+  public clearSearch(): void {
+    console.log('Clearing search');
+    this.searchQuery = '';
+    this.renderGitPanel();
+    
+    // Focus the search input after clearing
+    setTimeout(() => {
+      const searchInput = document.getElementById('git-search-input') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+      }
+    }, 0);
+  }
+
+  private highlightSearchMatch(text: string, query: string): string {
+    if (!query) return text;
+    
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(regex, '<span class="bg-yellow-400 text-black">$1</span>');
   }
 } 

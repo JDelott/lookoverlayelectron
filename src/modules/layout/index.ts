@@ -918,6 +918,83 @@ export class LayoutManager {
       .git-section:last-child {
         margin-bottom: 0;
       }
+
+      /* Search Panel Styles */
+      .search-header {
+        height: 32px;
+        padding: 0 12px;
+        background: rgb(55 65 81);
+        border-bottom: 1px solid rgb(75 85 99);
+        display: flex;
+        align-items: center;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: rgb(209 213 219);
+        flex-shrink: 0;
+      }
+
+      .search-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: rgb(209 213 219);
+      }
+
+      .search-content {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .search-input-section {
+        flex-shrink: 0;
+      }
+
+      .search-results {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+
+      .search-results-header {
+        flex-shrink: 0;
+      }
+
+      .search-file-group {
+        border-bottom: 1px solid rgb(55 65 81);
+      }
+
+      .search-file-header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+
+      .search-file-header:hover {
+        background: rgb(75 85 99);
+      }
+
+      .search-result-item {
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+      }
+
+      .search-result-item:hover {
+        background: rgba(55, 65, 81, 0.8);
+      }
+
+      /* Search input focus styles */
+      #search-input:focus {
+        border-color: rgb(59 130 246);
+        box-shadow: 0 0 0 1px rgb(59 130 246);
+      }
+
+      /* Search options checkboxes */
+      .search-content input[type="checkbox"] {
+        accent-color: rgb(59 130 246);
+      }
     `;
     
     document.head.appendChild(style);
@@ -952,6 +1029,13 @@ export class LayoutManager {
                   📁
                 </button>
                 <button 
+                  id="search-tab"
+                  class="sidebar-tab"
+                  onclick="window.layoutManager?.switchSidebarTab('search')"
+                >
+                  🔍
+                </button>
+                <button 
                   id="git-tab"
                   class="sidebar-tab"
                   onclick="window.layoutManager?.switchSidebarTab('git')"
@@ -968,6 +1052,11 @@ export class LayoutManager {
                 <div class="sidebar-content" id="file-tree">
                   <!-- File tree content will be populated here -->
                 </div>
+              </div>
+
+              <!-- Search Panel -->
+              <div id="search-panel" class="sidebar-panel">
+                <!-- Search content will be populated here -->
               </div>
 
               <!-- Git Panel -->
@@ -1642,7 +1731,7 @@ export class LayoutManager {
     this.createProjectSelector();
   }
 
-  switchSidebarTab(tab: 'explorer' | 'git'): void {
+  switchSidebarTab(tab: 'explorer' | 'search' | 'git'): void {
     // Update tab active states
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
     document.getElementById(`${tab}-tab`)?.classList.add('active');
@@ -1651,7 +1740,7 @@ export class LayoutManager {
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     document.getElementById(`${tab}-panel`)?.classList.add('active');
 
-    // Trigger git status refresh when git tab is selected
+    // Trigger specific panel initialization
     if (tab === 'git') {
       const gitManager = (window as any).gitManager;
       if (gitManager) {
@@ -1659,13 +1748,29 @@ export class LayoutManager {
         gitManager.refreshGitStatus();
       } else {
         console.log('⚠️ Git manager not available yet');
-        // Show a loading message
         const gitPanel = document.getElementById('git-panel');
         if (gitPanel) {
           gitPanel.innerHTML = `
             <div class="text-center text-gray-500 text-sm p-4">
               <div class="mb-2">🔄</div>
               <div>Loading Git status...</div>
+            </div>
+          `;
+        }
+      }
+    } else if (tab === 'search') {
+      const searchManager = (window as any).searchManager;
+      if (searchManager) {
+        console.log('🔧 Initializing search panel...');
+        searchManager.renderSearchResults();
+      } else {
+        console.log('⚠️ Search manager not available yet');
+        const searchPanel = document.getElementById('search-panel');
+        if (searchPanel) {
+          searchPanel.innerHTML = `
+            <div class="text-center text-gray-500 text-sm p-4">
+              <div class="mb-2">🔄</div>
+              <div>Loading Search...</div>
             </div>
           `;
         }
