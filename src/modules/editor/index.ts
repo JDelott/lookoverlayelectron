@@ -761,6 +761,12 @@ declare namespace React {
         await electronAPI.writeFile(this.state.activeTabPath, content);
         this.tabManager.markTabAsClean(this.state.activeTabPath);
         this.showSaveIndicator();
+        
+        // Dispatch file-saved event for git manager
+        const event = new CustomEvent('file-saved', { 
+          detail: { filePath: this.state.activeTabPath, content } 
+        });
+        document.dispatchEvent(event);
       }
     } catch (error) {
       console.error('Failed to save file:', error);

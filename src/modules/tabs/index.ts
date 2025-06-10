@@ -297,6 +297,16 @@ export class TabManager {
     const tab = this.state.openTabs.get(filePath);
     if (tab) {
       tab.isDirty = false;
+      
+      // Notify git manager about the file save
+      const gitManager = (window as any).gitManager;
+      if (gitManager) {
+        gitManager.handleFileSave(filePath);
+      }
+      
+      // Dispatch file-saved event
+      const event = new CustomEvent('file-saved', { detail: { filePath } });
+      document.dispatchEvent(event);
     }
   }
 }

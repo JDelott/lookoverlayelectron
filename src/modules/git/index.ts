@@ -83,22 +83,32 @@ export class GitManager {
     for (const line of lines) {
       if (line.length < 3) continue;
 
-      const statusCode = line.substring(0, 2);
+      const indexStatus = line[0]; // Status in index (staged)
+      const workingStatus = line[1]; // Status in working tree (unstaged)
       const filePath = line.substring(3).trim();
       
       let status: GitFileStatus['status'];
       
-      // Parse git status codes
-      switch (statusCode.trim()) {
-        case 'M': status = 'modified'; break;
-        case 'A': status = 'added'; break;
-        case 'D': status = 'deleted'; break;
-        case 'R': status = 'renamed'; break;
-        case '??': status = 'untracked'; break;
-        case 'MM': status = 'modified'; break; // Modified in index and working tree
-        default:
-          if (statusCode[0] !== ' ') status = 'staged';
-          else status = 'unstaged';
+      // Parse git status codes more accurately
+      if (indexStatus !== ' ' && indexStatus !== '?') {
+        // File has staged changes
+        switch (indexStatus) {
+          case 'M': status = 'staged'; break;
+          case 'A': status = 'added'; break;
+          case 'D': status = 'staged'; break; // Staged deletion
+          case 'R': status = 'renamed'; break;
+          default: status = 'staged';
+        }
+      } else if (workingStatus !== ' ') {
+        // File has unstaged changes
+        switch (workingStatus) {
+          case 'M': status = 'modified'; break;
+          case 'D': status = 'deleted'; break;
+          case '?': status = 'untracked'; break;
+          default: status = 'modified';
+        }
+      } else {
+        continue; // No changes
       }
 
       this.gitStatus.push({
@@ -385,12 +395,20 @@ export class GitManager {
     try {
       const result = await this.electronAPI.executeGitCommand(`checkout -- "${filePath}"`);
       if (result.success) {
+        // Refresh git status
         await this.refreshGitStatus();
+        
+        // If the file is currently open in the editor, reload its content
+        await this.reloadFileInEditor(filePath);
+        
+        console.log('✅ Changes discarded for:', filePath);
       } else {
         console.error('Failed to discard file:', result.output);
+        alert('Failed to discard changes: ' + result.output);
       }
     } catch (error) {
       console.error('Error discarding file:', error);
+      alert('Error discarding changes: ' + error);
     }
   }
 
@@ -421,12 +439,27 @@ export class GitManager {
     if (!confirmed) return;
 
     try {
+      // Store currently open files before discarding
+      const openFiles = Array.from(this.state.openTabs.keys());
+      
       const result = await this.electronAPI.executeGitCommand('checkout -- .');
       if (result.success) {
+        // Refresh git status
         await this.refreshGitStatus();
+        
+        // Reload all open files that were modified
+        for (const filePath of openFiles) {
+          await this.reloadFileInEditor(filePath);
+        }
+        
+        console.log('✅ All changes discarded');
+      } else {
+        console.error('Failed to discard all changes:', result.output);
+        alert('Failed to discard all changes: ' + result.output);
       }
     } catch (error) {
       console.error('Error discarding all changes:', error);
+      alert('Error discarding changes: ' + error);
     }
   }
 
@@ -539,5 +572,85 @@ export class GitManager {
 
   isRepository(): boolean {
     return this.isGitRepo;
+  }
+
+  private async reloadFileInEditor(filePath: string): Promise<void> {
+    try {
+      // Check if the file is currently open in a tab
+      const tab = this.state.openTabs.get(filePath);
+      if (!tab) return; // File not open, nothing to reload
+
+      console.log('🔄 Reloading file content in editor:', filePath);
+
+      // Read the updated file content from disk
+      const updatedContent = await this.electronAPI.readFile(filePath);
+      
+      // Update the tab content
+      tab.content = updatedContent;
+      tab.isDirty = false; // Mark as clean since we just reverted changes
+
+      // If this is the currently active tab, update the editor
+      if (this.state.activeTabPath === filePath && this.state.monacoEditor) {
+        // Get current cursor position to restore it after reload
+        const position = this.state.monacoEditor.getPosition();
+        
+        // Update the editor content
+        this.state.monacoEditor.setValue(updatedContent);
+        
+        // Restore cursor position if possible
+        if (position) {
+          try {
+            this.state.monacoEditor.setPosition(position);
+          } catch (e) {
+            // If position is invalid (e.g., line was deleted), just go to start
+            this.state.monacoEditor.setPosition({ lineNumber: 1, column: 1 });
+          }
+        }
+        
+        console.log('✅ Editor content updated for:', filePath);
+      }
+
+      // Update tab visual state to show it's no longer dirty
+      this.updateTabVisualState(filePath);
+      
+      // Dispatch event to notify other components
+      const event = new CustomEvent('file-reverted', { 
+        detail: { filePath, content: updatedContent } 
+      });
+      document.dispatchEvent(event);
+      
+    } catch (error) {
+      console.error('❌ Failed to reload file in editor:', error);
+    }
+  }
+
+  private updateTabVisualState(filePath: string): void {
+    try {
+      // Find the tab element and update its visual state
+      const tabElements = document.querySelectorAll('.tab-bar > div');
+      const openTabPaths = Array.from(this.state.openTabs.keys());
+      
+      tabElements.forEach((tabElement, index) => {
+        if (openTabPaths[index] === filePath) {
+          // Remove any "dirty" indicators from the tab
+          const dirtyIndicator = tabElement.querySelector('.dirty-indicator');
+          if (dirtyIndicator) {
+            dirtyIndicator.remove();
+          }
+          
+          // Update tab styling to reflect clean state
+          tabElement.classList.remove('dirty');
+        }
+      });
+    } catch (error) {
+      console.error('Error updating tab visual state:', error);
+    }
+  }
+
+  async handleFileSave(filePath: string): Promise<void> {
+    // Refresh git status when a file is saved
+    if (this.isGitRepo) {
+      setTimeout(() => this.refreshGitStatus(), 100);
+    }
   }
 } 
