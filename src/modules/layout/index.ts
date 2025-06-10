@@ -876,14 +876,6 @@ export class LayoutManager {
                   <span class="sidebar-control-icon">🤖</span>
                   <span class="sidebar-control-text">AI Chat</span>
                 </button>
-                <button 
-                  class="sidebar-control-btn"
-                  onclick="window.layoutManager?.resetLayout()"
-                  title="Reset Layout"
-                >
-                  <span class="sidebar-control-icon">🔄</span>
-                  <span class="sidebar-control-text">Reset</span>
-                </button>
               </div>
             </div>
 
@@ -1329,17 +1321,6 @@ export class LayoutManager {
     this.terminalCollapsed = false;
     this.panelSizes.terminalHeight = Math.min(600, Math.floor(window.innerHeight * 0.5));
     this.updateTerminalSize();
-  }
-
-  resetLayout(): void {
-    this.panelSizes = {
-      sidebarWidth: 280,
-      terminalHeight: 250,
-      aiChatWidth: 350
-    };
-    this.terminalCollapsed = false;
-    // Rebuild the layout to apply the new CSS
-    this.rebuildLayout();
   }
 
   clearAIChat(): void {
