@@ -768,6 +768,62 @@ export class LayoutManager {
           font-size: 0.75rem;
         }
       }
+
+      /* Sidebar Control Button Styles */
+      .sidebar-controls {
+        border-top: 1px solid rgb(55 65 81);
+        padding: 8px;
+        background: rgb(45 55 72);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+
+      .sidebar-control-btn {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 6px 8px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: rgb(156 163 175);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        text-align: left;
+        width: 100%;
+        min-height: 28px;
+      }
+
+      .sidebar-control-btn:hover {
+        background: rgba(55, 65, 81, 0.8);
+        border-color: rgba(59, 130, 246, 0.3);
+        color: rgb(209 213 219);
+      }
+
+      .sidebar-control-btn.active {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.4);
+        color: rgb(96 165 250);
+      }
+
+      .sidebar-control-icon {
+        font-size: 12px;
+        min-width: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .sidebar-control-text {
+        flex: 1;
+        font-size: 11px;
+        font-weight: 500;
+      }
     `;
     
     document.head.appendChild(style);
@@ -783,27 +839,9 @@ export class LayoutManager {
               <span class="text-lg font-bold text-gray-200">Satellite Ai</span>
             </div>
             
+            <!-- Simplified header - removed buttons -->
             <div class="flex items-center gap-3">
-              <button 
-                id="terminal-toggle-btn"
-                onclick="window.layoutManager?.toggleTerminal()"
-                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
-              >
-                Terminal 💻
-              </button>
-              <button 
-                id="chat-toggle-btn"
-                onclick="window.layoutManager?.toggleAIChat()"
-                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
-              >
-                AI Chat 🤖
-              </button>
-              <button 
-                onclick="window.layoutManager?.resetLayout()"
-                style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%); border: 1px solid rgb(75 85 99); color: rgb(226 232 240); cursor: pointer; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1); overflow: hidden;"
-              >
-                Reset 🔄
-              </button>
+              <!-- Header buttons removed -->
             </div>
           </div>
 
@@ -816,6 +854,36 @@ export class LayoutManager {
               </div>
               <div class="sidebar-content" id="file-tree">
                 <!-- File tree content will be populated here -->
+              </div>
+              
+              <!-- Sidebar Controls at bottom -->
+              <div class="sidebar-controls">
+                <button 
+                  id="terminal-toggle-btn"
+                  class="sidebar-control-btn"
+                  onclick="window.layoutManager?.toggleTerminal()"
+                  title="Toggle Terminal"
+                >
+                  <span class="sidebar-control-icon">💻</span>
+                  <span class="sidebar-control-text">Terminal</span>
+                </button>
+                <button 
+                  id="chat-toggle-btn"
+                  class="sidebar-control-btn"
+                  onclick="window.layoutManager?.toggleAIChat()"
+                  title="Toggle AI Chat"
+                >
+                  <span class="sidebar-control-icon">🤖</span>
+                  <span class="sidebar-control-text">AI Chat</span>
+                </button>
+                <button 
+                  class="sidebar-control-btn"
+                  onclick="window.layoutManager?.resetLayout()"
+                  title="Reset Layout"
+                >
+                  <span class="sidebar-control-icon">🔄</span>
+                  <span class="sidebar-control-text">Reset</span>
+                </button>
               </div>
             </div>
 
@@ -1172,28 +1240,16 @@ export class LayoutManager {
     if (terminalBtn) {
       if (this.state.terminalVisible) {
         terminalBtn.classList.add('active');
-        terminalBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
-        terminalBtn.style.borderColor = 'rgb(59 130 246)';
-        terminalBtn.style.color = 'white';
       } else {
         terminalBtn.classList.remove('active');
-        terminalBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
-        terminalBtn.style.borderColor = 'rgb(75 85 99)';
-        terminalBtn.style.color = 'rgb(226 232 240)';
       }
     }
     
     if (chatBtn) {
       if (this.state.aiChatVisible) {
         chatBtn.classList.add('active');
-        chatBtn.style.background = 'linear-gradient(135deg, rgb(59 130 246) 0%, rgb(37 99 235) 100%)';
-        chatBtn.style.borderColor = 'rgb(59 130 246)';
-        chatBtn.style.color = 'white';
       } else {
         chatBtn.classList.remove('active');
-        chatBtn.style.background = 'linear-gradient(135deg, rgb(45 55 72) 0%, rgb(55 65 81) 100%)';
-        chatBtn.style.borderColor = 'rgb(75 85 99)';
-        chatBtn.style.color = 'rgb(226 232 240)';
       }
     }
   }
