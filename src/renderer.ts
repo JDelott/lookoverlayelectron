@@ -211,7 +211,6 @@ class RendererApp {
       e.stopPropagation();
       
       if (isDirectory) {
-        console.log('📁 Clicking directory:', item.name);
         try {
           await this.fileSystem.toggleDirectory(item);
           const updatedFiles = this.fileSystem.getFileTree();
@@ -220,11 +219,16 @@ class RendererApp {
           console.error('Error toggling directory:', error);
         }
       } else {
-        console.log('📄 Clicking file:', item.name);
-        try {
-          await this.tabManager.openFile(item.path);
-        } catch (error) {
-          console.error('Error opening file:', error);
+        // Check if it's a previewable file
+        if (this.isPreviewableFile(item.name)) {
+          this.openFilePreview(item);
+        } else {
+          // Open in editor for text files
+          try {
+            await this.tabManager.openFile(item.path);
+          } catch (error) {
+            console.error('Error opening file:', error);
+          }
         }
       }
     });
@@ -274,68 +278,26 @@ class RendererApp {
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length === 0) return;
 
-      console.log('🗂️ Files dropped on folder:', item.name, 'Files:', files.map(f => f.name));
-
-      // Show loading state
       element.classList.add('drag-processing');
       
-      try {
-        for (const file of files) {
-          console.log('📁 Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
-          
-          let success = false;
-          
-          // Try using file path first (if available in Electron)
+      for (const file of files) {
+        try {
           const filePath = (file as any).path;
           if (filePath) {
-            console.log('📁 Using file path:', filePath);
-            success = await this.fileSystem.copyExternalFile(filePath, item.path, file.name);
+            await this.fileSystem.copyExternalFile(filePath, item.path, file.name);
           } else {
-            // Fallback: read file content and save
-            console.log('📁 Reading file content for:', file.name);
-            success = await this.saveFileContent(file, item.path);
+            // Simple fallback
+            const arrayBuffer = await file.arrayBuffer();
+            const base64Data = this.arrayBufferToBase64(arrayBuffer);
+            await this.fileSystem.saveDroppedFile(item.path, file.name, base64Data, true);
           }
-          
-          if (success) {
-            console.log('✅ Successfully processed:', file.name);
-            
-            // If it's an image and the target is public folder
-            if (this.isImageFile(file.name) && item.name.toLowerCase().includes('public')) {
-              console.log('🖼️ Image added to public folder:', file.name);
-            }
-          } else {
-            console.error('❌ Failed to process:', file.name);
-            alert(`Failed to copy ${file.name}`);
-          }
+        } catch (error) {
+          console.error('Error with file:', file.name, error);
         }
-      } catch (error) {
-        console.error('Error processing dropped files:', error);
-        alert('Error processing dropped files: ' + error);
-      } finally {
-        element.classList.remove('drag-processing');
       }
-    });
-  }
-
-  private async saveFileContent(file: File, targetDir: string): Promise<boolean> {
-    try {
-      const isImage = this.isImageFile(file.name);
-      const isBinary = this.isBinaryFile(file.name);
       
-      if (isImage || isBinary) {
-        // Handle binary files (images, etc.) using browser-compatible base64 conversion
-        const arrayBuffer = await file.arrayBuffer();
-        const base64Data = this.arrayBufferToBase64(arrayBuffer);
-        return await this.fileSystem.saveDroppedFile(targetDir, file.name, base64Data, true);
-      } else {
-        // Handle text files
-        const textContent = await file.text();
-        return await this.fileSystem.saveDroppedFile(targetDir, file.name, textContent, false);
-      }
-    } catch (error) {
-      console.error('Error reading file content:', error);
-      return false;
-    }
+      element.classList.remove('drag-processing');
+    });
   }
 
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -345,24 +307,6 @@ class RendererApp {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
-  }
-
-  private isBinaryFile(fileName: string): boolean {
-    const binaryExtensions = [
-      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp',
-      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-      '.zip', '.rar', '.7z', '.tar', '.gz',
-      '.mp3', '.mp4', '.avi', '.mov', '.wav',
-      '.exe', '.dmg', '.app', '.deb', '.rpm'
-    ];
-    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-    return binaryExtensions.includes(extension);
-  }
-
-  private isImageFile(fileName: string): boolean {
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico'];
-    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-    return imageExtensions.includes(extension);
   }
 
   private setupGlobalEventListeners(): void {
@@ -842,6 +786,96 @@ class RendererApp {
       console.error('Failed to copy path (fallback):', err);
     }
     document.body.removeChild(textArea);
+  }
+
+  private isPreviewableFile(fileName: string): boolean {
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    const previewableExtensions = [
+      // Images
+      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
+      // Videos
+      '.mp4', '.webm', '.ogg',
+      // Audio
+      '.mp3', '.wav', '.ogg', '.m4a'
+    ];
+    return previewableExtensions.includes(extension);
+  }
+
+  private openFilePreview(item: any): void {
+    // Remove any existing preview
+    const existingPreview = document.querySelector('.file-preview-modal');
+    if (existingPreview) {
+      existingPreview.remove();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'file-preview-modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+    
+    const extension = item.name.toLowerCase().substring(item.name.lastIndexOf('.'));
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'].includes(extension);
+    const isVideo = ['.mp4', '.webm', '.ogg'].includes(extension);
+    const isAudio = ['.mp3', '.wav', '.ogg', '.m4a'].includes(extension);
+
+    // Create file URL
+    const fileUrl = `file://${item.path}`;
+
+    let previewContent = '';
+    
+    if (isImage) {
+      previewContent = `
+        <img src="${fileUrl}" 
+             alt="${item.name}" 
+             class="max-w-full max-h-full object-contain"
+             style="max-width: 90vw; max-height: 90vh;" />
+      `;
+    } else if (isVideo) {
+      previewContent = `
+        <video controls 
+               class="max-w-full max-h-full"
+               style="max-width: 90vw; max-height: 90vh;">
+          <source src="${fileUrl}" type="video/${extension.substring(1)}">
+          Your browser does not support the video tag.
+        </video>
+      `;
+    } else if (isAudio) {
+      previewContent = `
+        <div class="bg-gray-800 p-8 rounded-lg">
+          <div class="text-white text-lg mb-4">🎵 ${item.name}</div>
+          <audio controls class="w-full">
+            <source src="${fileUrl}" type="audio/${extension.substring(1)}">
+            Your browser does not support the audio element.
+          </audio>
+        </div>
+      `;
+    }
+
+    modal.innerHTML = `
+      <div class="relative">
+        <button class="absolute top-4 right-4 text-white text-2xl bg-black bg-opacity-50 rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-75 z-10"
+                onclick="this.closest('.file-preview-modal').remove()">
+          ×
+        </button>
+        ${previewContent}
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on click outside
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        modal.remove();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
   }
 }
 
