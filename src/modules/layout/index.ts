@@ -35,7 +35,7 @@ export class LayoutManager {
     // Preserve the current AI chat state before rebuilding
     const wasAIChatVisible = this.state.aiChatVisible;
 
-    root.className = 'w-full h-screen bg-gray-900 text-gray-300 overflow-hidden p-2';
+    root.className = 'w-full h-screen bg-gray-900 text-gray-300 overflow-hidden';
     root.innerHTML = this.getLayoutHTML();
     
     this.injectLayoutStyles();
@@ -59,10 +59,10 @@ export class LayoutManager {
     style.textContent = `
       :root {
         --viewport-inset: 8px;
-        --safe-area-inset-top: max(8px, env(safe-area-inset-top));
-        --safe-area-inset-right: max(8px, env(safe-area-inset-right));
-        --safe-area-inset-bottom: max(8px, env(safe-area-inset-bottom));
-        --safe-area-inset-left: max(8px, env(safe-area-inset-left));
+        --safe-area-inset-top: env(safe-area-inset-top, 0px);
+        --safe-area-inset-right: env(safe-area-inset-right, 0px);
+        --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-area-inset-left: env(safe-area-inset-left, 0px);
         --header-height: 40px;
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
@@ -309,7 +309,7 @@ export class LayoutManager {
 
       /* Main Layout Styles - FLEXBOX APPROACH */
       #root {
-        padding: var(--safe-area-inset-top) var(--safe-area-inset-right) var(--safe-area-inset-bottom) var(--safe-area-inset-left);
+        // padding: var(--safe-area-inset-top) var(--safe-area-inset-right) var(--safe-area-inset-bottom) var(--safe-area-inset-left);
         box-sizing: border-box;
       }
 
