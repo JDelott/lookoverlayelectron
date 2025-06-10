@@ -995,6 +995,59 @@ export class LayoutManager {
       .search-content input[type="checkbox"] {
         accent-color: rgb(59 130 246);
       }
+
+      /* Context Menu Styles */
+      .context-menu {
+        position: fixed;
+        background: #2d2d30;
+        border: 1px solid #3c3c3c;
+        border-radius: 6px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        padding: 4px 0;
+        min-width: 180px;
+        z-index: 1000;
+        font-size: 13px;
+      }
+
+      .context-menu .context-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        color: #cccccc;
+        cursor: pointer;
+        transition: background-color 0.15s;
+      }
+
+      .context-menu .context-menu-item:hover {
+        background-color: #094771;
+        color: #ffffff;
+      }
+
+      .context-menu .context-menu-item.disabled {
+        color: #666;
+        cursor: not-allowed;
+      }
+
+      .context-menu .context-menu-item.disabled:hover {
+        background-color: transparent;
+        color: #666;
+      }
+
+      .context-menu .context-menu-separator {
+        height: 1px;
+        background-color: #3c3c3c;
+        margin: 4px 0;
+      }
+
+      .context-menu .context-menu-icon {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+      }
     `;
     
     document.head.appendChild(style);

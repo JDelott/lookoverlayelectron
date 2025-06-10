@@ -188,4 +188,104 @@ export class FileSystemManager {
     const event = new CustomEvent('file-tree-updated', { detail: files });
     document.dispatchEvent(event);
   }
+
+  // New methods for file/folder operations
+  async createFile(parentPath: string, fileName: string): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      const filePath = parentPath.endsWith('/') ? 
+        parentPath + fileName : 
+        parentPath + '/' + fileName;
+
+      const result = await this.electronAPI.createFile(filePath);
+      if (result.success) {
+        // Refresh the file tree
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to create file:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error creating file:', error);
+      return false;
+    }
+  }
+
+  async createFolder(parentPath: string, folderName: string): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      const folderPath = parentPath.endsWith('/') ? 
+        parentPath + folderName : 
+        parentPath + '/' + folderName;
+
+      const result = await this.electronAPI.createFolder(folderPath);
+      if (result.success) {
+        // Refresh the file tree
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to create folder:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      return false;
+    }
+  }
+
+  async deleteItem(itemPath: string): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      const result = await this.electronAPI.deleteFile(itemPath);
+      if (result.success) {
+        // Refresh the file tree
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to delete item:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      return false;
+    }
+  }
+
+  async renameItem(oldPath: string, newName: string): Promise<boolean> {
+    try {
+      if (!this.electronAPI) {
+        console.error('ElectronAPI not available');
+        return false;
+      }
+
+      const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/'));
+      const newPath = parentPath + '/' + newName;
+
+      const result = await this.electronAPI.renameFile(oldPath, newPath);
+      if (result.success) {
+        // Refresh the file tree
+        await this.refreshFileTree();
+        return true;
+      } else {
+        console.error('Failed to rename item:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error renaming item:', error);
+      return false;
+    }
+  }
 }

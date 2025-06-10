@@ -1297,6 +1297,85 @@ function cleanTranscriptionText(text: string): string {
   return cleaned;
 }
 
+// Add these new IPC handlers for file/folder creation
+ipcMain.handle('create-file', async (event, filePath: string) => {
+  try {
+    await fs.promises.writeFile(filePath, '', 'utf-8');
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'create-file', 
+      path: filePath,
+      parentPath: path.dirname(filePath)
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error creating file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('create-folder', async (event, folderPath: string) => {
+  try {
+    await fs.promises.mkdir(folderPath, { recursive: true });
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'create-folder', 
+      path: folderPath,
+      parentPath: path.dirname(folderPath)
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('delete-file', async (event, filePath: string) => {
+  try {
+    const stats = await fs.promises.stat(filePath);
+    if (stats.isDirectory()) {
+      await fs.promises.rmdir(filePath, { recursive: true });
+    } else {
+      await fs.promises.unlink(filePath);
+    }
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'delete', 
+      path: filePath,
+      parentPath: path.dirname(filePath)
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting file/folder:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('rename-file', async (event, oldPath: string, newPath: string) => {
+  try {
+    await fs.promises.rename(oldPath, newPath);
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'rename', 
+      path: newPath,
+      oldPath: oldPath,
+      parentPath: path.dirname(newPath)
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error renaming file/folder:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
