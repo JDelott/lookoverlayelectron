@@ -320,11 +320,11 @@ class RendererApp {
     
     const menuItems: Array<{ icon: string; text: string; action: () => void } | { type: 'separator' }> = [
       ...(isDirectory ? [
-        { icon: '📄', text: 'New File', action: () => this.createNewFile(item.path) },
-        { icon: '📁', text: 'New Folder', action: () => this.createNewFolder(item.path) },
+        { icon: '📄', text: 'New File', action: () => this.createNewFileInline(item) },
+        { icon: '📁', text: 'New Folder', action: () => this.createNewFolderInline(item) },
         { type: 'separator' as const }
       ] : []),
-      { icon: '✏️', text: 'Rename', action: () => this.renameItem(item) },
+      { icon: '✏️', text: 'Rename', action: () => this.renameItemInline(item) },
       { icon: '🗑️', text: 'Delete', action: () => this.deleteItem(item) },
       { type: 'separator' as const },
       { icon: '📋', text: 'Copy Path', action: () => this.copyPath(item.path) }
@@ -385,8 +385,8 @@ class RendererApp {
     contextMenu.className = 'context-menu absolute bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-1 z-50 min-w-48';
     
     const menuItems = [
-      { icon: '📄', text: 'New File', action: () => this.createNewFile(this.state.currentWorkingDirectory) },
-      { icon: '📁', text: 'New Folder', action: () => this.createNewFolder(this.state.currentWorkingDirectory) }
+      { icon: '📄', text: 'New File', action: () => this.createNewFileInlineRoot() },
+      { icon: '📁', text: 'New Folder', action: () => this.createNewFolderInlineRoot() }
     ];
 
     menuItems.forEach(menuItem => {
@@ -425,161 +425,228 @@ class RendererApp {
     }, 0);
   }
 
-  private showCustomPrompt(title: string, placeholder: string, defaultValue: string = ''): Promise<string | null> {
-    return new Promise((resolve) => {
-      // Remove any existing prompt
-      const existingPrompt = document.querySelector('.custom-prompt');
-      if (existingPrompt) {
-        existingPrompt.remove();
-      }
+  private createNewFileInline(parentItem: any): void {
+    this.createInlineInput(parentItem, 'file', '');
+  }
 
-      // Create overlay
-      const overlay = document.createElement('div');
-      overlay.className = 'custom-prompt fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-      
-      // Create prompt dialog
-      const promptDialog = document.createElement('div');
-      promptDialog.className = 'bg-gray-800 border border-gray-600 rounded-lg p-6 max-w-md w-full mx-4';
-      
-      promptDialog.innerHTML = `
-        <h3 class="text-lg font-semibold text-white mb-4">${title}</h3>
+  private createNewFolderInline(parentItem: any): void {
+    this.createInlineInput(parentItem, 'folder', '');
+  }
+
+  private createNewFileInlineRoot(): void {
+    this.createInlineInputRoot('file', '');
+  }
+
+  private createNewFolderInlineRoot(): void {
+    this.createInlineInputRoot('folder', '');
+  }
+
+  private renameItemInline(item: any): void {
+    const fileElement = document.querySelector(`[data-file-path="${item.path}"]`) as HTMLElement;
+    if (!fileElement) return;
+
+    this.createInlineInputForRename(fileElement, item);
+  }
+
+  private createInlineInput(parentItem: any, type: 'file' | 'folder', defaultName: string): void {
+    // First expand the parent directory if it's not already expanded
+    if (!parentItem.isExpanded) {
+      this.fileSystem.toggleDirectory(parentItem).then(() => {
+        const updatedFiles = this.fileSystem.getFileTree();
+        this.renderFileTree(updatedFiles);
+        
+        // Now create the input after re-render
+        setTimeout(() => {
+          this.insertInlineInputAfterParent(parentItem, type, defaultName);
+        }, 100);
+      });
+    } else {
+      this.insertInlineInputAfterParent(parentItem, type, defaultName);
+    }
+  }
+
+  private createInlineInputRoot(type: 'file' | 'folder', defaultName: string): void {
+    const fileTreeContainer = document.getElementById('file-tree');
+    if (!fileTreeContainer) return;
+
+    this.insertInlineInputAtTop(fileTreeContainer, type, defaultName);
+  }
+
+  private insertInlineInputAfterParent(parentItem: any, type: 'file' | 'folder', defaultName: string): void {
+    const parentElement = document.querySelector(`[data-file-path="${parentItem.path}"]`) as HTMLElement;
+    if (!parentElement) return;
+
+    // Find the depth of the parent
+    const parentDepth = parseInt(parentElement.style.paddingLeft) / 16 - 0.5;
+    const inputDepth = parentDepth + 1;
+
+    this.insertInlineInputElement(parentElement, type, defaultName, inputDepth, parentItem.path);
+  }
+
+  private insertInlineInputAtTop(container: HTMLElement, type: 'file' | 'folder', defaultName: string): void {
+    const firstChild = container.firstChild;
+    this.insertInlineInputElement(firstChild as HTMLElement || container, type, defaultName, 0.5, this.state.currentWorkingDirectory, true);
+  }
+
+  private insertInlineInputElement(referenceElement: HTMLElement, type: 'file' | 'folder', defaultName: string, depth: number, parentPath: string, insertBefore: boolean = false): void {
+    // Remove any existing inline input
+    const existingInput = document.querySelector('.inline-file-input');
+    if (existingInput) {
+      existingInput.remove();
+    }
+
+    const inputElement = document.createElement('div');
+    inputElement.className = 'inline-file-input file-item px-2 py-1 text-sm text-gray-300 w-full';
+    inputElement.style.paddingLeft = `${depth * 16 + 8}px`;
+
+    const icon = type === 'folder' ? '📁' : '📄';
+    
+    inputElement.innerHTML = `
+      <div class="flex items-center w-full">
+        <span class="mr-4 w-3"></span>
+        <span class="mr-2 flex-shrink-0">${icon}</span>
         <input 
           type="text" 
-          id="custom-prompt-input"
-          placeholder="${placeholder}"
-          value="${defaultValue}"
-          class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          class="inline-input flex-1 bg-gray-900 border border-blue-500 rounded px-1 text-white text-sm focus:outline-none"
+          value="${defaultName}"
+          placeholder="${type === 'folder' ? 'Folder name' : 'File name'}"
         />
-        <div class="flex gap-3 mt-6 justify-end">
-          <button id="custom-prompt-cancel" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded">Cancel</button>
-          <button id="custom-prompt-ok" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">OK</button>
-        </div>
-      `;
-      
-      overlay.appendChild(promptDialog);
-      document.body.appendChild(overlay);
-      
-      const input = document.getElementById('custom-prompt-input') as HTMLInputElement;
-      const okBtn = document.getElementById('custom-prompt-ok');
-      const cancelBtn = document.getElementById('custom-prompt-cancel');
-      
-      // Focus and select input
+      </div>
+    `;
+
+    // Insert the input element
+    if (insertBefore && referenceElement) {
+      referenceElement.parentNode?.insertBefore(inputElement, referenceElement);
+    } else if (referenceElement) {
+      referenceElement.parentNode?.insertBefore(inputElement, referenceElement.nextSibling);
+    }
+
+    const input = inputElement.querySelector('.inline-input') as HTMLInputElement;
+    if (input) {
       input.focus();
       input.select();
-      
-      const cleanup = () => {
-        overlay.remove();
+
+      const handleConfirm = async () => {
+        const name = input.value.trim();
+        if (name) {
+          try {
+            let success = false;
+            if (type === 'folder') {
+              success = await this.fileSystem.createFolder(parentPath, name);
+            } else {
+              success = await this.fileSystem.createFile(parentPath, name);
+              
+              // Auto-open the newly created file
+              if (success) {
+                const normalizedParentPath = parentPath.replace(/\\/g, '/');
+                const filePath = normalizedParentPath.endsWith('/') ? 
+                  normalizedParentPath + name : 
+                  normalizedParentPath + '/' + name;
+                
+                setTimeout(async () => {
+                  try {
+                    await this.tabManager.openFile(filePath);
+                  } catch (error) {
+                    console.error('Error opening new file:', error);
+                  }
+                }, 500);
+              }
+            }
+            
+            if (!success) {
+              alert(`Failed to create ${type}`);
+            }
+          } catch (error) {
+            console.error(`Error creating ${type}:`, error);
+            alert(`Error creating ${type}: ` + error);
+          }
+        }
+        inputElement.remove();
       };
-      
-      const handleOk = () => {
-        const value = input.value.trim();
-        cleanup();
-        resolve(value || null);
-      };
-      
+
       const handleCancel = () => {
-        cleanup();
-        resolve(null);
+        inputElement.remove();
       };
-      
-      // Event listeners
-      okBtn?.addEventListener('click', handleOk);
-      cancelBtn?.addEventListener('click', handleCancel);
-      
+
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          handleOk();
+          handleConfirm();
         } else if (e.key === 'Escape') {
           e.preventDefault();
           handleCancel();
         }
       });
-      
-      // Close on overlay click
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-          handleCancel();
-        }
+
+      input.addEventListener('blur', () => {
+        // Small delay to allow for click events to process
+        setTimeout(handleCancel, 100);
       });
-    });
+    }
   }
 
-  private async createNewFile(parentPath: string): Promise<void> {
-    console.log('🔧 Creating new file in:', parentPath);
-    
-    const fileName = await this.showCustomPrompt('New File', 'Enter file name:', '');
-    if (!fileName) return;
+  private createInlineInputForRename(fileElement: HTMLElement, item: any): void {
+    // Remove any existing inline input
+    const existingInput = document.querySelector('.inline-file-input');
+    if (existingInput) {
+      existingInput.remove();
+    }
 
-    try {
-      // Ensure proper path construction
-      const normalizedParentPath = parentPath.replace(/\\/g, '/');
-      const success = await this.fileSystem.createFile(normalizedParentPath, fileName);
-      
-      if (success) {
-        console.log('✅ File created successfully:', fileName);
-        
-        // Construct full file path for opening
-        const filePath = normalizedParentPath.endsWith('/') ? 
-          normalizedParentPath + fileName : 
-          normalizedParentPath + '/' + fileName;
-        
-        // Wait a moment for file system to update, then open the file
-        setTimeout(async () => {
-          try {
-            await this.tabManager.openFile(filePath);
-          } catch (error) {
-            console.error('Error opening new file:', error);
+    const fileNameSpan = fileElement.querySelector('.file-name') as HTMLElement;
+    if (!fileNameSpan) return;
+
+    const originalName = item.name;
+    
+    // Create input element
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = originalName;
+    input.className = 'inline-input bg-gray-900 border border-blue-500 rounded px-1 text-white text-sm focus:outline-none flex-1';
+    
+    // Replace the file name with the input
+    const originalContent = fileNameSpan.innerHTML;
+    fileNameSpan.innerHTML = '';
+    fileNameSpan.appendChild(input);
+    
+    input.focus();
+    input.select();
+
+    const handleConfirm = async () => {
+      const newName = input.value.trim();
+      if (newName && newName !== originalName) {
+        try {
+          const success = await this.fileSystem.renameItem(item.path, newName);
+          if (!success) {
+            alert('Failed to rename item');
           }
-        }, 500);
-      } else {
-        alert('Failed to create file');
+        } catch (error) {
+          console.error('Error renaming item:', error);
+          alert('Error renaming item: ' + error);
+        }
       }
-    } catch (error) {
-      console.error('Error creating file:', error);
-      alert('Error creating file: ' + error);
-    }
-  }
-
-  private async createNewFolder(parentPath: string): Promise<void> {
-    console.log('🔧 Creating new folder in:', parentPath);
-    
-    const folderName = await this.showCustomPrompt('New Folder', 'Enter folder name:', '');
-    if (!folderName) return;
-
-    try {
-      // Ensure proper path construction
-      const normalizedParentPath = parentPath.replace(/\\/g, '/');
-      const success = await this.fileSystem.createFolder(normalizedParentPath, folderName);
       
-      if (success) {
-        console.log('✅ Folder created successfully:', folderName);
-      } else {
-        alert('Failed to create folder');
-      }
-    } catch (error) {
-      console.error('Error creating folder:', error);
-      alert('Error creating folder: ' + error);
-    }
-  }
+      // Restore original content
+      fileNameSpan.innerHTML = originalContent;
+    };
 
-  private async renameItem(item: any): Promise<void> {
-    console.log('🔧 Renaming item:', item.name);
-    
-    const newName = await this.showCustomPrompt('Rename', 'Enter new name:', item.name);
-    if (!newName || newName === item.name) return;
+    const handleCancel = () => {
+      // Restore original content
+      fileNameSpan.innerHTML = originalContent;
+    };
 
-    try {
-      const success = await this.fileSystem.renameItem(item.path, newName);
-      if (success) {
-        console.log('✅ Item renamed successfully:', item.name, '->', newName);
-      } else {
-        alert('Failed to rename item');
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
       }
-    } catch (error) {
-      console.error('Error renaming item:', error);
-      alert('Error renaming item: ' + error);
-    }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(handleCancel, 100);
+    });
   }
 
   private async deleteItem(item: any): Promise<void> {

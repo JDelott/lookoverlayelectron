@@ -1100,6 +1100,27 @@ export class LayoutManager {
         justify-content: center;
         font-size: 12px;
       }
+
+      /* Inline Input Styles */
+      .inline-file-input {
+        background-color: rgba(90, 93, 94, 0.31) !important;
+      }
+
+      .inline-input {
+        background: #1e1e1e !important;
+        border: 1px solid #007acc !important;
+        color: #ffffff !important;
+        font-size: 13px !important;
+        padding: 2px 4px !important;
+        border-radius: 2px !important;
+        font-family: inherit !important;
+      }
+
+      .inline-input:focus {
+        outline: none !important;
+        border-color: #007acc !important;
+        box-shadow: 0 0 0 1px #007acc !important;
+      }
     `;
     
     document.head.appendChild(style);
