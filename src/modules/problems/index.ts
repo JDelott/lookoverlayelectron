@@ -182,12 +182,30 @@ export class ProblemsManager {
           return;
         }
 
-        const filePath = model.uri.path;
+        // Get the correct file path from the model URI
+        let filePath = model.uri.path;
+        
+        // Handle Monaco's internal URI schemes 
+        if (model.uri.scheme === 'file') {
+          filePath = model.uri.path;
+        } else if (model.uri.toString().includes('file://')) {
+          filePath = model.uri.toString().replace('file://', '');
+        } else {
+          // For models that don't have proper file paths, try to get from tab manager
+          const app = (window as any).app;
+          const currentFile = app?.state?.currentFile || app?.tabManager?.state?.activeTabPath;
+          if (currentFile && currentFile !== '/1') {
+            filePath = currentFile;
+          }
+        }
+        
+        console.log('🔍 Processing marker for file:', filePath, 'URI:', model.uri.toString());
+        
         const fileName = filePath.split('/').pop() || filePath;
         
-        // Create problem for everything that gets through
+        // Create problem with simpler ID
         const problem: ProblemItem = {
-          id: `${filePath}-${marker.startLineNumber}-${marker.startColumn}-${marker.code}-${marker.severity}-${Date.now()}`,
+          id: `${fileName}-${marker.startLineNumber}-${marker.startColumn}`, // Much simpler ID
           filePath,
           fileName,
           message: marker.message,
@@ -202,7 +220,7 @@ export class ProblemsManager {
             marker.relatedInformation.map((info: any) => info.message).join('; ') : undefined
         };
 
-        console.log(`➕ Adding problem: ${problem.severity.toUpperCase()}: ${problem.message.substring(0, 60)}...`);
+        console.log(`➕ Adding problem: ${problem.severity.toUpperCase()}: ${problem.message.substring(0, 60)}... in ${problem.fileName}`);
         problems.push(problem);
       });
     });
@@ -572,60 +590,99 @@ export class ProblemsManager {
       return;
     }
 
-    // Only work with files that are already open
-    const isFileOpen = tabManager.state?.openTabs?.has(problem.filePath);
-    
-    if (isFileOpen) {
+    // Debug: Log all open tabs to see what keys are being used
+    console.log('🔍 Debug: Open tabs:', Array.from(tabManager.state.openTabs.keys()));
+    console.log('🔍 Debug: Looking for problem path:', problem.filePath);
+
+    // Check multiple path formats to find a match
+    const possiblePaths = [
+      problem.filePath,
+      problem.filePath.replace(/^\/+/, ''), // Remove leading slashes
+      problem.filePath.replace(/\\/g, '/'), // Convert backslashes to forward slashes
+      `.${problem.filePath}`, // Add leading dot
+      problem.filePath.replace(/^.*\/src\//, 'src/'), // Try relative path from src
+    ];
+
+    let matchedPath: string | null = null;
+    for (const path of possiblePaths) {
+      if (tabManager.state.openTabs.has(path)) {
+        matchedPath = path;
+        console.log('✅ Found matching path:', path);
+        break;
+      }
+    }
+
+    if (matchedPath) {
       // File is already open, just switch to it
       console.log('📄 File already open, switching to existing tab');
-      tabManager.switchToTab(problem.filePath);
+      tabManager.switchToTab(matchedPath);
       
       // Navigate to the problem location after a short delay
       setTimeout(() => {
         this.navigateToLocation(problem);
       }, 100);
     } else {
-      // File is not open, show a message or do nothing
-      console.log('📄 File not open, skipping navigation');
-      this.showNotification(`File ${problem.fileName} is not currently open`, 'error');
+      // File is not open, show which files ARE open for debugging
+      const openFiles = Array.from(tabManager.state.openTabs.keys());
+      console.log('📄 File not open. Open files:', openFiles);
+      this.showNotification(`File ${problem.fileName} is not currently open. Open it first to navigate to problems.`, 'error');
     }
   }
 
   private navigateToLocation(problem: ProblemItem): void {
-    // Get the current Monaco editor from the global reference
-    const monacoEditor = (window as any).monacoEditor;
-    if (monacoEditor && window.monaco) {
-      console.log(`📍 Navigating to line ${problem.line}, column ${problem.column}`);
-      
-      // Set the cursor position
-      monacoEditor.setPosition({
-        lineNumber: problem.line,
-        column: problem.column
-      });
-
-      // Scroll to reveal the position in center
-      monacoEditor.revealPositionInCenter({
-        lineNumber: problem.line,
-        column: problem.column
-      });
-
-      // DON'T steal focus - let Monaco keep focus if it already has it
-      // Only focus if no other input is currently focused
-      const activeElement = document.activeElement;
-      if (!activeElement || !activeElement.matches('input, textarea, [contenteditable]')) {
-        setTimeout(() => monacoEditor.focus(), 100);
+    // Try multiple ways to get Monaco editor
+    let monacoEditor = (window as any).monacoEditor;
+    
+    // Fallback to getting it from app state
+    if (!monacoEditor) {
+      const app = (window as any).app;
+      monacoEditor = app?.state?.monacoEditor || app?.editorManager?.state?.monacoEditor;
+    }
+    
+    // Another fallback - get the current active editor
+    if (!monacoEditor && window.monaco) {
+      const activeEditor = window.monaco.editor.getEditors()?.[0];
+      if (activeEditor) {
+        monacoEditor = activeEditor;
       }
+    }
 
-      // Optionally highlight the problem range
-      if (problem.endLine && problem.endColumn) {
-        const range = new window.monaco.Range(
-          problem.line, problem.column,
-          problem.endLine, problem.endColumn
-        );
-        monacoEditor.setSelection(range);
+    if (monacoEditor && window.monaco) {
+      console.log(`📍 Navigating to line ${problem.line}, column ${problem.column} in ${problem.fileName}`);
+      
+      try {
+        // Set the cursor position
+        monacoEditor.setPosition({
+          lineNumber: problem.line,
+          column: problem.column
+        });
+
+        // Scroll to reveal the position in center
+        monacoEditor.revealPositionInCenter({
+          lineNumber: problem.line,
+          column: problem.column
+        });
+
+        // Focus Monaco editor
+        setTimeout(() => {
+          monacoEditor.focus();
+        }, 100);
+
+        // Optionally highlight the problem range
+        if (problem.endLine && problem.endColumn) {
+          const range = new window.monaco.Range(
+            problem.line, problem.column,
+            problem.endLine, problem.endColumn
+          );
+          monacoEditor.setSelection(range);
+        }
+        
+        console.log('✅ Successfully navigated to problem location');
+      } catch (error) {
+        console.error('❌ Error during navigation:', error);
       }
     } else {
-      console.error('Monaco editor not available for navigation');
+      console.error('❌ Monaco editor not available for navigation. Global ref:', !!(window as any).monacoEditor, 'Monaco available:', !!window.monaco);
     }
   }
 

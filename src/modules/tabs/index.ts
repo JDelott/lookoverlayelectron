@@ -151,6 +151,11 @@ export class TabManager {
         }
       }
       
+      // Expose Monaco editor globally after content change
+      if (this.state.monacoEditor) {
+        (window as any).monacoEditor = this.state.monacoEditor;
+      }
+      
       // Dispatch event for problems manager
       const event = new CustomEvent('tab-changed', {
         detail: { filePath, tab }

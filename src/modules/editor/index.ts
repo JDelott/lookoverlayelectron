@@ -702,6 +702,10 @@ declare namespace React {
         formatOnType: true
       });
 
+      // Expose the Monaco editor globally for other modules to access
+      (window as any).monacoEditor = this.state.monacoEditor;
+      console.log('✅ Monaco editor exposed globally');
+
       this.setupKeybindings();
       this.setupContentChangeHandling();
 
