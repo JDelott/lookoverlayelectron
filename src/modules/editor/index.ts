@@ -725,17 +725,91 @@ declare namespace React {
   private setupKeybindings(): void {
     if (!this.state.monacoEditor || !window.monaco) return;
 
+    // Cmd/Ctrl + S - Save file
     this.state.monacoEditor.addCommand(
       window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KeyS,
       () => this.saveCurrentFile()
     );
 
+    // Cmd/Ctrl + W - Close tab
     this.state.monacoEditor.addCommand(
       window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KeyW,
       () => {
         if (this.state.activeTabPath) {
           this.tabManager.closeTab(this.state.activeTabPath);
         }
+      }
+    );
+
+    // Cmd/Ctrl + / - Toggle line comment
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.Slash,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.commentLine', {});
+      }
+    );
+
+    // Shift + Alt + F - Format document
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.Shift | window.monaco.KeyMod.Alt | window.monaco.KeyCode.KeyF,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.formatDocument', {});
+      }
+    );
+
+    // Additional useful shortcuts
+    
+    // Cmd/Ctrl + D - Select next occurrence
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KeyD,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.addSelectionToNextFindMatch', {});
+      }
+    );
+
+    // Cmd/Ctrl + Shift + K - Delete line
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyMod.Shift | window.monaco.KeyCode.KeyK,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.deleteLines', {});
+      }
+    );
+
+    // Alt + Up/Down - Move line up/down
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.Alt | window.monaco.KeyCode.UpArrow,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.moveLinesUpAction', {});
+      }
+    );
+
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.Alt | window.monaco.KeyCode.DownArrow,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.moveLinesDownAction', {});
+      }
+    );
+
+    // Cmd/Ctrl + Shift + \ - Go to matching bracket
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyMod.Shift | window.monaco.KeyCode.Backslash,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.jumpToBracket', {});
+      }
+    );
+
+    // Cmd/Ctrl + ] / [ - Indent/Outdent
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.BracketRight,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.indentLines', {});
+      }
+    );
+
+    this.state.monacoEditor.addCommand(
+      window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.BracketLeft,
+      () => {
+        this.state.monacoEditor?.trigger('keyboard', 'editor.action.outdentLines', {});
       }
     );
   }
@@ -750,12 +824,12 @@ declare namespace React {
     });
   }
 
-  private async saveCurrentFile(): Promise<void> {
+  public async saveCurrentFile(): Promise<void> {
     if (!this.state.activeTabPath || !this.state.monacoEditor) return;
 
     try {
       const content = this.state.monacoEditor.getValue();
-      const electronAPI = window.electronAPI;
+      const electronAPI = (window as any).electronAPI;
       
       if (electronAPI) {
         await electronAPI.writeFile(this.state.activeTabPath, content);
