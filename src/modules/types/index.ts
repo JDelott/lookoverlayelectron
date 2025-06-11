@@ -86,6 +86,7 @@ export interface AppState {
   activeTerminalId: string;
   terminalCounter: number;
   terminalVisible: boolean;
+  sidebarVisible: boolean;
   terminalHeight: number;
   aiChatVisible: boolean;
   monacoEditor: any;

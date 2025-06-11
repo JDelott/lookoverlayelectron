@@ -39,6 +39,7 @@ class RendererApp {
       activeTerminalId: '',
       terminalCounter: 1,
       terminalVisible: false,
+      sidebarVisible: true,
       terminalHeight: 200,
       aiChatVisible: false,
       monacoEditor: null,
@@ -325,12 +326,72 @@ class RendererApp {
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault();
         this.layoutManager.toggleTerminal();
+        return;
       }
       
-      // Ctrl/Cmd + Shift + P for AI chat
+      // Cmd + J to open chat panel
+      if (e.metaKey && e.key === 'j') {
+        e.preventDefault();
+        this.layoutManager.toggleAIChat();
+        return;
+      }
+      
+      // Cmd + Shift + P for Command Palette (AI chat)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         this.layoutManager.toggleAIChat();
+        return;
+      }
+
+      // Cmd + B to toggle sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        this.layoutManager.toggleSidebar();
+        return;
+      }
+
+      // Cmd + S to save current file
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        this.saveCurrentFile();
+        return;
+      }
+
+      // Cmd + W to close current tab
+      if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
+        e.preventDefault();
+        this.closeCurrentTab();
+        return;
+      }
+
+      // Cmd + / to comment/uncomment line
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        this.toggleLineComment();
+        return;
+      }
+
+      // Shift + Option + F to format document
+      if (e.shiftKey && e.altKey && e.key === 'F') {
+        e.preventDefault();
+        this.formatDocument();
+        return;
+      }
+
+      // Ctrl/Cmd + Shift + F for search
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        this.layoutManager.switchSidebarTab('search');
+        
+        // Focus search input
+        setTimeout(() => {
+          const searchInput = document.getElementById('search-input') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 100);
+        return;
       }
     });
 
@@ -362,23 +423,6 @@ class RendererApp {
     document.addEventListener('file-tree-updated', (event: any) => {
       console.log('🔄 File tree updated, re-rendering...');
       this.renderFileTree(event.detail);
-    });
-
-    // Ctrl/Cmd + Shift + F for search
-    document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        this.layoutManager.switchSidebarTab('search');
-        
-        // Focus search input
-        setTimeout(() => {
-          const searchInput = document.getElementById('search-input') as HTMLInputElement;
-          if (searchInput) {
-            searchInput.focus();
-            searchInput.select();
-          }
-        }, 100);
-      }
     });
 
     // Global drag and drop detection
@@ -888,6 +932,70 @@ class RendererApp {
       }
     };
     document.addEventListener('keydown', handleEscape);
+  }
+
+  // Add the missing methods for keyboard shortcuts
+  private saveCurrentFile(): void {
+    if (this.state.activeTabPath && this.state.monacoEditor) {
+      const content = this.state.monacoEditor.getValue();
+      this.fileSystem.writeFile(this.state.activeTabPath, content)
+        .then(() => {
+          console.log('✅ File saved:', this.state.activeTabPath);
+          // Mark tab as clean
+          this.tabManager.markTabAsClean(this.state.activeTabPath);
+          
+          // Show brief save notification
+          this.showSaveNotification();
+        })
+        .catch((error) => {
+          console.error('❌ Failed to save file:', error);
+          alert(`Failed to save file: ${error}`);
+        });
+    }
+  }
+
+  private closeCurrentTab(): void {
+    if (this.state.activeTabPath) {
+      this.tabManager.closeTab(this.state.activeTabPath);
+    }
+  }
+
+  private toggleLineComment(): void {
+    if (this.state.monacoEditor && window.monaco) {
+      // Use Monaco's built-in comment toggle
+      this.state.monacoEditor.trigger('keyboard', 'editor.action.commentLine', null);
+    }
+  }
+
+  private formatDocument(): void {
+    if (this.state.monacoEditor && window.monaco) {
+      // Use Monaco's built-in format document
+      this.state.monacoEditor.trigger('keyboard', 'editor.action.formatDocument', null);
+    }
+  }
+
+  private showSaveNotification(): void {
+    // Create a brief save notification
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 opacity-0 transition-opacity duration-200';
+    notification.textContent = 'File saved';
+    
+    document.body.appendChild(notification);
+    
+    // Fade in
+    setTimeout(() => {
+      notification.style.opacity = '1';
+    }, 10);
+    
+    // Fade out and remove
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 200);
+    }, 1500);
   }
 }
 

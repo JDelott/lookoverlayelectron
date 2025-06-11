@@ -367,6 +367,25 @@ export class LayoutManager {
         flex-shrink: 0;
       }
       
+      /* Sidebar visibility controls */
+      .ide-container.sidebar-hidden .sidebar-area {
+        display: none !important;
+        width: 0 !important;
+      }
+      
+      .ide-container.sidebar-hidden .handle-sidebar {
+        display: none !important;
+        width: 0 !important;
+      }
+      
+      .ide-container.sidebar-visible .sidebar-area {
+        display: flex !important;
+      }
+      
+      .ide-container.sidebar-visible .handle-sidebar {
+        display: block !important;
+      }
+      
       .sidebar-header {
         height: 32px;
         padding: 0 12px;
@@ -1508,6 +1527,7 @@ export class LayoutManager {
     const ideContainer = document.querySelector('.ide-container') as HTMLElement;
     if (!ideContainer) return;
 
+    // Handle AI Chat visibility
     if (this.state.aiChatVisible) {
       ideContainer.classList.add('chat-visible');
       ideContainer.classList.remove('chat-hidden');
@@ -1517,6 +1537,15 @@ export class LayoutManager {
     } else {
       ideContainer.classList.add('chat-hidden');
       ideContainer.classList.remove('chat-visible');
+    }
+
+    // Handle Sidebar visibility
+    if (this.state.sidebarVisible) {
+      ideContainer.classList.add('sidebar-visible');
+      ideContainer.classList.remove('sidebar-hidden');
+    } else {
+      ideContainer.classList.add('sidebar-hidden');
+      ideContainer.classList.remove('sidebar-visible');
     }
 
     // Update CSS custom properties for sizing
@@ -1946,5 +1975,21 @@ export class LayoutManager {
         }
       }
     }
+  }
+
+  toggleSidebar(): void {
+    this.state.sidebarVisible = !this.state.sidebarVisible;
+    this.updatePanelVisibility();
+    console.log('✅ Sidebar toggled:', this.state.sidebarVisible);
+  }
+
+  showSidebar(): void {
+    this.state.sidebarVisible = true;
+    this.updatePanelVisibility();
+  }
+
+  hideSidebar(): void {
+    this.state.sidebarVisible = false;
+    this.updatePanelVisibility();
   }
 }
