@@ -334,9 +334,12 @@ class RendererApp {
       }
     });
 
-    // Terminal input handling
+    // Terminal input handling - MUCH more specific selector
     document.addEventListener('keydown', (e) => {
-      if (e.target && (e.target as HTMLElement).closest('.terminal-output')) {
+      // Only handle if target is specifically the terminal input
+      if (e.target && 
+          (e.target as HTMLElement).classList.contains('terminal-input') &&
+          (e.target as HTMLElement).closest('.terminal-output')) {
         if (e.key === 'Enter') {
           const input = (e.target as HTMLInputElement).value || '';
           this.terminalManager.executeCommand(input);

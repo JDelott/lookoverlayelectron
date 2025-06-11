@@ -301,7 +301,8 @@ export class TerminalManager {
       const input = terminalContent.querySelector('.terminal-input') as HTMLInputElement;
       if (input) {
         input.addEventListener('keydown', (e) => this.handleKeyDown(e, input));
-        input.focus();
+        // Only focus if we're explicitly switching TO this terminal (not just updating display)
+        // Don't auto-focus to avoid stealing focus from Monaco editor
       }
 
       // Auto-scroll to bottom
@@ -435,6 +436,14 @@ export class TerminalManager {
 
     this.updateTerminalDisplay();
     this.renderTerminalTabs();
+    
+    // Focus terminal input ONLY when explicitly switching to terminal
+    setTimeout(() => {
+      const input = document.querySelector('.terminal-input') as HTMLInputElement;
+      if (input && this.state.activeTerminalTab === 'terminal') {
+        input.focus();
+      }
+    }, 100);
   }
 
   closeTerminal(terminalId: string, event?: Event): void {

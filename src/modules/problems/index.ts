@@ -558,35 +558,74 @@ export class ProblemsManager {
 
   goToProblem(problemId: string): void {
     const problem = this.problemsState.problems.find(p => p.id === problemId);
-    if (!problem) return;
+    if (!problem) {
+      console.error('Problem not found:', problemId);
+      return;
+    }
 
-    // Open the file if it's not already open
-    const app = (window as any).app;
-    if (app?.tabManager) {
-      app.tabManager.openFile(problem.filePath).then(() => {
-        // Navigate to the problem location
-        if (this.state.monacoEditor && window.monaco) {
-          this.state.monacoEditor.setPosition({
-            lineNumber: problem.line,
-            column: problem.column
-          });
-          
-          // Reveal the line in the center
-          this.state.monacoEditor.revealLineInCenter(problem.line);
-          
-          // Focus the editor
-          this.state.monacoEditor.focus();
-          
-          // Optionally highlight the range
-          if (problem.endLine && problem.endColumn) {
-            const range = new window.monaco.Range(
-              problem.line, problem.column,
-              problem.endLine, problem.endColumn
-            );
-            this.state.monacoEditor.setSelection(range);
-          }
-        }
+    console.log(`🎯 Navigating to problem in: ${problem.filePath} at line ${problem.line}`);
+
+    // Check if the file is already open in a tab
+    const tabManager = (window as any).app?.tabManager;
+    if (!tabManager) {
+      console.error('TabManager not available');
+      return;
+    }
+
+    // Only work with files that are already open
+    const isFileOpen = tabManager.state?.openTabs?.has(problem.filePath);
+    
+    if (isFileOpen) {
+      // File is already open, just switch to it
+      console.log('📄 File already open, switching to existing tab');
+      tabManager.switchToTab(problem.filePath);
+      
+      // Navigate to the problem location after a short delay
+      setTimeout(() => {
+        this.navigateToLocation(problem);
+      }, 100);
+    } else {
+      // File is not open, show a message or do nothing
+      console.log('📄 File not open, skipping navigation');
+      this.showNotification(`File ${problem.fileName} is not currently open`, 'error');
+    }
+  }
+
+  private navigateToLocation(problem: ProblemItem): void {
+    // Get the current Monaco editor from the global reference
+    const monacoEditor = (window as any).monacoEditor;
+    if (monacoEditor && window.monaco) {
+      console.log(`📍 Navigating to line ${problem.line}, column ${problem.column}`);
+      
+      // Set the cursor position
+      monacoEditor.setPosition({
+        lineNumber: problem.line,
+        column: problem.column
       });
+
+      // Scroll to reveal the position in center
+      monacoEditor.revealPositionInCenter({
+        lineNumber: problem.line,
+        column: problem.column
+      });
+
+      // DON'T steal focus - let Monaco keep focus if it already has it
+      // Only focus if no other input is currently focused
+      const activeElement = document.activeElement;
+      if (!activeElement || !activeElement.matches('input, textarea, [contenteditable]')) {
+        setTimeout(() => monacoEditor.focus(), 100);
+      }
+
+      // Optionally highlight the problem range
+      if (problem.endLine && problem.endColumn) {
+        const range = new window.monaco.Range(
+          problem.line, problem.column,
+          problem.endLine, problem.endColumn
+        );
+        monacoEditor.setSelection(range);
+      }
+    } else {
+      console.error('Monaco editor not available for navigation');
     }
   }
 
