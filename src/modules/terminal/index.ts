@@ -244,6 +244,7 @@ export class TerminalManager {
     problemsTab.innerHTML = `
       <span class="terminal-tab-icon">${problemsIcon}</span>
       <span class="terminal-tab-name">${problemsLabel}</span>
+      <button class="problems-refresh-btn" onclick="event.stopPropagation(); window.problemsManager?.refreshProblems()" title="Refresh Problems">🔄</button>
     `;
     
     problemsTab.onclick = () => {

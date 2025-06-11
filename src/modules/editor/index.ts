@@ -100,49 +100,28 @@ export class MonacoEditorManager {
     window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
     window.monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
 
-    // Configure diagnostic options to suppress common errors
+    // Configure diagnostic options to be more selective - only ignore specific noise
     const diagnosticOptions = {
       noSemanticValidation: false,
-      noSyntaxValidation: false,
+      noSyntaxValidation: false, // Keep syntax validation for real errors
       noSuggestionDiagnostics: false,
       diagnosticCodesToIgnore: [
-        // Common TypeScript/JavaScript errors to ignore in editor
-        1108, 1109, 1005, 1161, 2304, 2307, 2339, 2345, 2531, 2532, 2580, 2584, 2585,
-        2686, 2688, 2749, 2750, 2792, 2793, 2794, 6133, 6196, 7027, 7028, 80001, 80002,
-        80005, 80006, 17004, 17009, 18002, 18003,
+        // Only ignore the specific noise patterns you mentioned
+        7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
+        8006, // 'interface' declarations can only be used in TypeScript files
+        8010, // Type annotations can only be used in TypeScript files
+        2307, // Cannot find module 'react/jsx-runtime' or its corresponding type declarations
         
-        // TypeScript-specific feature errors
-        8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010,
-        8037, // Type satisfaction expressions (satisfies operator)
-        8038, 8039, 8040, 8041, 8042, 8043, 8044, 8045, 8046, 8047, 8048, 8049, 8050,
+        // A few other common React/JSX noise patterns
+        2304, // Cannot find name 'React' (when it's a global)
+        2591, // Cannot find name 'JSX'
+        2786, // 'JSX' refers to a UMD global
         
-        // JSX-specific errors
-        17000, 17001, 17002, 17003, 17004, 17005, 17006, 17007, 
-        17008, // JSX element has no corresponding closing tag
-        17009, 17010, 17011, 17012, 17013, 17014, 17015, 17016, 17017, 17018, 17019, 17020,
-        17021, 17022, 17023, 17024, 17025, 17026, 17027, 17028, 17029, 17030,
+        // Unused variable warnings (often intentional)
+        6133, // 'X' is declared but its value is never read
+        6196, // 'X' is declared but its value is never read (parameters)
         
-        // Additional TypeScript feature errors
-        9000, 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010,
-        
-        // Import/Export errors in non-TS files
-        1259, 1260, 1308, 1309, 1320, 1431, 1432, 1433, 1434, 1435,
-        
-        // Decorator errors
-        1206, 1207, 1208, 1209, 1219, 1238, 1240, 1241, 1270, 1271,
-        
-        // Generic and type parameter errors
-        2314, 2315, 2322, 2324, 2326, 2344, 2347, 2348, 2394, 2395, 2396, 2397,
-        
-        // Advanced TypeScript features
-        2540, 2541, 2542, 2543, 2544, 2545, 2546, 2547, 2548, 2549, 2550,
-        
-        // JSX attribute and element errors
-        2322, 2323, 2324, 2325, 2326, 2327, 2328, 2329, 2330, 2331, 2332, 2333,
-        2607, 2608, 2609, 2610, 2611, 2612, 2613, 2614, 2615, 2616, 2617, 2618,
-        
-        // React-specific errors
-        2749, 2750, 2751, 2752, 2753, 2754, 2755, 2756, 2757, 2758, 2759, 2760
+        // Keep everything else - including real syntax errors, typos, missing tags, etc.
       ]
     };
 
@@ -231,7 +210,9 @@ export class MonacoEditorManager {
         const path = uri.toString();
         const extension = path.split('.').pop()?.toLowerCase();
         
-        // Enhanced language detection
+        console.log(`🔍 Language detection for file: ${path}, extension: ${extension}`);
+        
+        // Enhanced language detection - force TypeScript for all JS/TS files
         const languageMap: { [key: string]: string } = {
           'js': 'typescript', // Treat all JS as TS for better feature support
           'jsx': 'typescript', // Treat JSX as TypeScript for better support
@@ -253,6 +234,7 @@ export class MonacoEditorManager {
         };
         
         language = languageMap[extension || ''] || 'typescript'; // Default to TypeScript
+        console.log(`🎯 Detected language: ${language} for ${path}`);
       }
       
       // Enhanced content-based TypeScript detection
@@ -270,10 +252,17 @@ export class MonacoEditorManager {
         
         if (tsFeatures.some(feature => value.includes(feature))) {
           language = 'typescript';
+          console.log(`🎯 Content-based detection: TypeScript (found TS features)`);
         }
       }
       
-      return originalCreateModel.call(this, value, language || 'typescript', uri);
+      // Force TypeScript if still not detected
+      if (!language) {
+        language = 'typescript';
+        console.log(`🎯 Defaulting to TypeScript`);
+      }
+      
+      return originalCreateModel.call(this, value, language, uri);
     };
   }
 

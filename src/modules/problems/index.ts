@@ -12,6 +12,7 @@ export interface ProblemItem {
   endColumn?: number;
   source: string; // e.g., 'TypeScript', 'ESLint', etc.
   code?: string | number;
+  relatedInformation?: string;
 }
 
 export interface ProblemsState {
@@ -25,6 +26,9 @@ export class ProblemsManager {
   private state: AppState;
   private problemsState: ProblemsState;
   private updateTimeout: NodeJS.Timeout | null = null;
+  private isMonacoReady = false;
+  private modelListeners = new Map<string, any[]>();
+  private immediateUpdateTimeout: NodeJS.Timeout | null = null;
 
   constructor(state: AppState) {
     this.state = state;
@@ -37,39 +41,117 @@ export class ProblemsManager {
   }
 
   initialize(): void {
-    console.log('🔧 Initializing Problems Manager...');
+    console.log('🔧 Initializing STRICT Problems Manager...');
+    this.setupStrictMonacoConfiguration();
     this.setupMonacoListeners();
     this.setupEventListeners();
-    console.log('✅ Problems Manager initialized');
+    console.log('✅ STRICT Problems Manager initialized');
+  }
+
+  private setupStrictMonacoConfiguration(): void {
+    if (!window.monaco) {
+      setTimeout(() => this.setupStrictMonacoConfiguration(), 50);
+      return;
+    }
+
+    console.log('🔧 PROBLEMS: Setting up balanced Monaco configuration...');
+
+    // Let Monaco handle diagnostics, but we'll filter at display time
+    // Don't override Monaco settings here to avoid conflicts
+    
+    console.log('✅ PROBLEMS: Letting editor module handle Monaco configuration');
   }
 
   private setupMonacoListeners(): void {
     if (!window.monaco) {
-      // Monaco not ready yet, wait for it
-      setTimeout(() => this.setupMonacoListeners(), 100);
+      setTimeout(() => this.setupMonacoListeners(), 50);
       return;
     }
 
-    // Listen for model changes and diagnostics updates
-    window.monaco.editor.onDidCreateModel((model: any) => {
-      console.log('📄 New model created for problems tracking:', model.uri.path);
-      
-      // Listen for content changes
-      model.onDidChangeContent(() => {
-        this.scheduleProblemsUpdate();
-      });
+    this.isMonacoReady = true;
+    console.log('🔧 Setting up STRICT Monaco listeners...');
 
-      // Initial problems check
+    // Listen for ALL marker changes with immediate updates
+    window.monaco.editor.onDidChangeMarkers((uris: readonly any[]) => {
+      console.log('🚨 MARKERS CHANGED IMMEDIATELY:', uris.map((uri: any) => uri.path || uri.toString()));
+      this.updateProblemsImmediately();
+    });
+
+    // Listen for new models
+    window.monaco.editor.onDidCreateModel((model: any) => {
+      console.log('📄 NEW MODEL - immediate problems check:', model.uri.path);
+      this.setupStrictModelListeners(model);
+      this.updateProblemsImmediately();
+    });
+
+    // Check all existing models immediately
+    const existingModels = window.monaco.editor.getModels();
+    existingModels.forEach((model: any) => {
+      console.log('📄 Setting up STRICT listeners for existing model:', model.uri.path);
+      this.setupStrictModelListeners(model);
+    });
+
+    // Force immediate update
+    this.updateProblemsImmediately();
+    console.log('✅ STRICT Monaco listeners ready');
+  }
+
+  private setupStrictModelListeners(model: any): void {
+    const modelPath = model.uri.path;
+    console.log('🎯 Setting up STRICT listeners for model:', modelPath);
+    
+    // Clean up existing listeners for this model
+    this.cleanupModelListeners(modelPath);
+    
+    const listeners: any[] = [];
+
+    // Listen for content changes (typing)
+    const contentListener = model.onDidChangeContent(() => {
+      console.log('📝 STRICT Content changed in:', modelPath);
       this.scheduleProblemsUpdate();
     });
+    listeners.push(contentListener);
 
-    // Listen for marker changes (diagnostics) - fix the parameter type
-    window.monaco.editor.onDidChangeMarkers((uris: readonly any[]) => {
-      console.log('🔍 Markers changed for URIs:', uris.map((uri: any) => uri.path));
-      this.updateProblemsFromMarkers(uris);
+    // Listen for language changes
+    const languageListener = model.onDidChangeLanguage(() => {
+      console.log('🗣️ STRICT Language changed in:', modelPath);
+      this.updateProblemsImmediately();
     });
+    listeners.push(languageListener);
 
-    console.log('✅ Monaco listeners setup for problems tracking');
+    // Listen for model disposal
+    const disposeListener = model.onWillDispose(() => {
+      console.log('🗑️ Model disposing:', modelPath);
+      this.cleanupModelListeners(modelPath);
+      this.updateProblemsImmediately();
+    });
+    listeners.push(disposeListener);
+
+    this.modelListeners.set(modelPath, listeners);
+  }
+
+  private cleanupModelListeners(modelPath: string): void {
+    const existingListeners = this.modelListeners.get(modelPath);
+    if (existingListeners) {
+      existingListeners.forEach(listener => {
+        if (listener && listener.dispose) {
+          listener.dispose();
+        }
+      });
+      this.modelListeners.delete(modelPath);
+    }
+  }
+
+  private updateProblemsImmediately(): void {
+    // Clear any existing timeout
+    if (this.immediateUpdateTimeout) {
+      clearTimeout(this.immediateUpdateTimeout);
+    }
+    
+    // Very short delay to batch rapid changes
+    this.immediateUpdateTimeout = setTimeout(() => {
+      this.updateProblems();
+    }, 100) as NodeJS.Timeout; // Much faster response
   }
 
   private scheduleProblemsUpdate(): void {
@@ -77,32 +159,35 @@ export class ProblemsManager {
       clearTimeout(this.updateTimeout);
     }
     
-    // Fix the setTimeout return type
+    // Also much faster for scheduled updates
     this.updateTimeout = setTimeout(() => {
       this.updateProblems();
-    }, 500) as NodeJS.Timeout;
+    }, 150) as NodeJS.Timeout;
   }
 
   private updateProblems(): void {
-    if (!window.monaco || !this.state.monacoEditor) return;
+    if (!this.isMonacoReady || !window.monaco) return;
 
     const problems: ProblemItem[] = [];
+    console.log('🔍 Balanced problems update - allowing real errors through...');
     
-    // Get all models (open files)
     const models = window.monaco.editor.getModels();
     
     models.forEach((model: any) => {
       const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
       
       markers.forEach((marker: any) => {
-        // Skip certain markers we don't want to show
-        if (this.shouldIgnoreMarker(marker)) return;
+        // Only filter out the specific noise patterns
+        if (this.shouldIgnoreMarkerStrict(marker)) {
+          return;
+        }
 
         const filePath = model.uri.path;
         const fileName = filePath.split('/').pop() || filePath;
         
+        // Create problem for everything that gets through
         const problem: ProblemItem = {
-          id: `${filePath}-${marker.startLineNumber}-${marker.startColumn}-${marker.code}`,
+          id: `${filePath}-${marker.startLineNumber}-${marker.startColumn}-${marker.code}-${marker.severity}-${Date.now()}`,
           filePath,
           fileName,
           message: marker.message,
@@ -112,68 +197,167 @@ export class ProblemsManager {
           endLine: marker.endLineNumber,
           endColumn: marker.endColumn,
           source: marker.source || 'TypeScript',
-          code: marker.code
+          code: marker.code,
+          relatedInformation: marker.relatedInformation ? 
+            marker.relatedInformation.map((info: any) => info.message).join('; ') : undefined
         };
 
+        console.log(`➕ Adding problem: ${problem.severity.toUpperCase()}: ${problem.message.substring(0, 60)}...`);
         problems.push(problem);
       });
     });
 
+    console.log(`📊 BALANCED TOTAL: ${problems.length} problems`);
+    
     this.problemsState.problems = problems;
     this.renderProblemsTab();
     this.dispatchProblemsUpdateEvent();
   }
 
-  private updateProblemsFromMarkers(uris: readonly any[]): void {
-    if (!window.monaco) return;
+  private shouldIgnoreMarkerStrict(marker: any): boolean {
+    // Much more targeted filtering - only ignore specific noise patterns
+    const message = marker.message.toLowerCase();
+    const source = (marker.source || '').toLowerCase();
+    
+    console.log(`🔍 Checking marker: Code ${marker.code}, Source: ${source}, Message: ${message.substring(0, 50)}...`);
 
-    // Update problems immediately when markers change
-    this.updateProblems();
-  }
-
-  private shouldIgnoreMarker(marker: any): boolean {
-    // Ignore certain types of markers that are not useful
-    const ignoreCodes = [
-      1108, 1109, 1005, 1161, // Unreachable code, etc.
-      6133, 6196, // Unused variables (can be noisy)
+    // Only ignore these specific noise patterns that were bothering you
+    const specificNoisePatterns = [
+      'jsx element implicitly has type \'any\' because no interface \'jsx.intrinsicelements\' exists',
+      '\'interface\' declarations can only be used in typescript files',
+      'type annotations can only be used in typescript files',
+      'cannot find module \'react/jsx-runtime\' or its corresponding type declarations',
+      'cannot find name \'react\'',
+      'cannot find name \'jsx\'',
+      '\'jsx\' refers to a umd global',
     ];
 
-    return ignoreCodes.includes(marker.code);
+    // Check for exact noise patterns
+    if (specificNoisePatterns.some(pattern => message.includes(pattern))) {
+      console.log('❌ Filtering specific noise pattern');
+      return true;
+    }
+
+    // Only ignore these specific error codes
+    const specificNoiseCodes = [
+      7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
+      8006, // 'interface' declarations can only be used in TypeScript files
+      8010, // Type annotations can only be used in TypeScript files
+      2307, // Cannot find module 'react/jsx-runtime' (when it's specifically react/jsx-runtime)
+      2304, // Cannot find name 'React' (when it's specifically React)
+      2591, // Cannot find name 'JSX'
+      2786, // 'JSX' refers to a UMD global
+    ];
+
+    // Only ignore if it's the specific codes AND about React/JSX/TypeScript usage in TS files
+    if (specificNoiseCodes.includes(marker.code)) {
+      if (message.includes('react') || message.includes('jsx') || 
+          message.includes('interface') && message.includes('typescript') ||
+          message.includes('type annotations') && message.includes('typescript')) {
+        console.log(`❌ Filtering specific noise code: ${marker.code}`);
+        return true;
+      }
+    }
+
+    // Allow everything else through
+    console.log(`✅ Allowing marker through`);
+    return false;
   }
 
   private mapSeverity(monacoSeverity: number): 'error' | 'warning' | 'info' {
-    // Monaco severity: 1=Hint, 2=Info, 4=Warning, 8=Error
+    // Standard severity mapping
     switch (monacoSeverity) {
       case 8: return 'error';
       case 4: return 'warning';
-      case 2: 
-      case 1:
+      case 2: return 'info';
+      case 1: return 'info';
       default: return 'info';
     }
   }
 
+  private isRealSyntaxError(message: string): boolean {
+    // Only these are real syntax errors worth showing
+    const realSyntaxPatterns = [
+      'unterminated string literal',
+      'unexpected end of input', 
+      'unexpected token',
+      'missing closing',
+      'unclosed',
+      ';} expected',
+      'identifier expected',
+      'expression expected',
+    ];
+
+    return realSyntaxPatterns.some(pattern => message.includes(pattern));
+  }
+
   private setupEventListeners(): void {
-    // Listen for tab changes to update problems
+    // More aggressive event listening
     document.addEventListener('tab-changed', () => {
-      this.scheduleProblemsUpdate();
+      console.log('🔄 TAB CHANGED - immediate problems update');
+      this.updateProblemsImmediately();
     });
 
-    // Listen for file saves to refresh problems
-    document.addEventListener('file-saved', () => {
-      this.scheduleProblemsUpdate();
+    document.addEventListener('file-saved', (event: any) => {
+      console.log('💾 FILE SAVED - immediate problems update', event.detail?.filePath);
+      this.updateProblemsImmediately();
     });
+
+    document.addEventListener('editor-model-changed', () => {
+      console.log('📝 EDITOR MODEL CHANGED - immediate problems update');
+      this.updateProblemsImmediately();
+    });
+
+    // More frequent periodic refresh for strict mode
+    setInterval(() => {
+      if (this.problemsState.isActive) {
+        console.log('⏰ STRICT periodic refresh...');
+        this.updateProblems();
+      }
+    }, 2000); // Every 2 seconds when active
+
+    // Also refresh when window gains focus (catches external file changes)
+    window.addEventListener('focus', () => {
+      console.log('👀 Window focused - checking for problems');
+      this.updateProblemsImmediately();
+    });
+  }
+
+  // Enhanced methods for strict mode
+  public refreshProblems(): void {
+    console.log('🔄 MANUAL STRICT REFRESH');
+    this.updateProblemsImmediately();
+  }
+
+  // Force Monaco to revalidate everything
+  public forceRevalidation(): void {
+    console.log('🔄 FORCING MONACO REVALIDATION...');
+    if (window.monaco) {
+      const models = window.monaco.editor.getModels();
+      models.forEach(model => {
+        // Trigger revalidation by briefly modifying
+        const content = model.getValue();
+        model.setValue(content + '\n');
+        setTimeout(() => {
+          model.setValue(content);
+          this.updateProblemsImmediately();
+        }, 100);
+      });
+    }
   }
 
   getProblemsTab(): { name: string; content: string; isActive: boolean } {
     const errorCount = this.problemsState.problems.filter(p => p.severity === 'error').length;
     const warningCount = this.problemsState.problems.filter(p => p.severity === 'warning').length;
+    const infoCount = this.problemsState.problems.filter(p => p.severity === 'info').length;
     
     let tabName = 'Problems';
-    if (errorCount > 0 || warningCount > 0) {
+    if (errorCount > 0 || warningCount > 0 || infoCount > 0) {
       const parts: string[] = [];
-      if (errorCount > 0) parts.push(`${errorCount} error${errorCount !== 1 ? 's' : ''}`);
-      if (warningCount > 0) parts.push(`${warningCount} warning${warningCount !== 1 ? 's' : ''}`);
-      tabName = `Problems (${parts.join(', ')})`;
+      if (errorCount > 0) parts.push(`${errorCount}E`);
+      if (warningCount > 0) parts.push(`${warningCount}W`);
+      if (infoCount > 0) parts.push(`${infoCount}I`);
+      tabName = `Problems (${parts.join('/')})`;
     }
 
     return {
@@ -191,7 +375,7 @@ export class ProblemsManager {
         <div class="problems-empty">
           <div class="problems-empty-icon">✅</div>
           <div class="problems-empty-message">No problems found</div>
-          <div class="problems-empty-subtitle">Great work! Your code has no issues.</div>
+          <div class="problems-empty-subtitle">STRICT MODE: All code is clean!</div>
         </div>
       `;
     }
@@ -220,12 +404,16 @@ export class ProblemsManager {
             </button>
           </div>
           <div class="problems-actions">
+            <button class="problems-action-btn" onclick="window.problemsManager?.forceRevalidation()" 
+                    title="Force revalidation">
+              🔄 Force Check
+            </button>
             <button class="problems-action-btn" onclick="window.problemsManager?.copyAllProblems()" 
-                    title="Copy all problems to clipboard">
+                    title="Copy all problems">
               📋 Copy All
             </button>
             <button class="problems-action-btn" onclick="window.problemsManager?.sendToChat()" 
-                    title="Send problems to AI chat">
+                    title="Send to AI chat">
               🤖 Send to Chat
             </button>
           </div>
@@ -693,6 +881,16 @@ export class ProblemsManager {
     if (this.updateTimeout) {
       clearTimeout(this.updateTimeout);
     }
+    if (this.immediateUpdateTimeout) {
+      clearTimeout(this.immediateUpdateTimeout);
+    }
+    
+    // Clean up all model listeners
+    this.modelListeners.forEach((listeners) => {
+      listeners.forEach(listener => listener.dispose());
+    });
+    this.modelListeners.clear();
+    
     delete (window as any).problemsManager;
   }
 

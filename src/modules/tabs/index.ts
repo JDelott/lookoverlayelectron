@@ -150,6 +150,12 @@ export class TabManager {
           console.log('📄 Set language to:', monacoLanguage, 'for file:', tab.name);
         }
       }
+      
+      // Dispatch event for problems manager
+      const event = new CustomEvent('tab-changed', {
+        detail: { filePath, tab }
+      });
+      document.dispatchEvent(event);
     } else {
       console.warn('⚠️ Monaco editor not available');
     }
