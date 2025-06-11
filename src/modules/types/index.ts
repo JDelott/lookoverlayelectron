@@ -89,4 +89,5 @@ export interface AppState {
   terminalHeight: number;
   aiChatVisible: boolean;
   monacoEditor: any;
+  activeTerminalTab: 'terminal' | 'problems';
 }

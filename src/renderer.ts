@@ -14,6 +14,7 @@ import { LayoutManager } from './modules/layout/index.js';
 import { ChatManager } from './modules/chat/index.js';
 import { GitManager } from './modules/git/index.js';
 import { SearchManager } from './modules/search/index.js';
+import { ProblemsManager } from './modules/problems/index.js';
 
 class RendererApp {
   private state: AppState;
@@ -25,6 +26,7 @@ class RendererApp {
   private chatManager: ChatManager;
   private gitManager: GitManager;
   private searchManager: SearchManager;
+  private problemsManager: ProblemsManager;
 
   constructor() {
     this.state = {
@@ -39,13 +41,15 @@ class RendererApp {
       terminalVisible: false,
       terminalHeight: 200,
       aiChatVisible: false,
-      monacoEditor: null
+      monacoEditor: null,
+      activeTerminalTab: 'terminal'
     };
 
     this.fileSystem = new FileSystemManager();
     this.tabManager = new TabManager(this.state, this.fileSystem);
     this.editorManager = new MonacoEditorManager(this.state, this.tabManager);
-    this.terminalManager = new TerminalManager(this.state);
+    this.problemsManager = new ProblemsManager(this.state);
+    this.terminalManager = new TerminalManager(this.state, this.problemsManager);
     this.layoutManager = new LayoutManager(this.state);
     this.chatManager = new ChatManager(this.state);
     this.gitManager = new GitManager(this.state);
@@ -89,6 +93,11 @@ class RendererApp {
       console.log('🔧 Initializing editor manager...');
       await this.editorManager.initialize();
       console.log('✅ Editor manager initialized');
+      
+      console.log('🔧 Initializing problems manager...');
+      this.problemsManager.initialize();
+      this.problemsManager.exposeGlobally();
+      console.log('✅ Problems manager initialized');
       
       console.log('🔧 Initializing terminal manager...');
       this.terminalManager.initialize();
@@ -310,103 +319,18 @@ class RendererApp {
   }
 
   private setupGlobalEventListeners(): void {
-    // Consolidated keyboard shortcuts handler
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      // Don't interfere with Monaco editor's built-in shortcuts when focused
-      const isEditorFocused = document.querySelector('.monaco-editor.focused') !== null;
-      
-      // Global shortcuts that work everywhere
-      
-      // Cmd/Ctrl + ` - Toggle Terminal
+      // Ctrl/Cmd + ` to toggle terminal
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault();
         this.layoutManager.toggleTerminal();
-        return;
       }
       
-      // Cmd/Ctrl + J - Open AI Chat Panel
-      if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
-        e.preventDefault();
-        this.openChatPanel();
-        return;
-      }
-      
-      // Cmd/Ctrl + Shift + P - Command Palette
+      // Ctrl/Cmd + Shift + P for AI chat
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
-        this.showCommandPalette();
-        return;
-      }
-      
-      // Cmd/Ctrl + B - Toggle Sidebar
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault();
-        this.toggleSidebar();
-        return;
-      }
-      
-      // Cmd/Ctrl + Shift + F - Search
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        this.layoutManager.switchSidebarTab('search');
-        
-        // Focus search input
-        setTimeout(() => {
-          const searchInput = document.getElementById('search-input') as HTMLInputElement;
-          if (searchInput) {
-            searchInput.focus();
-            searchInput.select();
-          }
-        }, 100);
-        return;
-      }
-      
-      // Cmd/Ctrl + Shift + C - Toggle AI Chat
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
-        e.preventDefault();
         this.layoutManager.toggleAIChat();
-        return;
-      }
-      
-      // Shortcuts that only work when NOT in Monaco editor
-      if (!isEditorFocused) {
-        // Cmd/Ctrl + S - Save current file
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-          e.preventDefault();
-          this.saveCurrentFile();
-          return;
-        }
-        
-        // Cmd/Ctrl + W - Close current tab
-        if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
-          e.preventDefault();
-          if (this.state.activeTabPath) {
-            this.tabManager.closeTab(this.state.activeTabPath);
-          }
-          return;
-        }
-        
-        // Cmd/Ctrl + T - New Terminal
-        if ((e.ctrlKey || e.metaKey) && e.key === 't') {
-          e.preventDefault();
-          this.terminalManager.createNewTerminal();
-          this.layoutManager.showTerminal();
-          return;
-        }
-        
-        // Cmd/Ctrl + N - New File
-        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-          e.preventDefault();
-          this.createNewFileInlineRoot();
-          return;
-        }
-        
-        // Cmd/Ctrl + Shift + N - New Folder
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'N') {
-          e.preventDefault();
-          this.createNewFolderInlineRoot();
-          return;
-        }
       }
     });
 
@@ -435,6 +359,23 @@ class RendererApp {
     document.addEventListener('file-tree-updated', (event: any) => {
       console.log('🔄 File tree updated, re-rendering...');
       this.renderFileTree(event.detail);
+    });
+
+    // Ctrl/Cmd + Shift + F for search
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        this.layoutManager.switchSidebarTab('search');
+        
+        // Focus search input
+        setTimeout(() => {
+          const searchInput = document.getElementById('search-input') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 100);
+      }
     });
 
     // Global drag and drop detection
@@ -944,194 +885,6 @@ class RendererApp {
       }
     };
     document.addEventListener('keydown', handleEscape);
-  }
-
-  private showCommandPalette(): void {
-    // Remove any existing command palette
-    const existingPalette = document.querySelector('.command-palette');
-    if (existingPalette) {
-      existingPalette.remove();
-    }
-
-    const overlay = document.createElement('div');
-    overlay.className = 'command-palette fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-20 z-50';
-    
-    const palette = document.createElement('div');
-    palette.className = 'bg-gray-800 border border-gray-600 rounded-lg shadow-xl w-96 max-w-90vw overflow-hidden';
-    
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Type a command...';
-    input.className = 'w-full px-4 py-3 bg-gray-700 text-white border-none outline-none text-sm';
-    
-    const commandList = document.createElement('div');
-    commandList.className = 'max-h-60 overflow-y-auto';
-    
-    const commands = [
-      { name: 'Toggle Terminal', action: () => this.layoutManager.toggleTerminal(), key: 'Ctrl+`' },
-      { name: 'Toggle AI Chat', action: () => this.openChatPanel(), key: 'Ctrl+J' },
-      { name: 'Toggle AI Chat (Alt)', action: () => this.layoutManager.toggleAIChat(), key: 'Ctrl+Shift+C' },
-      { name: 'Toggle Sidebar', action: () => this.toggleSidebar(), key: 'Ctrl+B' },
-      { name: 'Search Files', action: () => this.layoutManager.switchSidebarTab('search'), key: 'Ctrl+Shift+F' },
-      { name: 'Git Status', action: () => this.layoutManager.switchSidebarTab('git'), key: '' },
-      { name: 'New File', action: () => this.createNewFileInlineRoot(), key: 'Ctrl+N' },
-      { name: 'New Folder', action: () => this.createNewFolderInlineRoot(), key: 'Ctrl+Shift+N' },
-      { name: 'Save File', action: () => this.saveCurrentFile(), key: 'Ctrl+S' },
-      { name: 'Close Tab', action: () => this.state.activeTabPath && this.tabManager.closeTab(this.state.activeTabPath), key: 'Ctrl+W' },
-      { name: 'New Terminal', action: () => { this.terminalManager.createNewTerminal(); this.layoutManager.showTerminal(); }, key: 'Ctrl+T' }
-    ];
-    
-    const renderCommands = (filter: string = '') => {
-      commandList.innerHTML = '';
-      const filteredCommands = commands.filter(cmd => 
-        cmd.name.toLowerCase().includes(filter.toLowerCase())
-      );
-      
-      if (filteredCommands.length === 0) {
-        const noResults = document.createElement('div');
-        noResults.className = 'px-4 py-2 text-gray-400 text-sm';
-        noResults.textContent = 'No commands found';
-        commandList.appendChild(noResults);
-        return;
-      }
-      
-      filteredCommands.forEach((cmd, index) => {
-        const item = document.createElement('div');
-        item.className = `px-4 py-2 text-sm cursor-pointer hover:bg-gray-700 flex justify-between items-center ${index === 0 ? 'bg-gray-700' : ''}`;
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = cmd.name;
-        nameSpan.className = 'text-gray-200';
-        
-        const keySpan = document.createElement('span');
-        keySpan.textContent = cmd.key;
-        keySpan.className = 'text-gray-400 text-xs';
-        
-        item.appendChild(nameSpan);
-        if (cmd.key) item.appendChild(keySpan);
-        
-        item.addEventListener('click', () => {
-          cmd.action();
-          overlay.remove();
-        });
-        
-        commandList.appendChild(item);
-      });
-    };
-    
-    let selectedIndex = 0;
-    
-    input.addEventListener('input', (e) => {
-      const filter = (e.target as HTMLInputElement).value;
-      renderCommands(filter);
-      selectedIndex = 0;
-    });
-    
-    input.addEventListener('keydown', (e) => {
-      const items = commandList.querySelectorAll('.cursor-pointer');
-      
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (selectedIndex < items.length - 1) {
-          items[selectedIndex].classList.remove('bg-gray-700');
-          selectedIndex++;
-          items[selectedIndex].classList.add('bg-gray-700');
-        }
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (selectedIndex > 0) {
-          items[selectedIndex].classList.remove('bg-gray-700');
-          selectedIndex--;
-          items[selectedIndex].classList.add('bg-gray-700');
-        }
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const selectedItem = items[selectedIndex] as HTMLElement;
-        if (selectedItem) {
-          selectedItem.click();
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        overlay.remove();
-      }
-    });
-    
-    palette.appendChild(input);
-    palette.appendChild(commandList);
-    overlay.appendChild(palette);
-    
-    document.body.appendChild(overlay);
-    
-    // Initialize with all commands
-    renderCommands();
-    input.focus();
-    
-    // Close on overlay click
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        overlay.remove();
-      }
-    });
-  }
-
-  private openChatPanel(): void {
-    // Check if chat panel is currently visible
-    const isChatVisible = this.state.aiChatVisible;
-    
-    if (isChatVisible) {
-      // If chat is open, close it
-      this.layoutManager.hideAIChat();
-      console.log('🤖 AI Chat panel closed via Ctrl+J');
-    } else {
-      // If chat is closed, open it and focus the input
-      this.layoutManager.showAIChat();
-      
-      // Focus the chat input after a short delay to ensure the panel is rendered
-      setTimeout(() => {
-        const chatInput = document.querySelector('#ai-chat-content textarea') as HTMLTextAreaElement;
-        if (chatInput) {
-          chatInput.focus();
-          console.log('🤖 AI Chat panel opened and focused via Ctrl+J');
-        } else {
-          // Try alternative selectors
-          const altInput = document.querySelector('.chat-input textarea') as HTMLTextAreaElement;
-          if (altInput) {
-            altInput.focus();
-            console.log('🤖 AI Chat panel opened and focused via Ctrl+J (alt selector)');
-          } else {
-            console.log('🤖 AI Chat panel opened via Ctrl+J (input not found for focus)');
-          }
-        }
-      }, 200);
-    }
-  }
-
-  private toggleSidebar(): void {
-    const sidebarArea = document.querySelector('.sidebar-area') as HTMLElement;
-    const sidebarHandle = document.querySelector('.handle-sidebar') as HTMLElement;
-    
-    if (!sidebarArea || !sidebarHandle) return;
-    
-    const isVisible = sidebarArea.style.display !== 'none';
-    
-    if (isVisible) {
-      // Hide sidebar
-      sidebarArea.style.display = 'none';
-      sidebarHandle.style.display = 'none';
-    } else {
-      // Show sidebar
-      sidebarArea.style.display = 'flex';
-      sidebarHandle.style.display = 'block';
-    }
-    
-    // Trigger editor resize
-    if (this.state.monacoEditor?.layout) {
-      this.state.monacoEditor.layout();
-    }
-  }
-
-  private async saveCurrentFile(): Promise<void> {
-    await this.editorManager.saveCurrentFile();
   }
 }
 
