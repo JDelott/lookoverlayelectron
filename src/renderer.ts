@@ -324,6 +324,13 @@ class RendererApp {
         return;
       }
       
+      // Cmd/Ctrl + J - Open AI Chat Panel
+      if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
+        e.preventDefault();
+        this.openChatPanel();
+        return;
+      }
+      
       // Cmd/Ctrl + Shift + P - Command Palette
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
@@ -354,7 +361,7 @@ class RendererApp {
         return;
       }
       
-      // Cmd/Ctrl + Shift + C - Toggle AI Chat (changed from Shift+P)
+      // Cmd/Ctrl + Shift + C - Toggle AI Chat
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
         e.preventDefault();
         this.layoutManager.toggleAIChat();
@@ -962,8 +969,9 @@ class RendererApp {
     
     const commands = [
       { name: 'Toggle Terminal', action: () => this.layoutManager.toggleTerminal(), key: 'Ctrl+`' },
+      { name: 'Toggle AI Chat', action: () => this.openChatPanel(), key: 'Ctrl+J' },
+      { name: 'Toggle AI Chat (Alt)', action: () => this.layoutManager.toggleAIChat(), key: 'Ctrl+Shift+C' },
       { name: 'Toggle Sidebar', action: () => this.toggleSidebar(), key: 'Ctrl+B' },
-      { name: 'Toggle AI Chat', action: () => this.layoutManager.toggleAIChat(), key: 'Ctrl+Shift+C' },
       { name: 'Search Files', action: () => this.layoutManager.switchSidebarTab('search'), key: 'Ctrl+Shift+F' },
       { name: 'Git Status', action: () => this.layoutManager.switchSidebarTab('git'), key: '' },
       { name: 'New File', action: () => this.createNewFileInlineRoot(), key: 'Ctrl+N' },
@@ -1064,6 +1072,38 @@ class RendererApp {
         overlay.remove();
       }
     });
+  }
+
+  private openChatPanel(): void {
+    // Check if chat panel is currently visible
+    const isChatVisible = this.state.aiChatVisible;
+    
+    if (isChatVisible) {
+      // If chat is open, close it
+      this.layoutManager.hideAIChat();
+      console.log('🤖 AI Chat panel closed via Ctrl+J');
+    } else {
+      // If chat is closed, open it and focus the input
+      this.layoutManager.showAIChat();
+      
+      // Focus the chat input after a short delay to ensure the panel is rendered
+      setTimeout(() => {
+        const chatInput = document.querySelector('#ai-chat-content textarea') as HTMLTextAreaElement;
+        if (chatInput) {
+          chatInput.focus();
+          console.log('🤖 AI Chat panel opened and focused via Ctrl+J');
+        } else {
+          // Try alternative selectors
+          const altInput = document.querySelector('.chat-input textarea') as HTMLTextAreaElement;
+          if (altInput) {
+            altInput.focus();
+            console.log('🤖 AI Chat panel opened and focused via Ctrl+J (alt selector)');
+          } else {
+            console.log('🤖 AI Chat panel opened via Ctrl+J (input not found for focus)');
+          }
+        }
+      }, 200);
+    }
   }
 
   private toggleSidebar(): void {
