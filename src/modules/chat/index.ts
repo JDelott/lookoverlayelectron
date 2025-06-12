@@ -151,17 +151,6 @@ export class ChatManager {
             </div>
           </div>
 
-          <!-- Context Bar -->
-          <div id="context-bar" class="context-bar">
-            <div class="context-info">
-              <span class="context-icon">📁</span>
-              <span class="context-file" id="current-context">No file selected</span>
-            </div>
-            <button class="context-toggle" id="include-context" title="Include file context">
-              <span class="toggle-icon">🔗</span>
-            </button>
-          </div>
-
           <!-- Messages -->
           <div id="chat-messages" class="chat-messages">
             <div class="messages-container" id="messages-container"></div>
@@ -240,7 +229,6 @@ export class ChatManager {
     // Set up event listeners and styles
     this.setupEventListeners();
     this.injectChatStyles();
-    this.updateContextDisplay();
   }
 
   private injectChatStyles(): void {
@@ -1254,7 +1242,6 @@ export class ChatManager {
     const sendButton = document.getElementById('send-message') as HTMLButtonElement;
     const quickActionsToggle = document.getElementById('quick-actions-toggle') as HTMLButtonElement;
     const attachCodeBtn = document.getElementById('attach-code') as HTMLButtonElement;
-    const contextToggle = document.getElementById('include-context') as HTMLButtonElement;
 
     if (chatInput && sendButton) {
       sendButton.addEventListener('click', () => this.sendMessage());
@@ -1278,10 +1265,6 @@ export class ChatManager {
 
     if (attachCodeBtn) {
       attachCodeBtn.addEventListener('click', () => this.attachCurrentCode());
-    }
-
-    if (contextToggle) {
-      contextToggle.addEventListener('click', () => this.toggleContext());
     }
 
     // Quick action buttons - fix event delegation
@@ -1338,7 +1321,6 @@ export class ChatManager {
       'send-message', 
       'api-key-submit',
       'quick-actions-toggle',
-      'include-context',
       'attach-code',
       'attach-files',
       'clear-all-files',
