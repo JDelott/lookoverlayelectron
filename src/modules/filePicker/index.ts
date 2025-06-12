@@ -29,39 +29,37 @@ export class FilePicker {
   private isVisible = false;
 
   constructor(callbacks: FilePickerCallbacks, options: FilePickerOptions = { allowMultiple: true }) {
-    this.electronAPI = (window as any).electronAPI;
     this.callbacks = callbacks;
     this.options = options;
-    this.injectStyles();
-    this.createModal();
+    this.electronAPI = (window as any).electronAPI;
   }
 
   public async show(): Promise<void> {
-    const modal = document.getElementById('file-picker-modal');
-    if (!modal) return;
-
+    if (this.isVisible) return;
+    
     this.isVisible = true;
-    modal.style.display = 'flex';
+    this.createModal();
+    this.injectStyles();
+    
+    // Load files after modal is created
     await this.loadAvailableFiles();
     this.renderFileTree();
     this.setupEventListeners();
     
-    // Focus search input
-    const searchInput = document.getElementById('file-search-input') as HTMLInputElement;
-    if (searchInput) {
-      setTimeout(() => searchInput.focus(), 100);
-    }
+    console.log('🔧 FilePicker shown, loaded', this.availableFiles.length, 'files');
   }
 
   public hide(): void {
-    const modal = document.getElementById('file-picker-modal');
-    if (modal) {
-      modal.style.display = 'none';
-    }
+    if (!this.isVisible) return;
     
     this.isVisible = false;
-    this.clearSearch();
-    this.resetFilters();
+    const modal = document.getElementById('file-picker-modal');
+    if (modal) {
+      modal.remove();
+    }
+    
+    // Clear selection when hiding
+    this.selectedFiles.clear();
   }
 
   public getSelectedFiles(): Map<string, AttachedFile> {
@@ -70,37 +68,36 @@ export class FilePicker {
 
   public clearSelection(): void {
     this.selectedFiles.clear();
-    this.updateSelectedCount();
     this.updateFileElements();
+    this.updateSelectedCount();
   }
 
   private createModal(): void {
-    // Remove existing modal if present
+    // Remove existing modal if any
     const existingModal = document.getElementById('file-picker-modal');
-    if (existingModal) {
-      existingModal.remove();
-    }
+    if (existingModal) existingModal.remove();
 
     const modal = document.createElement('div');
     modal.id = 'file-picker-modal';
     modal.className = 'file-picker-modal';
-    modal.style.display = 'none';
-
+    
     modal.innerHTML = `
-      <div class="file-picker-overlay"></div>
+      <div class="file-picker-overlay" data-action="close"></div>
       <div class="file-picker-content">
         <div class="file-picker-header">
-          <h3>Select Files to Attach</h3>
-          <button class="close-btn" data-action="close">✕</button>
+          <h3>Select Files</h3>
+          <button class="file-picker-close" data-action="close">×</button>
         </div>
         
         <div class="file-picker-search">
-          <div class="search-input-container">
-            <input type="text" id="file-search-input" placeholder="Search files..." />
-            <span class="search-icon">🔍</span>
-          </div>
-          <div class="file-picker-filters">
-            <button class="filter-btn active" data-filter="all">All Files</button>
+          <input 
+            type="text" 
+            id="file-search-input" 
+            placeholder="Search files..." 
+            class="file-search-input"
+          />
+          <div class="file-filters">
+            <button class="filter-btn active" data-filter="all">All</button>
             <button class="filter-btn" data-filter="js">JS/TS</button>
             <button class="filter-btn" data-filter="css">CSS</button>
             <button class="filter-btn" data-filter="html">HTML</button>
@@ -109,39 +106,46 @@ export class FilePicker {
           </div>
         </div>
         
-        <div class="file-picker-body">
-          <div class="file-picker-tree" id="file-picker-tree">
-            <div class="file-picker-loading">Loading files...</div>
+        <div class="file-picker-tree-container">
+          <div id="file-picker-tree" class="file-picker-tree">
+            <div class="loading-files">Loading files...</div>
           </div>
         </div>
         
         <div class="file-picker-footer">
-          <div class="selected-count">
-            <span id="selected-files-count">0 files selected</span>
-          </div>
+          <div id="selected-files-count" class="selected-count">0 files selected</div>
           <div class="file-picker-actions">
-            <button class="btn-secondary" data-action="close">Cancel</button>
-            <button class="btn-primary" data-action="attach">Attach Files</button>
+            <button class="file-picker-cancel" data-action="close">Cancel</button>
+            <button class="file-picker-attach" data-action="attach">Attach Files</button>
           </div>
         </div>
       </div>
     `;
-
+    
     document.body.appendChild(modal);
   }
 
   private async loadAvailableFiles(): Promise<void> {
     try {
-      const fileSystem = (window as any).app?.fileSystemManager;
-      if (fileSystem) {
-        this.availableFiles = fileSystem.getFileTree();
-      } else {
-        // Fallback: get from electronAPI
+      console.log('🔧 Loading files...');
+      
+      // Try to get files from the app's file system manager
+      const app = (window as any).app;
+      if (app && app.fileSystem) {
+        const files = app.fileSystem.getFileTree();
+        this.availableFiles = files || [];
+        console.log('📁 Loaded from app fileSystem:', this.availableFiles.length, 'files');
+      } else if (this.electronAPI && this.electronAPI.getFileTree) {
+        // Fallback to electronAPI
         const files = await this.electronAPI.getFileTree();
         this.availableFiles = files || [];
+        console.log('📁 Loaded from electronAPI:', this.availableFiles.length, 'files');
+      } else {
+        console.error('❌ No file source available');
+        this.availableFiles = [];
       }
     } catch (error) {
-      console.error('Failed to load available files:', error);
+      console.error('❌ Failed to load files:', error);
       this.availableFiles = [];
     }
   }
@@ -157,6 +161,7 @@ export class FilePicker {
 
     container.innerHTML = '';
     this.renderFileItems(this.availableFiles, container, 0);
+    console.log('🎨 Rendered file tree with', this.availableFiles.length, 'items');
   }
 
   private renderFileItems(items: FileItem[], container: HTMLElement, depth: number): void {
@@ -164,11 +169,12 @@ export class FilePicker {
       if (item.type === 'file') {
         const fileElement = this.createFileElement(item, depth);
         container.appendChild(fileElement);
-      } else if (item.type === 'directory' && item.children) {
+      } else if (item.type === 'directory') {
         const dirElement = this.createDirectoryElement(item, depth);
         container.appendChild(dirElement);
         
-        if (item.isExpanded) {
+        // Render children if expanded and they exist
+        if (item.isExpanded && item.children && item.children.length > 0) {
           this.renderFileItems(item.children, container, depth + 1);
         }
       }
@@ -192,7 +198,6 @@ export class FilePicker {
         <input type="checkbox" class="file-checkbox" ${isSelected ? 'checked' : ''} />
         <span class="file-icon">${icon}</span>
         <span class="file-name">${item.name}</span>
-        <span class="file-size"></span>
       </div>
     `;
 
@@ -222,107 +227,90 @@ export class FilePicker {
     const modal = document.getElementById('file-picker-modal');
     if (!modal) return;
 
-    // Remove existing listeners
-    modal.removeEventListener('click', this.handleModalClick);
-    
-    // Add click handler
-    modal.addEventListener('click', this.handleModalClick.bind(this));
+    // Modal click handler
+    modal.addEventListener('click', (e: Event) => {
+      const target = e.target as HTMLElement;
+      const action = target.getAttribute('data-action');
+      
+      if (action === 'close') {
+        this.hide();
+        return;
+      }
+      
+      if (action === 'attach') {
+        this.attachSelectedFiles();
+        return;
+      }
+
+      // Handle overlay click
+      if (target.classList.contains('file-picker-overlay')) {
+        this.hide();
+        return;
+      }
+
+      // Handle file item clicks
+      const fileItem = target.closest('.file-picker-item') as HTMLElement;
+      if (fileItem) {
+        const path = fileItem.getAttribute('data-path');
+        const type = fileItem.getAttribute('data-type');
+        
+        if (type === 'file' && path) {
+          this.toggleFileSelection(path);
+        } else if (type === 'directory' && path) {
+          this.toggleDirectory(path);
+        }
+      }
+    });
 
     // Search functionality
     const searchInput = document.getElementById('file-search-input') as HTMLInputElement;
     if (searchInput) {
-      searchInput.removeEventListener('input', this.handleSearch);
-      searchInput.addEventListener('input', this.handleSearch.bind(this));
+      searchInput.addEventListener('input', (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        this.filterFiles(input.value);
+      });
     }
 
     // Filter buttons
     const filterBtns = modal.querySelectorAll('.filter-btn');
     filterBtns.forEach(btn => {
-      btn.removeEventListener('click', this.handleFilterClick);
-      btn.addEventListener('click', this.handleFilterClick.bind(this));
+      btn.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+        const filter = target.getAttribute('data-filter') || 'all';
+        
+        // Update active filter
+        filterBtns.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+        
+        this.filterFilesByType(filter);
+      });
     });
 
     // Keyboard shortcuts
-    document.removeEventListener('keydown', this.handleKeyDown);
-    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (!this.isVisible) return;
+      
+      if (e.key === 'Escape') {
+        this.hide();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        this.attachSelectedFiles();
+      }
+    });
   }
 
-  private handleModalClick = (e: Event): void => {
-    const target = e.target as HTMLElement;
-    const action = target.getAttribute('data-action');
-    
-    if (action === 'close') {
-      this.hide();
-      return;
-    }
-    
-    if (action === 'attach') {
-      this.attachSelectedFiles();
-      return;
-    }
-
-    // Handle overlay click
-    if (target.classList.contains('file-picker-overlay')) {
-      this.hide();
-      return;
-    }
-
-    // Handle file item clicks
-    const fileItem = target.closest('.file-picker-item') as HTMLElement;
-    if (fileItem) {
-      const path = fileItem.getAttribute('data-path');
-      const type = fileItem.getAttribute('data-type');
-      
-      if (type === 'file' && path) {
-        this.toggleFileSelection(path);
-      } else if (type === 'directory' && path) {
-        this.toggleDirectory(path);
-      }
-    }
-  };
-
-  private handleSearch = (e: Event): void => {
-    const input = e.target as HTMLInputElement;
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
-    }
-    this.searchTimeout = setTimeout(() => {
-      this.filterFiles(input.value);
-    }, 300);
-  };
-
-  private searchTimeout: NodeJS.Timeout | null = null;
-
-  private handleFilterClick = (e: Event): void => {
-    const btn = e.target as HTMLElement;
-    const filter = btn.getAttribute('data-filter') || 'all';
-    
-    // Update active filter
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    filterBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    
-    this.filterFilesByType(filter);
-  };
-
-  private handleKeyDown = (e: KeyboardEvent): void => {
-    if (!this.isVisible) return;
-    
-    if (e.key === 'Escape') {
-      this.hide();
-    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      this.attachSelectedFiles();
-    }
-  };
-
   private async toggleDirectory(path: string): Promise<void> {
-    const fileSystem = (window as any).app?.fileSystemManager;
-    if (fileSystem) {
+    // Try to get the file system manager to toggle the directory
+    const app = (window as any).app;
+    if (app && app.fileSystem) {
       const item = this.findItemByPath(this.availableFiles, path);
       if (item) {
-        await fileSystem.toggleDirectory(item);
-        this.availableFiles = fileSystem.getFileTree();
-        this.renderFileTree();
+        try {
+          await app.fileSystem.toggleDirectory(item);
+          this.availableFiles = app.fileSystem.getFileTree();
+          this.renderFileTree();
+        } catch (error) {
+          console.error('Failed to toggle directory:', error);
+        }
       }
     }
   }
@@ -344,6 +332,15 @@ export class FilePicker {
     if (this.selectedFiles.has(filePath)) {
       this.selectedFiles.delete(filePath);
     } else {
+      if (!this.options.allowMultiple && this.selectedFiles.size >= 1) {
+        this.selectedFiles.clear();
+      }
+      
+      if (this.options.maxFiles && this.selectedFiles.size >= this.options.maxFiles) {
+        this.showError(`Maximum ${this.options.maxFiles} files allowed`);
+        return;
+      }
+      
       await this.addFileToSelection(filePath);
     }
     
@@ -367,6 +364,7 @@ export class FilePicker {
       };
       
       this.selectedFiles.set(filePath, attachedFile);
+      console.log('📎 Added file to selection:', fileName);
     } catch (error) {
       console.error('Failed to read file:', error);
       this.showError(`Failed to read file: ${filePath}`);
@@ -405,6 +403,7 @@ export class FilePicker {
       return;
     }
 
+    console.log('📎 Attaching', this.selectedFiles.size, 'files');
     this.callbacks.onFilesSelected(new Map(this.selectedFiles));
     this.hide();
   }
@@ -453,25 +452,9 @@ export class FilePicker {
     });
   }
 
-  private clearSearch(): void {
-    const searchInput = document.getElementById('file-search-input') as HTMLInputElement;
-    if (searchInput) {
-      searchInput.value = '';
-    }
-    this.filterFiles('');
-  }
-
-  private resetFilters(): void {
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    filterBtns.forEach(btn => btn.classList.remove('active'));
-    const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
-    if (allBtn) allBtn.classList.add('active');
-    this.filterFilesByType('all');
-  }
-
   private getFileIcon(extension: string): string {
     const iconMap: { [key: string]: string } = {
-      'js': '📄', 'jsx': '⚛️', 'ts': '📘', 'tsx': '⚛️',
+      'js': '🟨', 'jsx': '⚛️', 'ts': '🔵', 'tsx': '⚛️',
       'html': '🌐', 'css': '🎨', 'scss': '🎨', 'less': '🎨',
       'json': '📋', 'md': '📝', 'txt': '📄', 'py': '🐍',
       'java': '☕', 'cpp': '⚙️', 'c': '⚙️', 'php': '🐘',
@@ -492,8 +475,25 @@ export class FilePicker {
   }
 
   private showError(message: string): void {
-    console.error(message);
-    // You can implement a toast notification here
+    console.error('FilePicker Error:', message);
+    // Create a simple error notification
+    const notification = document.createElement('div');
+    notification.className = 'file-picker-error';
+    notification.textContent = message;
+    notification.style.cssText = `
+      position: fixed; top: 20px; right: 20px; 
+      background: #ef4444; color: white; 
+      padding: 12px 16px; border-radius: 6px; 
+      z-index: 10002; font-size: 14px;
+      animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.style.animation = 'slideOutRight 0.3s ease-out';
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
   }
 
   private injectStyles(): void {
@@ -532,7 +532,7 @@ export class FilePicker {
         border: 1px solid #404040;
         border-radius: 12px;
         width: 90%;
-        max-width: 800px;
+        max-width: 700px;
         max-height: 80%;
         display: flex;
         flex-direction: column;
@@ -551,22 +551,27 @@ export class FilePicker {
       .file-picker-header h3 {
         margin: 0;
         color: #e4e4e7;
-        font-size: 1.1rem;
+        font-size: 1.125rem;
         font-weight: 600;
       }
 
-      .close-btn {
+      .file-picker-close {
         background: none;
         border: none;
         color: #71717a;
-        font-size: 1.2rem;
         cursor: pointer;
-        padding: 0.25rem;
-        border-radius: 0.25rem;
+        font-size: 1.5rem;
+        padding: 0;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
         transition: all 0.2s;
       }
 
-      .close-btn:hover {
+      .file-picker-close:hover {
         background: #374151;
         color: #e4e4e7;
       }
@@ -576,39 +581,24 @@ export class FilePicker {
         border-bottom: 1px solid #404040;
       }
 
-      .search-input-container {
-        position: relative;
-        margin-bottom: 1rem;
-      }
-
-      .search-input-container input {
+      .file-search-input {
         width: 100%;
         background: #262626;
         border: 1px solid #404040;
-        border-radius: 0.5rem;
-        padding: 0.75rem 2.5rem 0.75rem 1rem;
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
         color: #e4e4e7;
         font-size: 0.875rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .file-search-input:focus {
         outline: none;
-        transition: all 0.2s;
-        box-sizing: border-box;
-      }
-
-      .search-input-container input:focus {
         border-color: #3b82f6;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        box-shadow: 0 0 0 1px #3b82f6;
       }
 
-      .search-icon {
-        position: absolute;
-        right: 0.75rem;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #71717a;
-        font-size: 0.875rem;
-      }
-
-      .file-picker-filters {
+      .file-filters {
         display: flex;
         gap: 0.5rem;
         flex-wrap: wrap;
@@ -617,17 +607,17 @@ export class FilePicker {
       .filter-btn {
         background: #262626;
         border: 1px solid #404040;
-        color: #d4d4d8;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
+        color: #71717a;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
         font-size: 0.75rem;
         cursor: pointer;
         transition: all 0.2s;
       }
 
       .filter-btn:hover {
-        border-color: #60a5fa;
-        color: #60a5fa;
+        background: #374151;
+        color: #e4e4e7;
       }
 
       .filter-btn.active {
@@ -636,37 +626,24 @@ export class FilePicker {
         color: white;
       }
 
-      .file-picker-body {
+      .file-picker-tree-container {
         flex: 1;
         overflow-y: auto;
-        padding: 1rem 0;
+        min-height: 0;
       }
 
       .file-picker-tree {
-        padding: 0 1.5rem;
-      }
-
-      .file-picker-loading {
-        text-align: center;
-        color: #71717a;
-        padding: 2rem;
-      }
-
-      .no-files {
-        text-align: center;
-        color: #71717a;
-        padding: 2rem;
-        font-style: italic;
+        padding: 0.5rem;
       }
 
       .file-picker-item {
         display: flex;
         align-items: center;
-        padding: 0.5rem 0;
+        padding: 0.375rem 0;
         cursor: pointer;
-        border-radius: 0.375rem;
-        margin: 0.125rem 0;
-        transition: all 0.2s;
+        border-radius: 4px;
+        transition: background 0.15s;
+        min-height: 2rem;
       }
 
       .file-picker-item:hover {
@@ -674,8 +651,8 @@ export class FilePicker {
       }
 
       .file-picker-item.selected {
-        background: rgba(59, 130, 246, 0.1);
-        border: 1px solid #3b82f6;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.3);
       }
 
       .file-picker-item-content {
@@ -686,30 +663,31 @@ export class FilePicker {
       }
 
       .file-checkbox {
-        width: 1rem;
-        height: 1rem;
         accent-color: #3b82f6;
+        margin: 0;
       }
 
-      .file-icon {
-        font-size: 0.875rem;
-      }
-
-      .file-name, .dir-name {
-        flex: 1;
-        font-size: 0.875rem;
-        color: #d4d4d8;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-      }
-
-      .file-size {
-        color: #71717a;
-        font-size: 0.75rem;
-      }
-
+      .file-icon,
       .expand-icon {
+        font-size: 1rem;
+        width: 1.25rem;
+        text-align: center;
+      }
+
+      .file-name,
+      .dir-name {
+        color: #d4d4d8;
         font-size: 0.875rem;
-        margin-right: 0.25rem;
+        font-family: 'Monaco', 'Consolas', monospace;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .directory-item .dir-name {
+        color: #60a5fa;
+        font-weight: 500;
       }
 
       .file-picker-footer {
@@ -730,43 +708,65 @@ export class FilePicker {
         gap: 0.75rem;
       }
 
-      .btn-secondary, .btn-primary {
+      .file-picker-cancel,
+      .file-picker-attach {
         padding: 0.5rem 1rem;
         border-radius: 6px;
         font-size: 0.875rem;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s;
-        border: none;
       }
 
-      .btn-secondary {
+      .file-picker-cancel {
+        background: transparent;
+        border: 1px solid #404040;
+        color: #71717a;
+      }
+
+      .file-picker-cancel:hover {
         background: #374151;
-        color: #d4d4d8;
+        color: #e4e4e7;
       }
 
-      .btn-secondary:hover {
-        background: #4b5563;
-      }
-
-      .btn-primary {
+      .file-picker-attach {
         background: #3b82f6;
+        border: 1px solid #3b82f6;
         color: white;
       }
 
-      .btn-primary:hover {
+      .file-picker-attach:hover {
         background: #2563eb;
-        transform: translateY(-1px);
+        border-color: #2563eb;
       }
 
+      .loading-files,
+      .no-files {
+        text-align: center;
+        color: #71717a;
+        padding: 2rem;
+        font-style: italic;
+      }
+
+      /* Animations */
       @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
       }
 
       @keyframes slideIn {
-        from { transform: translateY(-30px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
+        from { transform: scale(0.9) translateY(-20px); opacity: 0; }
+        to { transform: scale(1) translateY(0); opacity: 1; }
+      }
+
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+
+      @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
       }
     `;
     
@@ -774,16 +774,8 @@ export class FilePicker {
   }
 
   public dispose(): void {
-    const modal = document.getElementById('file-picker-modal');
-    if (modal) {
-      modal.remove();
-    }
-    
+    this.hide();
     const style = document.getElementById('file-picker-styles');
-    if (style) {
-      style.remove();
-    }
-    
-    document.removeEventListener('keydown', this.handleKeyDown);
+    if (style) style.remove();
   }
 }
