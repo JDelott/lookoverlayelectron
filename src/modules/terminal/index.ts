@@ -6,15 +6,16 @@ export class TerminalManager {
   private electronAPI: any;
   private commandHistory: string[] = [];
   private historyIndex = -1;
-  private runningProcesses = new Map<string, { command: string; started: Date }>();
+  private runningProcesses = new Map<string, { command: string; started: Date; isInteractive?: boolean }>();
+  private currentInteractiveProcess: string | null = null;
   private problemsManager: ProblemsManager;
+  private lastInteractivePrompt: string = '';
 
   constructor(state: AppState, problemsManager: ProblemsManager) {
     this.state = state;
     this.electronAPI = (window as any).electronAPI;
     this.problemsManager = problemsManager;
     
-    // Initialize activeTerminalTab if not set
     if (!this.state.activeTerminalTab) {
       this.state.activeTerminalTab = 'terminal';
     }
@@ -28,37 +29,223 @@ export class TerminalManager {
   }
 
   private setupStreamingHandlers(): void {
-    // Listen for streaming command output
     if (this.electronAPI) {
       this.electronAPI.onCommandOutputStream((data: string) => {
         this.appendToActiveTerminal(data);
       });
 
-      this.electronAPI.onProcessStarted((info: { id: string; command: string }) => {
+      this.electronAPI.onProcessStarted((info: { id: string; command: string; isInteractive?: boolean }) => {
         this.runningProcesses.set(info.id, { 
           command: info.command, 
-          started: new Date() 
+          started: new Date(),
+          isInteractive: info.isInteractive 
         });
+        
+        if (info.isInteractive) {
+          this.currentInteractiveProcess = info.id;
+        }
+        
         this.updateTerminalStatus();
       });
 
       this.electronAPI.onProcessEnded((info: { id: string }) => {
         this.runningProcesses.delete(info.id);
+        
+        if (this.currentInteractiveProcess === info.id) {
+          this.currentInteractiveProcess = null;
+          this.lastInteractivePrompt = '';
+        }
+        
         this.updateTerminalStatus();
       });
     }
   }
 
   private setupProblemsListeners(): void {
-    // Listen for problems updates
     document.addEventListener('problems-updated', (event: any) => {
       this.renderTerminalTabs();
       this.updateTerminalDisplay();
     });
 
     document.addEventListener('problems-count-changed', (event: any) => {
-      this.renderTerminalTabs(); // Update tab with new counts
+      this.renderTerminalTabs();
     });
+  }
+
+  private appendToActiveTerminal(data: string): void {
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (activeTerminal) {
+      let cleanData = data;
+      
+      // If we're in an interactive process, clean up all the control sequences
+      if (this.currentInteractiveProcess) {
+        cleanData = data
+          .replace(/\x1b\[[0-9;]*m/g, '')     // Remove color codes (including the 'm')
+          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // Remove all other ANSI sequences
+          .replace(/\r/g, '\n')               // Convert carriage returns to newlines
+          .replace(/\?m/g, '?')               // Clean up question mark remnants
+          .replace(/m\?/g, '?')               // Clean up question mark remnants
+          .replace(/m([A-Za-z])/g, '$1')      // Remove standalone 'm' before letters
+          .replace(/([A-Za-z])m/g, '$1')      // Remove standalone 'm' after letters
+          .replace(/\s+m\s+/g, ' ')           // Remove standalone 'm' between spaces
+          .replace(/^m|m$/g, '');             // Remove 'm' at start or end of lines
+      }
+      
+      activeTerminal.output += cleanData;
+      this.updateTerminalDisplay();
+    }
+  }
+
+  private updateTerminalDisplay(): void {
+    const terminalOutput = document.querySelector('.terminal-output');
+    if (!terminalOutput) return;
+
+    if (this.state.activeTerminalTab === 'problems') {
+      const problemsInfo = this.problemsManager.getProblemsTab();
+      terminalOutput.innerHTML = `
+        <div class="problems-panel">
+          ${problemsInfo.content}
+        </div>
+      `;
+      this.injectProblemsStyles();
+    } else {
+      const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+      if (!activeTerminal) return;
+
+      const wasInputFocused = document.activeElement?.classList.contains('terminal-input');
+
+      const terminalContent = document.createElement('div');
+      terminalContent.className = 'terminal-content';
+      
+      let promptText = this.getStyledPrompt(activeTerminal.workingDirectory);
+      let placeholderText = "Type a command...";
+      
+      if (this.currentInteractiveProcess) {
+        placeholderText = "Enter your response...";
+      }
+      
+      terminalContent.innerHTML = `
+        <div class="terminal-scroll-content">
+          <pre class="terminal-output-text">${this.ansiToHtml(activeTerminal.output)}</pre>
+        </div>
+        <div class="terminal-input-section">
+          <div class="terminal-input-line">
+            <span class="terminal-current-prompt">${this.ansiToHtml(promptText)}</span>
+            <input type="text" class="terminal-input" placeholder="${placeholderText}" />
+          </div>
+        </div>
+      `;
+
+      terminalOutput.innerHTML = '';
+      terminalOutput.appendChild(terminalContent);
+
+      const input = terminalContent.querySelector('.terminal-input') as HTMLInputElement;
+      if (input) {
+        input.addEventListener('keydown', (e) => this.handleKeyDown(e, input));
+        
+        if (wasInputFocused || (this.state.activeTerminalTab === 'terminal' && activeTerminal.isActive)) {
+          setTimeout(() => {
+            input.focus();
+          }, 0);
+        }
+      }
+
+      const scrollContent = terminalContent.querySelector('.terminal-scroll-content');
+      if (scrollContent) {
+        scrollContent.scrollTop = scrollContent.scrollHeight;
+      }
+    }
+  }
+
+  private ansiToHtml(text: string): string {
+    const ansiRegex = /\x1b\[[0-9;]*m/g;
+    const ansiMap: { [key: string]: string } = {
+      '\x1b[0m': '</span>',
+      '\x1b[1m': '<span class="bold">',
+      '\x1b[90m': '<span class="dim">',
+      '\x1b[91m': '<span class="red">',
+      '\x1b[92m': '<span class="green">',
+      '\x1b[93m': '<span class="yellow">',
+      '\x1b[94m': '<span class="blue">',
+      '\x1b[95m': '<span class="magenta">',
+      '\x1b[96m': '<span class="cyan">',
+      '\x1b[97m': '<span class="white">',
+      '\x1b[31m': '<span class="red">',
+      '\x1b[32m': '<span class="green">',
+      '\x1b[33m': '<span class="yellow">',
+      '\x1b[34m': '<span class="blue">',
+      '\x1b[35m': '<span class="magenta">',
+      '\x1b[36m': '<span class="cyan">',
+      '\x1b[37m': '<span class="white">',
+      '\x1b[1;37m': '<span class="bold white">',
+      '\x1b[1;32m': '<span class="bold green">',
+      '\x1b[1;34m': '<span class="bold blue">',
+    };
+
+    return text.replace(ansiRegex, (match) => ansiMap[match] || '');
+  }
+
+  private handleKeyDown(e: KeyboardEvent, input: HTMLInputElement): void {
+    switch (e.key) {
+      case 'Enter':
+        const command = input.value.trim();
+        if (command) {
+          if (this.currentInteractiveProcess) {
+            this.sendInteractiveInput(command);
+          } else {
+            this.executeCommand(command);
+          }
+          input.value = '';
+        }
+        break;
+        
+      case 'ArrowUp':
+        e.preventDefault();
+        if (this.historyIndex > 0) {
+          this.historyIndex--;
+          input.value = this.commandHistory[this.historyIndex] || '';
+        }
+        break;
+        
+      case 'ArrowDown':
+        e.preventDefault();
+        if (this.historyIndex < this.commandHistory.length - 1) {
+          this.historyIndex++;
+          input.value = this.commandHistory[this.historyIndex] || '';
+        } else {
+          this.historyIndex = this.commandHistory.length;
+          input.value = '';
+        }
+        break;
+        
+      case 'Tab':
+        e.preventDefault();
+        break;
+        
+      case 'c':
+        if (e.ctrlKey) {
+          e.preventDefault();
+          this.killRunningProcesses();
+        }
+        break;
+    }
+  }
+
+  private async sendInteractiveInput(input: string): Promise<void> {
+    if (!this.currentInteractiveProcess || !this.electronAPI) return;
+
+    console.log(`Sending interactive input: "${input}" to process ${this.currentInteractiveProcess}`);
+
+    this.lastInteractivePrompt = '';
+
+    try {
+      const result = await this.electronAPI.sendProcessInput(this.currentInteractiveProcess, input);
+      if (!result.success) {
+        console.error('Failed to send input to process:', result.error);
+      }
+    } catch (error) {
+      console.error('Error sending input to process:', error);
+    }
   }
 
   createNewTerminal(): string {
@@ -78,7 +265,6 @@ export class TerminalManager {
     this.state.terminals.set(terminalId, terminal);
     this.state.activeTerminalId = terminalId;
     
-    // Initialize the working directory for this terminal in the main process
     if (this.electronAPI && this.electronAPI.initTerminalWorkingDir) {
       this.electronAPI.initTerminalWorkingDir(terminalId, terminal.workingDirectory)
         .then(() => {
@@ -127,20 +313,22 @@ export class TerminalManager {
     const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
     if (!activeTerminal) return;
 
-    // Add to command history
     if (command.trim()) {
       this.commandHistory.push(command);
       this.historyIndex = this.commandHistory.length;
     }
 
-    // Add command to output with styled prompt
     const prompt = this.getStyledPrompt(activeTerminal.workingDirectory);
     activeTerminal.output += `${prompt}${command}\n`;
     activeTerminal.history.push(command);
 
+    if (this.isPackageManagerCommand(command)) {
+      activeTerminal.output += `\x1b[36m🔄 Running package installation...\x1b[0m\n`;
+      this.updateTerminalDisplay();
+    }
+
     try {
       if (this.electronAPI) {
-        // Pass terminal ID for proper working directory tracking
         const result = await this.electronAPI.executeCommand(
           command, 
           activeTerminal.workingDirectory,
@@ -152,17 +340,22 @@ export class TerminalManager {
             activeTerminal.output += result.output + '\n';
           }
           
-          // Update working directory if it changed (especially for cd commands)
+          if (this.isPackageManagerCommand(command)) {
+            activeTerminal.output += `\x1b[32m✅ Package installation completed successfully!\x1b[0m\n`;
+          }
+          
           if (result.workingDir && result.workingDir !== activeTerminal.workingDirectory) {
             console.log(`🔄 Working directory changed from ${activeTerminal.workingDirectory} to ${result.workingDir}`);
             activeTerminal.workingDirectory = result.workingDir;
             this.state.currentWorkingDirectory = result.workingDir;
-            
-            // Refresh file tree when directory changes
             this.triggerFileTreeRefresh();
           }
         } else {
           activeTerminal.output += `\x1b[91m❌ ${result.output}\x1b[0m\n`;
+          
+          if (this.isPackageManagerCommand(command)) {
+            activeTerminal.output += `\x1b[93m💡 Try checking your internet connection or package name.\x1b[0m\n`;
+          }
         }
       } else {
         activeTerminal.output += '\x1b[91m❌ Error: Electron API not available\x1b[0m\n';
@@ -180,21 +373,12 @@ export class TerminalManager {
 \x1b[36m╰─\x1b[0m \x1b[1;32m$\x1b[0m `;
   }
 
-  private appendToActiveTerminal(data: string): void {
-    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
-    if (activeTerminal) {
-      activeTerminal.output += data;
-      this.updateTerminalDisplay();
-    }
-  }
-
   private renderTerminalTabs(): void {
     const tabsContainer = document.querySelector('.terminal-tabs');
     if (!tabsContainer) return;
 
     tabsContainer.innerHTML = '';
     
-    // Terminal tabs
     this.state.terminals.forEach((terminal, terminalId) => {
       const tab = document.createElement('div');
       tab.className = `terminal-tab ${terminal.isActive && this.state.activeTerminalTab === 'terminal' ? 'active' : ''}`;
@@ -217,7 +401,6 @@ export class TerminalManager {
       tabsContainer.appendChild(tab);
     });
 
-    // Problems tab
     const problemsTab = document.createElement('div');
     const problemsInfo = this.problemsManager.getProblemsTab();
     const problemsCount = this.problemsManager.getProblemsCount();
@@ -253,156 +436,11 @@ export class TerminalManager {
     
     tabsContainer.appendChild(problemsTab);
 
-    // Add new terminal button
     const newTabButton = document.createElement('button');
     newTabButton.className = 'terminal-new-tab';
     newTabButton.innerHTML = '+ New Terminal';
     newTabButton.onclick = () => this.createNewTerminal();
     tabsContainer.appendChild(newTabButton);
-  }
-
-  private updateTerminalDisplay(): void {
-    const terminalOutput = document.querySelector('.terminal-output');
-    if (!terminalOutput) return;
-
-    if (this.state.activeTerminalTab === 'problems') {
-      // Show problems content
-      const problemsInfo = this.problemsManager.getProblemsTab();
-      terminalOutput.innerHTML = `
-        <div class="problems-panel">
-          ${problemsInfo.content}
-        </div>
-      `;
-      this.injectProblemsStyles();
-    } else {
-      // Show terminal content
-      const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
-      if (!activeTerminal) return;
-
-      // Check if input was focused before update
-      const wasInputFocused = document.activeElement?.classList.contains('terminal-input');
-
-      const terminalContent = document.createElement('div');
-      terminalContent.className = 'terminal-content';
-      
-      terminalContent.innerHTML = `
-        <div class="terminal-scroll-content">
-          <pre class="terminal-output-text">${this.ansiToHtml(activeTerminal.output)}</pre>
-        </div>
-        <div class="terminal-input-section">
-          <div class="terminal-input-line">
-            <span class="terminal-current-prompt">${this.getStyledPrompt(activeTerminal.workingDirectory)}</span>
-            <input type="text" class="terminal-input" placeholder="Type a command..." />
-          </div>
-        </div>
-      `;
-
-      terminalOutput.innerHTML = '';
-      terminalOutput.appendChild(terminalContent);
-
-      // Setup input handling
-      const input = terminalContent.querySelector('.terminal-input') as HTMLInputElement;
-      if (input) {
-        input.addEventListener('keydown', (e) => this.handleKeyDown(e, input));
-        
-        // Focus the input if it was previously focused OR if we're in an active terminal session
-        if (wasInputFocused || (this.state.activeTerminalTab === 'terminal' && activeTerminal.isActive)) {
-          // Use setTimeout to ensure DOM is fully updated
-          setTimeout(() => {
-            input.focus();
-          }, 0);
-        }
-      }
-
-      // Auto-scroll to bottom
-      const scrollContent = terminalContent.querySelector('.terminal-scroll-content');
-      if (scrollContent) {
-        scrollContent.scrollTop = scrollContent.scrollHeight;
-      }
-    }
-  }
-
-  private handleKeyDown(e: KeyboardEvent, input: HTMLInputElement): void {
-    switch (e.key) {
-      case 'Enter':
-        const command = input.value.trim();
-        if (command) {
-          this.executeCommand(command);
-          input.value = '';
-        }
-        break;
-        
-      case 'ArrowUp':
-        e.preventDefault();
-        if (this.historyIndex > 0) {
-          this.historyIndex--;
-          input.value = this.commandHistory[this.historyIndex] || '';
-        }
-        break;
-        
-      case 'ArrowDown':
-        e.preventDefault();
-        if (this.historyIndex < this.commandHistory.length - 1) {
-          this.historyIndex++;
-          input.value = this.commandHistory[this.historyIndex] || '';
-        } else {
-          this.historyIndex = this.commandHistory.length;
-          input.value = '';
-        }
-        break;
-        
-      case 'Tab':
-        e.preventDefault();
-        // TODO: Implement tab completion
-        break;
-        
-      case 'c':
-        if (e.ctrlKey) {
-          e.preventDefault();
-          this.killRunningProcesses();
-        }
-        break;
-    }
-  }
-
-  private ansiToHtml(text: string): string {
-    const ansiRegex = /\x1b\[[0-9;]*m/g;
-    const ansiMap: { [key: string]: string } = {
-      '\x1b[0m': '</span>',     // Reset
-      '\x1b[1m': '<span class="bold">',      // Bold
-      '\x1b[90m': '<span class="dim">',      // Dim
-      '\x1b[91m': '<span class="red">',      // Red
-      '\x1b[92m': '<span class="green">',    // Green
-      '\x1b[93m': '<span class="yellow">',   // Yellow
-      '\x1b[94m': '<span class="blue">',     // Blue
-      '\x1b[95m': '<span class="magenta">',  // Magenta
-      '\x1b[96m': '<span class="cyan">',     // Cyan
-      '\x1b[97m': '<span class="white">',    // White
-      '\x1b[30m': '<span class="black">',    // Black
-      '\x1b[31m': '<span class="red">',      // Red
-      '\x1b[32m': '<span class="green">',    // Green
-      '\x1b[33m': '<span class="yellow">',   // Yellow
-      '\x1b[34m': '<span class="blue">',     // Blue
-      '\x1b[35m': '<span class="magenta">',  // Magenta
-      '\x1b[36m': '<span class="cyan">',     // Cyan
-      '\x1b[37m': '<span class="white">',    // White
-      '\x1b[1;37m': '<span class="bold white">', // Bold White
-      '\x1b[1;32m': '<span class="bold green">', // Bold Green
-      '\x1b[1;34m': '<span class="bold blue">',  // Bold Blue
-    };
-
-    return text.replace(ansiRegex, (match) => ansiMap[match] || '');
-  }
-
-  private async killRunningProcesses(): Promise<void> {
-    if (this.electronAPI) {
-      try {
-        await this.electronAPI.killProcess();
-        this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
-      } catch (error) {
-        console.error('Failed to kill processes:', error);
-      }
-    }
   }
 
   private updateTerminalStatus(): void {
@@ -413,7 +451,6 @@ export class TerminalManager {
     this.state.activeTerminalTab = 'problems';
     this.problemsManager.setActive(true);
     
-    // Deactivate current terminal
     const currentTerminal = this.state.terminals.get(this.state.activeTerminalId);
     if (currentTerminal) {
       currentTerminal.isActive = false;
@@ -429,13 +466,11 @@ export class TerminalManager {
     this.state.activeTerminalTab = 'terminal';
     this.problemsManager.setActive(false);
 
-    // Deactivate current terminal
     const currentTerminal = this.state.terminals.get(this.state.activeTerminalId);
     if (currentTerminal) {
       currentTerminal.isActive = false;
     }
 
-    // Activate new terminal
     const newTerminal = this.state.terminals.get(terminalId);
     if (newTerminal) {
       newTerminal.isActive = true;
@@ -446,7 +481,6 @@ export class TerminalManager {
     this.updateTerminalDisplay();
     this.renderTerminalTabs();
     
-    // Focus terminal input ONLY when explicitly switching to terminal
     setTimeout(() => {
       const input = document.querySelector('.terminal-input') as HTMLInputElement;
       if (input && this.state.activeTerminalTab === 'terminal') {
@@ -476,7 +510,7 @@ export class TerminalManager {
 
   private injectProblemsStyles(): void {
     const existingStyle = document.getElementById('problems-styles');
-    if (existingStyle) return; // Already injected
+    if (existingStyle) return;
 
     const style = document.createElement('style');
     style.id = 'problems-styles';
@@ -747,19 +781,16 @@ export class TerminalManager {
   }
 
   private async refreshFileTree(): Promise<void> {
-    // Trigger file tree refresh
     const event = new CustomEvent('refresh-file-tree');
     document.dispatchEvent(event);
   }
 
   private triggerFileTreeRefresh(): void {
-    // Trigger file tree refresh
     const event = new CustomEvent('refresh-file-tree');
     document.dispatchEvent(event);
     console.log('🔄 Triggered file tree refresh');
   }
 
-  // Add method to handle file system changes
   handleFileSystemChange(event: { type: string; path: string }): void {
     console.log('File system changed:', event);
     this.refreshFileTree();
@@ -771,6 +802,44 @@ export class TerminalManager {
         console.log('📁 File system changed:', event);
         this.triggerFileTreeRefresh();
       });
+    }
+  }
+
+  private isPackageManagerCommand(command: string): boolean {
+    const packageCommands = [
+      'npm install', 'npm i ', 'npm add', 'npm update',
+      'yarn install', 'yarn add', 'yarn upgrade',
+      'pnpm install', 'pnpm add', 'pnpm update',
+      'npx create-', 'npx @'
+    ];
+    
+    return packageCommands.some(cmd => command.startsWith(cmd));
+  }
+
+  async debugPackageManager(): Promise<void> {
+    const activeTerminal = this.state.terminals.get(this.state.activeTerminalId);
+    if (!activeTerminal) return;
+
+    activeTerminal.output += `\x1b[36m🔍 Debugging package manager setup...\x1b[0m\n`;
+    
+    await this.executeCommand('node --version');
+    await this.executeCommand('npm --version');
+    await this.executeCommand('npm config get registry');
+    await this.executeCommand('yarn --version');
+    await this.executeCommand('pwd');
+    await this.executeCommand('ls -la');
+    
+    activeTerminal.output += `\x1b[36m✅ Debug info collected\x1b[0m\n`;
+  }
+
+  private async killRunningProcesses(): Promise<void> {
+    if (this.electronAPI) {
+      try {
+        await this.electronAPI.killProcess();
+        this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
+      } catch (error) {
+        console.error('Failed to kill processes:', error);
+      }
     }
   }
 }

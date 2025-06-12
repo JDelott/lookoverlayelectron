@@ -59,6 +59,9 @@ let isRecording = false;
 let audioProcess: ChildProcess | null = null;
 let currentRecordingPath: string | null = null;
 
+// Add this near the top with other Maps
+const interactiveProcesses = new Map<string, ChildProcess>();
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -320,35 +323,50 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         env: {
           ...process.env,
           FORCE_COLOR: '1',
-          NODE_ENV: process.env.NODE_ENV || 'development'
+          NODE_ENV: process.env.NODE_ENV || 'development',
+          // Add npm/yarn specific environment variables
+          npm_config_progress: 'true',
+          npm_config_color: 'always',
+          CI: 'false', // Disable CI mode to ensure interactive behavior
+          NO_UPDATE_NOTIFIER: 'true', // Disable update notifications that can interfere
         },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
       // Check if this is a long-running process
       const isLongRunning = command.includes('dev') || command.includes('start') || command.includes('serve') ||
-                           command.includes('watch') || command.startsWith('node ');
+                           command.includes('watch') || command.startsWith('node ') ||
+                           // Add package installation commands
+                           command.startsWith('npm install') || command.startsWith('npm i ') ||
+                           command.startsWith('yarn install') || command.startsWith('yarn add') ||
+                           command.startsWith('pnpm install') || command.startsWith('pnpm add') ||
+                           command.startsWith('npx create-') || command.includes('create-next-app') ||
+                           command.includes('create-react-app') || command.includes('create-vite');
       
       // Track long-running processes
       if (isLongRunning) {
         const processId = `${Date.now()}-${Math.random()}`;
         runningProcesses.set(processId, childProcess);
+        interactiveProcesses.set(processId, childProcess);
         
         // Send process ID to renderer for tracking
         mainWindow?.webContents.send('process-started', { 
           id: processId, 
-          command: command 
+          command: command,
+          isInteractive: true
         });
         
         // Clean up when process ends
         childProcess.on('close', (code) => {
           runningProcesses.delete(processId);
+          interactiveProcesses.delete(processId);
           mainWindow?.webContents.send('process-ended', { id: processId });
         });
         
         childProcess.on('error', (error) => {
           console.error('Process error:', error);
           runningProcesses.delete(processId);
+          interactiveProcesses.delete(processId);
           mainWindow?.webContents.send('process-ended', { id: processId });
         });
       }
@@ -1456,6 +1474,20 @@ ipcMain.handle('write-binary-file', async (event, filePath: string, base64Data: 
     return { success: true };
   } catch (error) {
     console.error('Error writing binary file:', error);
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// Add this new IPC handler for sending input to processes
+ipcMain.handle('send-process-input', async (event, processId: string, input: string) => {
+  try {
+    const process = interactiveProcesses.get(processId);
+    if (process && process.stdin) {
+      process.stdin.write(input + '\n');
+      return { success: true };
+    }
+    return { success: false, error: 'Process not found or stdin not available' };
+  } catch (error) {
     return { success: false, error: (error as Error).message };
   }
 });

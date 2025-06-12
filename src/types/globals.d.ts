@@ -41,6 +41,9 @@ declare global {
       
       // Git operations
       executeGitCommand: (command: string) => Promise<{ success: boolean; output: string; code: number }>;
+      
+      // Interactive input
+      sendProcessInput: (processId: string, input: string) => Promise<{ success: boolean; error?: string }>;
     };
 
     monaco: typeof import('monaco-editor');

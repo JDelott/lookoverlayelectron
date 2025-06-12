@@ -103,4 +103,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onFileSystemChanged: (callback: (event: { type: string; path: string; parentPath: string }) => void) => {
     ipcRenderer.on('file-system-changed', (event, data) => callback(data));
   },
+  
+  // Interactive input support
+  sendProcessInput: (processId: string, input: string) => ipcRenderer.invoke('send-process-input', processId, input),
 });
