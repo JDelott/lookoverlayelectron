@@ -810,34 +810,90 @@ declare namespace React {
   private setupContentChangeHandling(): void {
     if (!this.state.monacoEditor) return;
 
+    // Add debounced content synchronization to prevent excessive updates
+    let updateTimeout: NodeJS.Timeout;
+    
     this.state.monacoEditor.onDidChangeModelContent(() => {
       if (this.state.activeTabPath) {
+        // Mark tab as dirty immediately
         this.tabManager.markTabAsDirty(this.state.activeTabPath);
+        
+        // Debounce content synchronization to avoid performance issues
+        clearTimeout(updateTimeout);
+        updateTimeout = setTimeout(() => {
+          this.syncCurrentContentToTab();
+        }, 100); // 100ms debounce
       }
     });
   }
 
+  // Add this new method to sync content
+  private syncCurrentContentToTab(): void {
+    if (!this.state.monacoEditor || !this.state.activeTabPath) return;
+    
+    const currentTab = this.state.openTabs.get(this.state.activeTabPath);
+    if (currentTab) {
+      const currentContent = this.state.monacoEditor.getValue();
+      currentTab.content = currentContent;
+      console.log('🔄 Content synchronized to tab:', this.state.activeTabPath);
+    }
+  }
+
   public async saveCurrentFile(): Promise<void> {
-    if (!this.state.activeTabPath || !this.state.monacoEditor) return;
+    if (!this.state.activeTabPath || !this.state.monacoEditor) {
+      console.log('⚠️ No active tab or editor not available');
+      return;
+    }
 
     try {
-      const content = this.state.monacoEditor.getValue();
-      const electronAPI = (window as any).electronAPI;
+      // First sync the current content to tab state
+      this.syncCurrentContentToTab();
       
-      if (electronAPI) {
-        await electronAPI.writeFile(this.state.activeTabPath, content);
+      const content = this.state.monacoEditor.getValue();
+      const currentTab = this.state.openTabs.get(this.state.activeTabPath);
+      
+      if (!currentTab) {
+        console.error('❌ No tab found for active file:', this.state.activeTabPath);
+        return;
+      }
+
+      // Ensure tab content is up to date
+      currentTab.content = content;
+      
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) {
+        console.error('❌ Electron API not available');
+        return;
+      }
+
+      console.log('💾 Saving file:', this.state.activeTabPath, 'Content length:', content.length);
+      
+      const result = await electronAPI.writeFile(this.state.activeTabPath, content);
+      
+      if (result && result.success) {
         this.tabManager.markTabAsClean(this.state.activeTabPath);
         this.showSaveIndicator();
+        console.log('✅ File saved successfully:', this.state.activeTabPath);
         
         // Dispatch file-saved event for git manager
         const event = new CustomEvent('file-saved', { 
           detail: { filePath: this.state.activeTabPath, content } 
         });
         document.dispatchEvent(event);
+      } else {
+        const errorMsg = result?.error || 'Unknown error occurred';
+        console.error('❌ Failed to save file:', errorMsg);
+        alert(`Failed to save file: ${errorMsg}`);
       }
     } catch (error) {
-      console.error('Failed to save file:', error);
+      console.error('❌ Error saving file:', error);
+      alert(`Error saving file: ${error}`);
     }
+  }
+
+  // Add this method to be called before tab switches
+  public syncContentBeforeTabSwitch(): void {
+    this.syncCurrentContentToTab();
   }
 
   private showSaveIndicator(): void {

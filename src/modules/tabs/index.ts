@@ -78,6 +78,16 @@ export class TabManager {
       return;
     }
 
+    // Sync current content before switching if we have an active tab
+    if (this.state.activeTabPath && this.state.monacoEditor) {
+      const currentTab = this.state.openTabs.get(this.state.activeTabPath);
+      if (currentTab) {
+        const currentContent = this.state.monacoEditor.getValue();
+        currentTab.content = currentContent;
+        console.log('🔄 Content synced before tab switch for:', this.state.activeTabPath);
+      }
+    }
+
     console.log('📄 Switching to tab:', tab.name);
     
     this.state.activeTabPath = filePath;
@@ -306,18 +316,23 @@ export class TabManager {
 
   markTabAsClean(filePath: string): void {
     const tab = this.state.openTabs.get(filePath);
-    if (tab) {
+    if (tab && this.state.monacoEditor && this.state.activeTabPath === filePath) {
+      // Ensure content is synced when marking as clean
+      const currentContent = this.state.monacoEditor.getValue();
+      tab.content = currentContent;
       tab.isDirty = false;
-      
-      // Notify git manager about the file save
-      const gitManager = (window as any).gitManager;
-      if (gitManager) {
-        gitManager.handleFileSave(filePath);
-      }
-      
-      // Dispatch file-saved event
-      const event = new CustomEvent('file-saved', { detail: { filePath } });
-      document.dispatchEvent(event);
+    } else if (tab) {
+      tab.isDirty = false;
     }
+    
+    // Notify git manager about the file save
+    const gitManager = (window as any).gitManager;
+    if (gitManager) {
+      gitManager.handleFileSave(filePath);
+    }
+    
+    // Dispatch file-saved event
+    const event = new CustomEvent('file-saved', { detail: { filePath } });
+    document.dispatchEvent(event);
   }
 }
