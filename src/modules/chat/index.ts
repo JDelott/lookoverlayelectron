@@ -84,10 +84,22 @@ export class ChatManager {
     // Always expose globally first
     this.exposeGlobally();
     
-    this.setupInitialUI();
-    this.checkAPIKey();
-    this.isUIReady = true;
+    // Check if UI is already set up to avoid clearing content
+    const chatContent = document.getElementById('ai-chat-content');
+    const existingContainer = chatContent?.querySelector('.chat-container');
     
+    if (!existingContainer) {
+      // Only set up UI if it doesn't exist
+      this.setupInitialUI();
+      this.checkAPIKey();
+    } else {
+      console.log('✅ Chat UI already exists, preserving content');
+      // Just ensure event listeners are attached
+      this.setupEventListeners();
+      this.updateContextDisplay();
+    }
+    
+    this.isUIReady = true;
     console.log('✅ ChatManager initialization complete');
   }
 
@@ -1223,6 +1235,9 @@ export class ChatManager {
   }
 
   private setupEventListeners(): void {
+    // Remove existing listeners first to prevent duplicates
+    this.removeEventListeners();
+    
     // API Key setup
     const apiKeyInput = document.getElementById('api-key-input') as HTMLInputElement;
     const apiKeySubmit = document.getElementById('api-key-submit') as HTMLButtonElement;
@@ -1314,6 +1329,30 @@ export class ChatManager {
         this.clearAllAttachedFiles();
       });
     }
+  }
+
+  private removeEventListeners(): void {
+    // Remove any existing listeners to prevent duplicates
+    const elements = [
+      'chat-input',
+      'send-message', 
+      'api-key-submit',
+      'quick-actions-toggle',
+      'include-context',
+      'attach-code',
+      'attach-files',
+      'clear-all-files',
+      'microphone-btn'
+    ];
+    
+    elements.forEach(id => {
+      const element = document.getElementById(id);
+      if (element) {
+        // Clone and replace to remove all listeners
+        const newElement = element.cloneNode(true);
+        element.parentNode?.replaceChild(newElement, element);
+      }
+    });
   }
 
   private autoResizeTextarea(textarea: HTMLTextAreaElement): void {
@@ -3459,5 +3498,12 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       'sql': '🗄️', 'sh': '💻', 'yml': '⚙️', 'yaml': '⚙️'
     };
     return iconMap[extension.toLowerCase()] || '📄';
+  }
+
+  // Add this method to the ChatManager class
+
+  public isInitialized(): boolean {
+    const chatContent = document.getElementById('ai-chat-content');
+    return !!(chatContent && chatContent.querySelector('.chat-container'));
   }
 }

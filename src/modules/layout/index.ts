@@ -1391,32 +1391,45 @@ export class LayoutManager {
     const maxTerminalHeight = Math.floor(safeHeight * 0.6);
     const minTerminalHeight = 100;
 
+    let needsUpdate = false;
+
     if (this.panelSizes.terminalHeight > maxTerminalHeight) {
       this.panelSizes.terminalHeight = maxTerminalHeight;
-      this.updatePanelSizes();
+      needsUpdate = true;
     } else if (this.panelSizes.terminalHeight < minTerminalHeight && this.state.terminalVisible) {
       this.panelSizes.terminalHeight = minTerminalHeight;
-      this.updatePanelSizes();
+      needsUpdate = true;
     }
 
     const maxSidebarWidth = Math.floor(safeWidth * 0.4);
     if (this.panelSizes.sidebarWidth > maxSidebarWidth) {
       this.panelSizes.sidebarWidth = Math.max(200, maxSidebarWidth);
-      this.updatePanelSizes();
+      needsUpdate = true;
     }
 
     const maxChatWidth = Math.floor(safeWidth * 0.35);
     if (this.panelSizes.aiChatWidth > maxChatWidth) {
       this.panelSizes.aiChatWidth = Math.max(280, maxChatWidth);
-      this.updatePanelSizes();
+      needsUpdate = true;
     }
 
+    // Only hide chat if screen becomes too small
     if (safeWidth < 800 && this.state.aiChatVisible) {
       this.state.aiChatVisible = false;
-      this.updatePanelVisibility();
+      needsUpdate = true;
     }
 
-    this.updatePanelVisibility();
+    // Only update if something actually changed
+    if (needsUpdate) {
+      this.updatePanelSizes();
+      // Only update panel visibility if chat state changed, not on every resize
+      if (safeWidth < 800) {
+        this.updatePanelVisibility();
+      }
+    } else {
+      // Just update sizes without reinitializing
+      this.updatePanelSizes();
+    }
   }
 
   private setupResizeHandlers(): void {
@@ -1527,13 +1540,20 @@ export class LayoutManager {
     const ideContainer = document.querySelector('.ide-container') as HTMLElement;
     if (!ideContainer) return;
 
+    // Store current chat state before any changes
+    const chatManager = (window as any).chatManager;
+    const preservedChatState = chatManager?.getChatState?.();
+
     // Handle AI Chat visibility
     if (this.state.aiChatVisible) {
       ideContainer.classList.add('chat-visible');
       ideContainer.classList.remove('chat-hidden');
       
-      // Ensure chat manager is ready when panel opens
-      this.initializeChatWhenReady();
+      // Only reinitialize if chat is not already properly set up
+      const chatContent = document.getElementById('ai-chat-content');
+      if (!chatContent?.querySelector('.chat-container')) {
+        this.initializeChatWhenReady();
+      }
     } else {
       ideContainer.classList.add('chat-hidden');
       ideContainer.classList.remove('chat-visible');
@@ -1555,6 +1575,11 @@ export class LayoutManager {
 
     this.updateButtonStates();
     this.triggerEditorResize();
+
+    // Restore chat state if it was preserved
+    if (preservedChatState && chatManager?.setState) {
+      chatManager.setState(preservedChatState);
+    }
   }
 
   private initializeChatWhenReady(): void {
@@ -1574,9 +1599,16 @@ export class LayoutManager {
         return;
       }
 
-      // Always reinitialize to ensure fresh state
-      console.log('🔧 Initializing chat manager for panel open...');
-      chatManager.initialize();
+      // Only initialize if the chat content is empty or not properly set up
+      // This prevents clearing existing content during resize/move operations
+      if (!chatContent.hasChildNodes() || !chatContent.querySelector('.chat-container')) {
+        console.log('🔧 Initializing chat manager for panel open...');
+        chatManager.initialize();
+      } else {
+        console.log('✅ Chat already initialized, preserving content');
+        // Just ensure the chat manager is exposed globally
+        chatManager.exposeGlobally();
+      }
     };
     
     // Start checking immediately
