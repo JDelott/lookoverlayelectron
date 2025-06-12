@@ -1,4 +1,5 @@
 import { AppState } from '../types';
+import { FilePicker, AttachedFile, FilePickerCallbacks } from '../filePicker/index.js';
 
 export interface ChatMessage {
   id: string;
@@ -34,6 +35,10 @@ export class ChatManager {
   private typingSpeed = 20; // ms between characters for typing effect
   private isRecording = false;
   private recordingStartTime: number = 0;
+  
+  // File picker integration
+  private filePicker: FilePicker | null = null;
+  private attachedFiles: Map<string, AttachedFile> = new Map();
 
   constructor(state: AppState) {
     this.state = state;
@@ -44,7 +49,33 @@ export class ChatManager {
       apiKeyConfigured: false
     };
     this.setupStreamingListeners();
-    this.setupSpeechListeners(); // Add this
+    this.setupSpeechListeners();
+    this.initializeFilePicker();
+  }
+
+  private initializeFilePicker(): void {
+    const callbacks: FilePickerCallbacks = {
+      onFilesSelected: (files: Map<string, AttachedFile>) => {
+        this.attachedFiles = new Map([...this.attachedFiles, ...files]);
+        this.updateAttachedFilesDisplay();
+        this.updateAttachButton();
+      },
+      onFileRemoved: (filePath: string) => {
+        this.attachedFiles.delete(filePath);
+        this.updateAttachedFilesDisplay();
+        this.updateAttachButton();
+      },
+      onAllFilesCleared: () => {
+        this.attachedFiles.clear();
+        this.updateAttachedFilesDisplay();
+        this.updateAttachButton();
+      }
+    };
+
+    this.filePicker = new FilePicker(callbacks, {
+      allowMultiple: true,
+      maxFiles: 10
+    });
   }
 
   initialize(): void {
@@ -94,6 +125,20 @@ export class ChatManager {
         
         <!-- Main Chat Interface -->
         <div id="chat-main" class="chat-main" style="display: none;">
+          <!-- Attached Files Bar (shown when files are attached) -->
+          <div id="attached-files-header" class="attached-files-header" style="display: none;">
+            <div class="attached-files-content">
+              <div class="attached-files-info">
+                <span class="attached-files-icon">📎</span>
+                <span class="attached-files-count" id="attached-files-count">0 files</span>
+              </div>
+              <div class="attached-files-list" id="attached-files-list"></div>
+              <button class="clear-all-files-btn" id="clear-all-files" title="Clear all files">
+                Clear all
+              </button>
+            </div>
+          </div>
+
           <!-- Context Bar -->
           <div id="context-bar" class="context-bar">
             <div class="context-info">
@@ -161,8 +206,11 @@ export class ChatManager {
                       <button id="microphone-btn" class="input-action-btn" title="Voice input">
                         <span class="action-icon">🎤</span>
                       </button>
-                      <button id="attach-code" class="input-action-btn" title="Attach Current Code">
+                      <button id="attach-files" class="input-action-btn" title="Attach files">
                         <span class="action-icon">📎</span>
+                      </button>
+                      <button id="attach-code" class="input-action-btn" title="Attach Current Code">
+                        <span class="action-icon">📋</span>
                       </button>
                       <button id="send-message" class="send-btn" title="Send message">
                         <span class="send-icon">↗</span>
@@ -198,7 +246,104 @@ export class ChatManager {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #1a1a1a;
         color: #e4e4e7;
-        position: relative;
+      }
+
+      /* Attached Files Header */
+      .attached-files-header {
+        background: #171717;
+        border-bottom: 1px solid #2a2a2a;
+        padding: 0.75rem 1rem;
+        flex-shrink: 0;
+      }
+
+      .attached-files-content {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .attached-files-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #60a5fa;
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+
+      .attached-files-list {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        flex: 1;
+      }
+
+      .attached-file-tag {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        background: #262626;
+        border: 1px solid #404040;
+        border-radius: 0.375rem;
+        padding: 0.375rem 0.5rem;
+        font-size: 0.75rem;
+        max-width: 200px;
+      }
+
+      .file-tag-icon {
+        font-size: 0.875rem;
+        flex-shrink: 0;
+      }
+
+      .file-tag-name {
+        color: #d4d4d8;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+        truncate: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .remove-file-tag {
+        background: none;
+        border: none;
+        color: #71717a;
+        cursor: pointer;
+        font-size: 0.875rem;
+        padding: 0;
+        margin-left: 0.25rem;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+
+      .remove-file-tag:hover {
+        color: #ef4444;
+      }
+
+      .clear-all-files-btn {
+        background: transparent;
+        border: 1px solid #404040;
+        color: #71717a;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+
+      .clear-all-files-btn:hover {
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+
+      /* Update attach button style when files are attached */
+      .input-action-btn.has-files {
+        color: #10b981;
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
       }
 
       /* Input Area */
@@ -1154,6 +1299,21 @@ export class ChatManager {
     if (microphoneBtn) {
       microphoneBtn.addEventListener('click', () => this.toggleRecording());
     }
+
+    // File attachment handlers
+    const attachFilesBtn = document.getElementById('attach-files');
+    if (attachFilesBtn) {
+      attachFilesBtn.addEventListener('click', () => {
+        this.showFilePicker();
+      });
+    }
+
+    const clearAllFilesBtn = document.getElementById('clear-all-files');
+    if (clearAllFilesBtn) {
+      clearAllFilesBtn.addEventListener('click', () => {
+        this.clearAllAttachedFiles();
+      });
+    }
   }
 
   private autoResizeTextarea(textarea: HTMLTextAreaElement): void {
@@ -1276,19 +1436,35 @@ I have access to your current file context and can provide tailored assistance. 
     const input = document.getElementById('chat-input') as HTMLTextAreaElement;
     if (!input || !input.value.trim() || this.chatState.isLoading) return;
 
-    const content = input.value.trim();
+    const userContent = input.value.trim();
+    let messageContent = userContent;
+
+    // Include attached files context
+    if (this.attachedFiles.size > 0) {
+      let contextContent = '\n\n**Attached Files:**\n\n';
+      
+      this.attachedFiles.forEach((file) => {
+        contextContent += `**${file.name}:**\n\`\`\`${file.language}\n${file.content}\n\`\`\`\n\n`;
+      });
+      
+      contextContent += `**Question:** ${userContent}`;
+      messageContent = contextContent;
+    }
+
+    // Clear input
     input.value = '';
-    input.style.height = 'auto';
+    this.autoResizeTextarea(input);
     this.updateCharCount(input);
 
-    // Add user message
+    // Create user message (display only the user's question, not the full context)
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content,
+      content: userContent,
       timestamp: new Date(),
       metadata: {
         filePath: this.state.currentFile,
+        selectedText: this.getSelectedText(),
         projectPath: this.state.currentWorkingDirectory
       }
     };
@@ -1296,29 +1472,41 @@ I have access to your current file context and can provide tailored assistance. 
     this.chatState.messages.push(userMessage);
     this.renderMessages();
 
-    // Show typing indicator and prepare for streaming
+    // Show loading state
     this.chatState.isLoading = true;
     this.showTypingIndicator();
 
     try {
-      // Prepare messages for API
-      const apiMessages = this.chatState.messages.map(msg => ({
+      // Prepare messages for API (include full context for attached files)
+      const apiMessages = this.chatState.messages.slice(0, -1).map(msg => ({
         role: msg.role,
         content: msg.content
       }));
+      
+      apiMessages.push({
+        role: 'user',
+        content: messageContent // This includes the full context with attached files
+      });
 
-      // Use streaming API
       await window.electronAPI.callAnthropicAPIStream(
         apiMessages,
         this.getSystemPrompt()
       );
-
-      // Note: Response handling is now done via streaming events
       
     } catch (error) {
       console.error('Failed to start streaming:', error);
-      this.handleStreamError(error instanceof Error ? error.message : 'Unknown error');
+      this.handleStreamError(this.getErrorMessage(error as Error));
     }
+  }
+
+  private getSelectedText(): string | undefined {
+    if (this.state.monacoEditor) {
+      const selection = this.state.monacoEditor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        return this.state.monacoEditor.getModel()?.getValueInRange(selection);
+      }
+    }
+    return undefined;
   }
 
   private getErrorMessage(error: Error): string {
@@ -3182,5 +3370,94 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       notification.style.animation = 'slideOut 0.3s ease-out';
       setTimeout(() => notification.remove(), 300);
     }, 3000);
+  }
+
+  // File picker methods
+  private async showFilePicker(): Promise<void> {
+    if (this.filePicker) {
+      await this.filePicker.show();
+    }
+  }
+
+  private updateAttachedFilesDisplay(): void {
+    const header = document.getElementById('attached-files-header');
+    const countElement = document.getElementById('attached-files-count');
+    const listElement = document.getElementById('attached-files-list');
+    
+    if (!header || !countElement || !listElement) return;
+
+    if (this.attachedFiles.size === 0) {
+      header.style.display = 'none';
+      return;
+    }
+
+    header.style.display = 'block';
+    
+    const count = this.attachedFiles.size;
+    countElement.textContent = `${count} file${count !== 1 ? 's' : ''}`;
+
+    listElement.innerHTML = '';
+    this.attachedFiles.forEach((file, path) => {
+      const fileTag = document.createElement('div');
+      fileTag.className = 'attached-file-tag';
+      
+      const icon = this.getFileIcon(file.name.split('.').pop() || '');
+      
+      fileTag.innerHTML = `
+        <span class="file-tag-icon">${icon}</span>
+        <span class="file-tag-name">${file.name}</span>
+        <button class="remove-file-tag" data-file-path="${path}" title="Remove">×</button>
+      `;
+      
+      const removeBtn = fileTag.querySelector('.remove-file-tag') as HTMLButtonElement;
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          this.removeAttachedFile(path);
+        });
+      }
+      
+      listElement.appendChild(fileTag);
+    });
+  }
+
+  private updateAttachButton(): void {
+    const attachBtn = document.getElementById('attach-files');
+    if (attachBtn) {
+      if (this.attachedFiles.size > 0) {
+        attachBtn.classList.add('has-files');
+        attachBtn.title = `${this.attachedFiles.size} files attached`;
+      } else {
+        attachBtn.classList.remove('has-files');
+        attachBtn.title = 'Attach files';
+      }
+    }
+  }
+
+  private removeAttachedFile(filePath: string): void {
+    this.attachedFiles.delete(filePath);
+    this.updateAttachedFilesDisplay();
+    this.updateAttachButton();
+    
+    this.showNotification('File removed', 'success');
+  }
+
+  private clearAllAttachedFiles(): void {
+    this.attachedFiles.clear();
+    this.updateAttachedFilesDisplay();
+    this.updateAttachButton();
+    
+    this.showNotification('All files cleared', 'success');
+  }
+
+  private getFileIcon(extension: string): string {
+    const iconMap: { [key: string]: string } = {
+      'js': '🟨', 'ts': '🔵', 'jsx': '⚛️', 'tsx': '⚛️',
+      'html': '🌐', 'css': '🎨', 'scss': '🎨', 'sass': '🎨',
+      'json': '📋', 'xml': '📄', 'md': '📝', 'txt': '📄',
+      'py': '🐍', 'java': '☕', 'cpp': '⚙️', 'c': '⚙️',
+      'php': '🐘', 'rb': '💎', 'go': '🐹', 'rs': '🦀',
+      'sql': '🗄️', 'sh': '💻', 'yml': '⚙️', 'yaml': '⚙️'
+    };
+    return iconMap[extension.toLowerCase()] || '📄';
   }
 }
