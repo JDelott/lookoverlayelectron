@@ -93,7 +93,7 @@ export class TabManager {
     this.state.activeTabPath = filePath;
     this.state.currentFile = filePath;
 
-    if (this.state.monacoEditor) {
+    if (this.state.monacoEditor && window.monaco) {
       // Enhanced language detection - aggressive TypeScript detection
       const getMonacoLanguage = (fileName: string, content: string): string => {
         const extension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -149,17 +149,28 @@ export class TabManager {
 
       const monacoLanguage = getMonacoLanguage(tab.name, tab.content);
       
-      // Set the content first
-      this.state.monacoEditor.setValue(tab.content);
+      // Create or get model with proper URI that includes file extension
+      const fileName = tab.name;
+      const modelUri = window.monaco.Uri.parse(`file:///${fileName}`);
       
-      // Then set the language
-      if (window.monaco) {
-        const model = this.state.monacoEditor.getModel();
-        if (model) {
+      let model = window.monaco.editor.getModel(modelUri);
+      if (!model) {
+        // Create new model with proper URI and language
+        model = window.monaco.editor.createModel(tab.content, monacoLanguage, modelUri);
+        console.log('📄 Created new model with URI:', modelUri.toString(), 'Language:', monacoLanguage);
+      } else {
+        // Update existing model
+        model.setValue(tab.content);
+        if (model.getLanguageId() !== monacoLanguage) {
           window.monaco.editor.setModelLanguage(model, monacoLanguage);
-          console.log('📄 Set language to:', monacoLanguage, 'for file:', tab.name);
         }
+        console.log('📄 Updated existing model with URI:', modelUri.toString(), 'Language:', monacoLanguage);
       }
+      
+      // Set the model to the editor
+      this.state.monacoEditor.setModel(model);
+      
+      console.log('📄 Set language to:', monacoLanguage, 'for file:', tab.name);
       
       // Expose Monaco editor globally after content change
       if (this.state.monacoEditor) {
@@ -172,19 +183,15 @@ export class TabManager {
       });
       document.dispatchEvent(event);
 
-      if (this.state.monacoEditor && window.monaco) {
-        // Trigger ESLint check for the newly opened file
-        const model = this.state.monacoEditor.getModel();
-        if (model && (window as any).monacoEditorManager) {
-          // Call ESLint check if available
-          setTimeout(() => {
-            const editorManager = (window as any).monacoEditorManager;
-            if (editorManager && editorManager.runESLintOnModel) {
-              editorManager.runESLintOnModel(model);
-            }
-          }, 100);
+      // Trigger validation after a short delay
+      setTimeout(() => {
+        if (model) {
+          // Force revalidation by triggering content change
+          const content = model.getValue();
+          model.setValue(content + ' ');
+          model.setValue(content);
         }
-      }
+      }, 100);
     } else {
       console.warn('⚠️ Monaco editor not available');
     }

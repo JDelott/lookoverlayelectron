@@ -239,11 +239,9 @@ export class ProblemsManager {
     
     console.log(`🔍 Checking marker: Code ${marker.code}, Source: ${source}, Message: ${message.substring(0, 50)}...`);
 
-    // Only ignore these specific noise patterns that were bothering you
+    // ONLY ignore these very specific false positives that don't occur in VS Code
     const specificNoisePatterns = [
       'jsx element implicitly has type \'any\' because no interface \'jsx.intrinsicelements\' exists',
-      '\'interface\' declarations can only be used in typescript files',
-      'type annotations can only be used in typescript files',
       'cannot find module \'react/jsx-runtime\' or its corresponding type declarations',
       'cannot find name \'react\'',
       'cannot find name \'jsx\'',
@@ -256,28 +254,36 @@ export class ProblemsManager {
       return true;
     }
 
-    // Only ignore these specific error codes
-    const specificNoiseCodes = [
-      7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
-      8006, // 'interface' declarations can only be used in TypeScript files
-      8010, // Type annotations can only be used in TypeScript files
-      2307, // Cannot find module 'react/jsx-runtime' (when it's specifically react/jsx-runtime)
-      2304, // Cannot find name 'React' (when it's specifically React)
-      2591, // Cannot find name 'JSX'
-      2786, // 'JSX' refers to a UMD global
+    // ONLY ignore these specific error codes in specific contexts
+    const contextualIgnores = [
+      // Only ignore 8006 and 8010 if they're about TypeScript features in .tsx files
+      { code: 8006, condition: () => message.includes('interface') && message.includes('typescript files') },
+      { code: 8010, condition: () => message.includes('type annotations') && message.includes('typescript files') },
+      // Only ignore React-specific module resolution issues
+      { code: 2307, condition: () => message.includes('react/jsx-runtime') },
+      { code: 2304, condition: () => message.includes('react') && !message.includes('declared') },
+      { code: 2591, condition: () => message.includes('jsx') },
+      { code: 2786, condition: () => message.includes('jsx') && message.includes('umd global') },
     ];
 
-    // Only ignore if it's the specific codes AND about React/JSX/TypeScript usage in TS files
-    if (specificNoiseCodes.includes(marker.code)) {
-      if (message.includes('react') || message.includes('jsx') || 
-          message.includes('interface') && message.includes('typescript') ||
-          message.includes('type annotations') && message.includes('typescript')) {
-        console.log(`❌ Filtering specific noise code: ${marker.code}`);
+    // Check contextual ignores
+    for (const ignore of contextualIgnores) {
+      if (marker.code === ignore.code && ignore.condition()) {
+        console.log(`❌ Filtering contextual noise code: ${marker.code}`);
         return true;
       }
     }
 
-    // Allow everything else through
+    // **ALLOW ALL OTHER TYPESCRIPT ERRORS THROUGH** - including:
+    // - 6133 (unused variables)
+    // - 6196 (unused parameters) 
+    // - 2322 (type assignment errors)
+    // - 2339 (property does not exist)
+    // - 2531/2532 (null/undefined errors)
+    // - 7006 (implicit any parameters)
+    // - 1011 (element access expression errors)
+    // - And all other real TypeScript errors
+
     console.log(`✅ Allowing marker through`);
     return false;
   }

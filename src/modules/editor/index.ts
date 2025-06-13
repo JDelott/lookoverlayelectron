@@ -72,14 +72,14 @@ export class MonacoEditorManager {
       esModuleInterop: true,
       skipLibCheck: true,
       strict: false,
-      noImplicitAny: false,
-      strictNullChecks: false,
-      strictFunctionTypes: false,
-      noImplicitReturns: false,
+      noImplicitAny: true,        // Enable this to show implicit any errors
+      strictNullChecks: true,
+      strictFunctionTypes: true,  // Enable this for better type checking
+      noImplicitReturns: true,    // Enable this to catch missing returns
       noImplicitThis: false,
       alwaysStrict: false,
-      noUnusedLocals: false,
-      noUnusedParameters: false,
+      noUnusedLocals: true,       // This should show unused variable errors
+      noUnusedParameters: true,   // This should show unused parameter errors
       exactOptionalPropertyTypes: false,
       noImplicitOverride: false,
       useUnknownInCatchVariables: false,
@@ -91,8 +91,8 @@ export class MonacoEditorManager {
       sourceMap: true,
       experimentalDecorators: true,
       emitDecoratorMetadata: true,
-      suppressImplicitAnyIndexErrors: true,
-      suppressExcessPropertyErrors: true,
+      suppressImplicitAnyIndexErrors: false,
+      suppressExcessPropertyErrors: false,
       forceConsistentCasingInFileNames: true
     };
 
@@ -100,47 +100,91 @@ export class MonacoEditorManager {
     window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
     window.monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
 
-    // Configure diagnostic options to be more permissive like VS Code
+    // Configure diagnostic options - ONLY ignore browser-specific false positives
     const diagnosticOptions = {
       noSemanticValidation: false,
       noSyntaxValidation: false,
       noSuggestionDiagnostics: false,
       diagnosticCodesToIgnore: [
-        // Ignore common noise errors that VS Code typically handles better
-        1011, // An element access expression should take an argument
-        1005, // ';' expected
-        1109, // Expression expected
-        1434, // Unexpected keyword or identifier
-        7026, // JSX element implicitly has type 'any'
-        2307, // Cannot find module 'react/jsx-runtime'
-        2304, // Cannot find name 'React' (when global)
+        // ONLY ignore these specific Monaco/browser-specific false positives
+        2307, // Cannot find module (module resolution differences)
+        2304, // Cannot find name 'React' (when using global React)
         2591, // Cannot find name 'JSX'
         2786, // 'JSX' refers to a UMD global
-        6133, // Variable is declared but never used
-        6196, // Parameter is declared but never used
-        2339, // Property does not exist on type (often false positive)
-        2322, // Type is not assignable (often false positive in React)
-        2345, // Argument of type is not assignable (often false positive)
-        2740, // Type is missing properties (often false positive in React)
-        2741, // Property is missing in type (often false positive)
-        2769, // No overload matches this call (often false positive)
-        2571, // Object is of type 'unknown'
-        2532, // Object is possibly 'undefined'
-        2531, // Object is possibly 'null'
-        18046, // Element implicitly has an 'any' type
-        18047, // Element implicitly has an 'any' type
-        8010, // Type annotations can only be used in TypeScript files
-        8006, // 'interface' declarations can only be used in TypeScript files
+        18046, // Element implicitly has an 'any' type (JSX specific)
+        18047, // Element implicitly has an 'any' type (JSX specific)
+        // Remove 8010 and 8006 from ignore list - let them show but handle them properly
       ]
     };
 
     window.monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions);
     window.monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
 
+    // Force Monaco to treat .tsx files as TypeScript and enable eager model sync
+    window.monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
+    window.monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
+
+    // Add a custom diagnostic filter to handle file-specific issues
+    this.setupDiagnosticFiltering();
+
     this.addAllTypes();
     this.setupCustomValidation();
 
     console.log('✅ Monaco TypeScript/JSX configuration complete');
+  }
+
+  private setupDiagnosticFiltering(): void {
+    if (!window.monaco) return;
+
+    // Override the marker creation to filter out false positives based on file context
+    const originalSetModelMarkers = window.monaco.editor.setModelMarkers;
+    
+    window.monaco.editor.setModelMarkers = (model: any, owner: string, markers: any[]) => {
+      const filteredMarkers = markers.filter(marker => {
+        const modelUri = model.uri.toString();
+        const modelLanguage = model.getLanguageId();
+        
+        // Check if this is a TypeScript file by multiple methods:
+        // 1. Language ID is 'typescript'
+        // 2. URI contains .ts or .tsx
+        // 3. Check the current active tab path for .ts/.tsx extension
+        const isTypeScriptFile = modelLanguage === 'typescript' || 
+                                 modelUri.includes('.ts') || 
+                                 modelUri.includes('.tsx') ||
+                                 this.isCurrentFileTypeScript();
+        
+        console.log(`🔍 Diagnostic filtering - URI: ${modelUri}, Language: ${modelLanguage}, IsTS: ${isTypeScriptFile}`);
+        
+        // Only filter out 8010 and 8006 if we're sure this is a TypeScript file
+        if (isTypeScriptFile && (marker.code === 8010 || marker.code === 8006)) {
+          console.log('🚫 Filtering false positive TS error in TypeScript file:', marker.code, marker.message);
+          return false;
+        }
+        
+        return true;
+      });
+      
+      return originalSetModelMarkers.call(window.monaco.editor, model, owner, filteredMarkers);
+    };
+  }
+
+  private isCurrentFileTypeScript(): boolean {
+    // Check if the current active tab is a TypeScript file
+    const activeTabPath = this.state.activeTabPath;
+    if (activeTabPath) {
+      const extension = activeTabPath.split('.').pop()?.toLowerCase();
+      return ['ts', 'tsx'].includes(extension || '');
+    }
+    
+    // Also check the tab manager's active tab
+    const app = (window as any).app;
+    const currentFile = app?.state?.activeTabPath || app?.tabManager?.state?.activeTabPath;
+    if (currentFile) {
+      const extension = currentFile.split('.').pop()?.toLowerCase();
+      return ['ts', 'tsx'].includes(extension || '');
+    }
+    
+    return false;
   }
 
   private addAllTypes(): void {
