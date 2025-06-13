@@ -171,6 +171,20 @@ export class TabManager {
         detail: { filePath, tab }
       });
       document.dispatchEvent(event);
+
+      if (this.state.monacoEditor && window.monaco) {
+        // Trigger ESLint check for the newly opened file
+        const model = this.state.monacoEditor.getModel();
+        if (model && (window as any).monacoEditorManager) {
+          // Call ESLint check if available
+          setTimeout(() => {
+            const editorManager = (window as any).monacoEditorManager;
+            if (editorManager && editorManager.runESLintOnModel) {
+              editorManager.runESLintOnModel(model);
+            }
+          }, 100);
+        }
+      }
     } else {
       console.warn('⚠️ Monaco editor not available');
     }

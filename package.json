@@ -27,6 +27,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "dotenv": "^16.5.0",
+    "eslint4b": "^7.32.0",
     "express": "^5.1.0",
     "monaco-editor": "^0.44.0",
     "nodejs-whisper": "^0.2.9",

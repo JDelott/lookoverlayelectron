@@ -57,32 +57,32 @@ export class MonacoEditorManager {
 
     console.log('🔧 Setting up Monaco TypeScript/JSX configuration...');
 
-    // Configure TypeScript compiler options with more permissive settings
+    // Configure TypeScript compiler options to match VS Code's defaults exactly
     const compilerOptions = {
       target: window.monaco.languages.typescript.ScriptTarget.ES2020,
       module: window.monaco.languages.typescript.ModuleKind.ESNext,
       moduleResolution: window.monaco.languages.typescript.ModuleResolutionKind.NodeJs,
       allowNonTsExtensions: true,
       allowJs: true,
-      checkJs: false,
+      checkJs: false, // Don't check JS files by default like VS Code
       jsx: window.monaco.languages.typescript.JsxEmit.ReactJSX,
       jsxFactory: 'React.createElement',
       jsxFragmentFactory: 'React.Fragment',
       allowSyntheticDefaultImports: true,
       esModuleInterop: true,
       skipLibCheck: true,
-      strict: false,
-      noImplicitAny: false,
-      strictNullChecks: false,
-      strictFunctionTypes: false,
-      noImplicitReturns: false,
-      noImplicitThis: false,
-      alwaysStrict: false,
-      noUnusedLocals: false,
-      noUnusedParameters: false,
-      exactOptionalPropertyTypes: false,
-      noImplicitOverride: false,
-      useUnknownInCatchVariables: false,
+      strict: true,
+      noImplicitAny: true,
+      strictNullChecks: true,
+      strictFunctionTypes: true,
+      noImplicitReturns: true,
+      noImplicitThis: true,
+      alwaysStrict: true,
+      noUnusedLocals: true, // This will catch unused variables like VS Code
+      noUnusedParameters: true,
+      exactOptionalPropertyTypes: true,
+      noImplicitOverride: true,
+      useUnknownInCatchVariables: true,
       lib: ['ES2020', 'DOM', 'DOM.Iterable'],
       typeRoots: ['node_modules/@types'],
       resolveJsonModule: true,
@@ -91,37 +91,30 @@ export class MonacoEditorManager {
       sourceMap: true,
       experimentalDecorators: true,
       emitDecoratorMetadata: true,
-      suppressImplicitAnyIndexErrors: true,
-      suppressExcessPropertyErrors: true,
-      forceConsistentCasingInFileNames: false
+      suppressImplicitAnyIndexErrors: false,
+      suppressExcessPropertyErrors: false,
+      forceConsistentCasingInFileNames: true
     };
 
     // Apply to both TypeScript and JavaScript defaults
     window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
     window.monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
 
-    // Configure diagnostic options to be more selective - only ignore specific noise
+    // Configure diagnostic options to match VS Code behavior
     const diagnosticOptions = {
       noSemanticValidation: false,
-      noSyntaxValidation: false, // Keep syntax validation for real errors
+      noSyntaxValidation: false,
       noSuggestionDiagnostics: false,
       diagnosticCodesToIgnore: [
-        // Only ignore the specific noise patterns you mentioned
-        7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
-        8006, // 'interface' declarations can only be used in TypeScript files
-        8010, // Type annotations can only be used in TypeScript files
-        2307, // Cannot find module 'react/jsx-runtime' or its corresponding type declarations
-        
-        // A few other common React/JSX noise patterns
-        2304, // Cannot find name 'React' (when it's a global)
+        // Only ignore specific noise, keep real errors
+        7026, // JSX element implicitly has type 'any'
+        2307, // Cannot find module 'react/jsx-runtime'
+        2304, // Cannot find name 'React' (when global)
         2591, // Cannot find name 'JSX'
         2786, // 'JSX' refers to a UMD global
-        
-        // Unused variable warnings (often intentional)
-        6133, // 'X' is declared but its value is never read
-        6196, // 'X' is declared but its value is never read (parameters)
-        
-        // Keep everything else - including real syntax errors, typos, missing tags, etc.
+        // DO NOT ignore 6133 (unused variable) - we want these errors!
+        // DO NOT ignore 6196 (unused parameter) - we want these errors!
+        // DO NOT ignore 1011 (element access) - we want these errors!
       ]
     };
 
@@ -131,139 +124,8 @@ export class MonacoEditorManager {
     this.addAllTypes();
     this.setupLanguageDetection();
     this.setupCustomValidation();
-    this.setupESLintStyleRules();
 
     console.log('✅ Monaco TypeScript/JSX configuration complete');
-  }
-
-  private setupESLintStyleRules(): void {
-    if (!window.monaco) return;
-
-    // Register a custom linter for React/ESLint-style rules
-    window.monaco.languages.registerCodeActionProvider('typescript', {
-      provideCodeActions: (model, range, context) => {
-        const actions: any[] = [];
-        const text = model.getValue();
-        
-        // Check for unescaped entities in JSX
-        const unescapedEntityRegex = /(?:>|^)[^<]*['"`](?:[^<]|$)/g;
-        const matches = [...text.matchAll(unescapedEntityRegex)];
-        
-        if (matches.length > 0) {
-          actions.push({
-            title: 'Fix all unescaped entities',
-            kind: 'quickfix',
-            edit: {
-              edits: [{
-                resource: model.uri,
-                edit: {
-                  range: new window.monaco.Range(1, 1, model.getLineCount(), model.getLineMaxColumn(model.getLineCount())),
-                  text: this.fixUnescapedEntities(text)
-                }
-              }]
-            }
-          });
-        }
-
-        return { actions, dispose: () => {} };
-      }
-    });
-
-    // Register hover provider for ESLint-style hints
-    window.monaco.languages.registerHoverProvider('typescript', {
-      provideHover: (model, position) => {
-        const word = model.getWordAtPosition(position);
-        if (!word) return null;
-
-        const line = model.getLineContent(position.lineNumber);
-        
-        // Check if this line contains unescaped entities
-        if (line.includes("'") || line.includes('"')) {
-          return {
-            contents: [
-              { value: '**ESLint: react/no-unescaped-entities**' },
-              { value: 'Unescaped entities should be escaped:\n- `\'` → `&apos;` or `&#39;`\n- `"` → `&quot;` or `&#34;`' }
-            ]
-          };
-        }
-
-        return null;
-      }
-    });
-  }
-
-  private fixUnescapedEntities(text: string): string {
-    // This is a basic implementation - you might want to make it more sophisticated
-    return text
-      .replace(/(?<!&\w{0,10})'/g, '&apos;')  // Replace ' with &apos; (not already escaped)
-      .replace(/(?<!&\w{0,10})"/g, '&quot;'); // Replace " with &quot; (not already escaped)
-  }
-
-  private setupLanguageDetection(): void {
-    if (!window.monaco) return;
-
-    // Override the model creation to ensure proper language detection
-    const originalCreateModel = window.monaco.editor.createModel;
-    window.monaco.editor.createModel = (value: string, language?: string, uri?: any) => {
-      // Auto-detect language based on content and URI
-      if (uri && !language) {
-        const path = uri.toString();
-        const extension = path.split('.').pop()?.toLowerCase();
-        
-        console.log(`🔍 Language detection for file: ${path}, extension: ${extension}`);
-        
-        // Enhanced language detection - force TypeScript for all JS/TS files
-        const languageMap: { [key: string]: string } = {
-          'js': 'typescript', // Treat all JS as TS for better feature support
-          'jsx': 'typescript', // Treat JSX as TypeScript for better support
-          'ts': 'typescript',
-          'tsx': 'typescript',
-          'json': 'json',
-          'css': 'css',
-          'scss': 'scss',
-          'html': 'html',
-          'md': 'markdown',
-          'py': 'python',
-          'java': 'java',
-          'cpp': 'cpp',
-          'c': 'c',
-          'php': 'php',
-          'rb': 'ruby',
-          'go': 'go',
-          'rs': 'rust'
-        };
-        
-        language = languageMap[extension || ''] || 'typescript'; // Default to TypeScript
-        console.log(`🎯 Detected language: ${language} for ${path}`);
-      }
-      
-      // Enhanced content-based TypeScript detection
-      if (!language && value) {
-        const tsFeatures = [
-          'interface ', 'type ', 'enum ', 'namespace ', 'declare ',
-          'satisfies', 'as const', 'as any', 'as unknown',
-          ': string', ': number', ': boolean', ': object', ': any',
-          'implements ', 'extends ', 'abstract ', 'readonly ',
-          'public ', 'private ', 'protected ', 'static ',
-          '<T>', '<T,', '<T extends', 'generic', 'Generic',
-          'import type', 'export type', 'keyof ', 'typeof ',
-          'Partial<', 'Required<', 'Pick<', 'Omit<', 'Record<'
-        ];
-        
-        if (tsFeatures.some(feature => value.includes(feature))) {
-          language = 'typescript';
-          console.log(`🎯 Content-based detection: TypeScript (found TS features)`);
-        }
-      }
-      
-      // Force TypeScript if still not detected
-      if (!language) {
-        language = 'typescript';
-        console.log(`🎯 Defaulting to TypeScript`);
-      }
-      
-      return originalCreateModel.call(this, value, language, uri);
-    };
   }
 
   private addAllTypes(): void {
@@ -631,6 +493,73 @@ declare namespace React {
     );
   }
 
+  private setupLanguageDetection(): void {
+    if (!window.monaco) return;
+
+    // Override the model creation to ensure proper language detection
+    const originalCreateModel = window.monaco.editor.createModel;
+    window.monaco.editor.createModel = (value: string, language?: string, uri?: any) => {
+      // Auto-detect language based on content and URI
+      if (uri && !language) {
+        const path = uri.toString();
+        const extension = path.split('.').pop()?.toLowerCase();
+        
+        console.log(`🔍 Language detection for file: ${path}, extension: ${extension}`);
+        
+        // Enhanced language detection - force TypeScript for all JS/TS files
+        const languageMap: { [key: string]: string } = {
+          'js': 'typescript', // Treat all JS as TS for better feature support
+          'jsx': 'typescript', // Treat JSX as TypeScript for better support
+          'ts': 'typescript',
+          'tsx': 'typescript',
+          'json': 'json',
+          'css': 'css',
+          'scss': 'scss',
+          'html': 'html',
+          'md': 'markdown',
+          'py': 'python',
+          'java': 'java',
+          'cpp': 'cpp',
+          'c': 'c',
+          'php': 'php',
+          'rb': 'ruby',
+          'go': 'go',
+          'rs': 'rust'
+        };
+        
+        language = languageMap[extension || ''] || 'typescript'; // Default to TypeScript
+        console.log(`🎯 Detected language: ${language} for ${path}`);
+      }
+      
+      // Enhanced content-based TypeScript detection
+      if (!language && value) {
+        const tsFeatures = [
+          'interface ', 'type ', 'enum ', 'namespace ', 'declare ',
+          'satisfies', 'as const', 'as any', 'as unknown',
+          ': string', ': number', ': boolean', ': object', ': any',
+          'implements ', 'extends ', 'abstract ', 'readonly ',
+          'public ', 'private ', 'protected ', 'static ',
+          '<T>', '<T,', '<T extends', 'generic', 'Generic',
+          'import type', 'export type', 'keyof ', 'typeof ',
+          'Partial<', 'Required<', 'Pick<', 'Omit<', 'Record<'
+        ];
+        
+        if (tsFeatures.some(feature => value.includes(feature))) {
+          language = 'typescript';
+          console.log(`🎯 Content-based detection: TypeScript (found TS features)`);
+        }
+      }
+      
+      // Force TypeScript if still not detected
+      if (!language) {
+        language = 'typescript';
+        console.log(`🎯 Defaulting to TypeScript`);
+      }
+      
+      return originalCreateModel.call(this, value, language, uri);
+    };
+  }
+
   private setupCustomValidation(): void {
     if (!window.monaco) return;
 
@@ -704,6 +633,7 @@ declare namespace React {
 
       // Expose the Monaco editor globally for other modules to access
       (window as any).monacoEditor = this.state.monacoEditor;
+      (window as any).monacoEditorManager = this;
       console.log('✅ Monaco editor exposed globally');
 
       this.setupKeybindings();
