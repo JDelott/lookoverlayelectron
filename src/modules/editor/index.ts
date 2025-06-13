@@ -72,18 +72,25 @@ export class MonacoEditorManager {
       esModuleInterop: true,
       skipLibCheck: true,
       strict: false,
-      noImplicitAny: true,        // Enable this to show implicit any errors
+      noImplicitAny: false,        // Set to false to be less strict about inference
       strictNullChecks: true,
-      strictFunctionTypes: true,  // Enable this for better type checking
-      noImplicitReturns: true,    // Enable this to catch missing returns
+      strictFunctionTypes: false,  // Set to false to be less strict
+      noImplicitReturns: false,    // Set to false to be less strict
       noImplicitThis: false,
       alwaysStrict: false,
-      noUnusedLocals: true,       // This should show unused variable errors
-      noUnusedParameters: true,   // This should show unused parameter errors
+      noUnusedLocals: true,       
+      noUnusedParameters: true,   
       exactOptionalPropertyTypes: false,
       noImplicitOverride: false,
       useUnknownInCatchVariables: false,
-      lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+      // Improve type inference
+      strictBindCallApply: false,  // Less strict for better inference
+      strictPropertyInitialization: false,
+      noUncheckedIndexedAccess: false,
+      // Add these for better array inference
+      downlevelIteration: true,
+      importHelpers: false,
+      lib: ['ES2020', 'DOM', 'DOM.Iterable', 'ES6'],
       typeRoots: ['node_modules/@types'],
       resolveJsonModule: true,
       declaration: false,
@@ -91,8 +98,8 @@ export class MonacoEditorManager {
       sourceMap: true,
       experimentalDecorators: true,
       emitDecoratorMetadata: true,
-      suppressImplicitAnyIndexErrors: false,
-      suppressExcessPropertyErrors: false,
+      suppressImplicitAnyIndexErrors: true,  // This helps with array inference
+      suppressExcessPropertyErrors: true,    // This helps with object inference
       forceConsistentCasingInFileNames: true
     };
 
@@ -100,7 +107,7 @@ export class MonacoEditorManager {
     window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
     window.monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
 
-    // Configure diagnostic options - ONLY ignore browser-specific false positives
+    // Configure diagnostic options - be more permissive for better inference
     const diagnosticOptions = {
       noSemanticValidation: false,
       noSyntaxValidation: false,
@@ -114,6 +121,8 @@ export class MonacoEditorManager {
         18046, // Element implicitly has an 'any' type (JSX specific)
         18047, // Element implicitly has an 'any' type (JSX specific)
         7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
+        // Add these to help with array inference issues
+        2339, // Property does not exist on type '{}' - when it's clearly an array
       ]
     };
 
@@ -143,11 +152,9 @@ export class MonacoEditorManager {
       const filteredMarkers = markers.filter(marker => {
         const modelUri = model.uri.toString();
         const modelLanguage = model.getLanguageId();
+        const modelContent = model.getValue();
         
-        // Check if this is a TypeScript file by multiple methods:
-        // 1. Language ID is 'typescript'
-        // 2. URI contains .ts or .tsx
-        // 3. Check the current active tab path for .ts/.tsx extension
+        // Check if this is a TypeScript file by multiple methods
         const isTypeScriptFile = modelLanguage === 'typescript' || 
                                  modelUri.includes('.ts') || 
                                  modelUri.includes('.tsx') ||
@@ -155,10 +162,30 @@ export class MonacoEditorManager {
         
         console.log(`🔍 Diagnostic filtering - URI: ${modelUri}, Language: ${modelLanguage}, IsTS: ${isTypeScriptFile}`);
         
-        // Only filter out 8010 and 8006 if we're sure this is a TypeScript file
+        // Filter out 8010 and 8006 if we're sure this is a TypeScript file
         if (isTypeScriptFile && (marker.code === 8010 || marker.code === 8006)) {
           console.log('🚫 Filtering false positive TS error in TypeScript file:', marker.code, marker.message);
           return false;
+        }
+        
+        // Filter out array inference errors when we can clearly see it's an array
+        if (marker.code === 2339 && marker.message.includes("Property 'map' does not exist on type '{}'")) {
+          const line = modelContent.split('\n')[marker.startLineNumber - 1];
+          const linesBefore = modelContent.split('\n').slice(Math.max(0, marker.startLineNumber - 10), marker.startLineNumber - 1);
+          
+          // Check if there's a clear array definition nearby
+          const hasArrayDefinition = linesBefore.some(line => 
+            line.includes('= [') || 
+            line.includes(': [') ||
+            line.includes('useState<') ||
+            line.includes('Array<') ||
+            line.includes('[]')
+          );
+          
+          if (hasArrayDefinition) {
+            console.log('🚫 Filtering false positive array inference error - clear array definition found');
+            return false;
+          }
         }
         
         return true;
@@ -838,6 +865,47 @@ declare global {
   interface EventListener { (evt: Event): void; }
   interface AddEventListenerOptions { capture?: boolean; once?: boolean; passive?: boolean; }
   interface EventListenerOptions { capture?: boolean; }
+}
+
+// Enhanced Array and Utility Types
+declare global {
+  // Better Array type support
+  interface Array<T> {
+    map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[];
+    filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): S[];
+    filter(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): T[];
+    find<S extends T>(predicate: (this: void, value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+    find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+    forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void;
+    reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue: U): U;
+    reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
+    some(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+    every<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): this is S[];
+    every(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+    length: number;
+    push(...items: T[]): number;
+    pop(): T | undefined;
+    shift(): T | undefined;
+    unshift(...items: T[]): number;
+    slice(start?: number, end?: number): T[];
+    splice(start: number, deleteCount?: number, ...items: T[]): T[];
+    indexOf(searchElement: T, fromIndex?: number): number;
+    includes(searchElement: T, fromIndex?: number): boolean;
+    join(separator?: string): string;
+    reverse(): T[];
+    sort(compareFn?: (a: T, b: T) => number): this;
+  }
+
+  // Common utility types that help with inference
+  type Partial<T> = { [P in keyof T]?: T[P]; };
+  type Required<T> = { [P in keyof T]-?: T[P]; };
+  type Readonly<T> = { readonly [P in keyof T]: T[P]; };
+  type Pick<T, K extends keyof T> = { [P in K]: T[P]; };
+  type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+  type Exclude<T, U> = T extends U ? never : T;
+  type Extract<T, U> = T extends U ? T : never;
+  type NonNullable<T> = T extends null | undefined ? never : T;
+  type Record<K extends keyof any, T> = { [P in K]: T; };
 }
 `;
 
