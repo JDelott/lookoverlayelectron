@@ -113,7 +113,7 @@ export class MonacoEditorManager {
         2786, // 'JSX' refers to a UMD global
         18046, // Element implicitly has an 'any' type (JSX specific)
         18047, // Element implicitly has an 'any' type (JSX specific)
-        // Remove 8010 and 8006 from ignore list - let them show but handle them properly
+        7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
       ]
     };
 
@@ -223,177 +223,8 @@ declare module "react" {
   export function createContext<T>(defaultValue: T): Context<T>;
   export interface MutableRefObject<T> { current: T; }
   export interface RefObject<T> { readonly current: T | null; }
-}
 
-// Global JSX namespace
-declare global {
-  namespace JSX {
-    interface Element extends React.ReactElement<any, any> {}
-    interface ElementClass extends React.Component<any, any> {}
-    interface ElementAttributesProperty { props: {}; }
-    interface ElementChildrenAttribute { children: {}; }
-    
-    interface IntrinsicElements {
-      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
-      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
-      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
-      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
-      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
-      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
-      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
-      textarea: React.DetailedHTMLProps<React.TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>;
-      select: React.DetailedHTMLProps<React.SelectHTMLAttributes<HTMLSelectElement>, HTMLSelectElement>;
-      option: React.DetailedHTMLProps<React.OptionHTMLAttributes<HTMLOptionElement>, HTMLOptionElement>;
-      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
-      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
-      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
-      ol: React.DetailedHTMLProps<React.OlHTMLAttributes<HTMLOListElement>, HTMLOListElement>;
-      li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
-      table: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>;
-      thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
-      tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
-      tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement>;
-      td: React.DetailedHTMLProps<React.TdHTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement>;
-      th: React.DetailedHTMLProps<React.ThHTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement>;
-      nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
-      video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
-      audio: React.DetailedHTMLProps<React.AudioHTMLAttributes<HTMLAudioElement>, HTMLAudioElement>;
-      canvas: React.DetailedHTMLProps<React.CanvasHTMLAttributes<HTMLCanvasElement>, HTMLCanvasElement>;
-      [elemName: string]: any;
-    }
-  }
-  
-  // Window and DOM globals
-  interface Window {
-    electronAPI: any;
-    monaco: any;
-    require: any;
-    app?: any;
-    layoutManager?: any;
-    chatManager?: any;
-  }
-  
-  interface Document {
-    getElementById(id: string): HTMLElement | null;
-    querySelector(selector: string): Element | null;
-    querySelectorAll(selector: string): NodeListOf<Element>;
-    createElement(tagName: string): HTMLElement;
-    addEventListener(type: string, listener: EventListener): void;
-    removeEventListener(type: string, listener: EventListener): void;
-    body: HTMLBodyElement;
-    head: HTMLHeadElement;
-    readyState: string;
-  }
-  
-  interface Element {
-    innerHTML: string;
-    textContent: string | null;
-    className: string;
-    classList: DOMTokenList;
-    style: CSSStyleDeclaration;
-    addEventListener(type: string, listener: EventListener): void;
-    removeEventListener(type: string, listener: EventListener): void;
-    appendChild(child: Node): Node;
-    removeChild(child: Node): Node;
-    querySelector(selector: string): Element | null;
-    querySelectorAll(selector: string): NodeListOf<Element>;
-    getAttribute(name: string): string | null;
-    setAttribute(name: string, value: string): void;
-    removeAttribute(name: string): void;
-    closest(selector: string): Element | null;
-  }
-  
-  interface HTMLElement extends Element {
-    onclick: ((this: GlobalEventHandlers, ev: MouseEvent) => any) | null;
-    onchange: ((this: GlobalEventHandlers, ev: Event) => any) | null;
-    onkeydown: ((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null;
-    onkeyup: ((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null;
-    focus(): void;
-    blur(): void;
-    click(): void;
-    scrollTop: number;
-    scrollHeight: number;
-    offsetWidth: number;
-    offsetHeight: number;
-    clientWidth: number;
-    clientHeight: number;
-  }
-  
-  var console: {
-    log(...data: any[]): void;
-    error(...data: any[]): void;
-    warn(...data: any[]): void;
-    info(...data: any[]): void;
-    debug(...data: any[]): void;
-  };
-  
-  var document: Document;
-  var window: Window;
-  
-  function setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
-  function clearTimeout(timeoutId: number): void;
-  function setInterval(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
-  function clearInterval(intervalId: number): void;
-  function requestAnimationFrame(callback: FrameRequestCallback): number;
-  function cancelAnimationFrame(handle: number): void;
-  
-  interface FrameRequestCallback { (time: number): void; }
-  
-  // Event types
-  interface Event {
-    type: string;
-    target: EventTarget | null;
-    currentTarget: EventTarget | null;
-    preventDefault(): void;
-    stopPropagation(): void;
-    stopImmediatePropagation(): void;
-  }
-  
-  interface MouseEvent extends Event {
-    clientX: number;
-    clientY: number;
-    ctrlKey: boolean;
-    shiftKey: boolean;
-    altKey: boolean;
-    metaKey: boolean;
-    button: number;
-    buttons: number;
-  }
-  
-  interface KeyboardEvent extends Event {
-    key: string;
-    code: string;
-    ctrlKey: boolean;
-    shiftKey: boolean;
-    altKey: boolean;
-    metaKey: boolean;
-    repeat: boolean;
-  }
-  
-  interface EventTarget {
-    addEventListener(type: string, listener: EventListener | null, options?: boolean | AddEventListenerOptions): void;
-    removeEventListener(type: string, listener: EventListener | null, options?: boolean | EventListenerOptions): void;
-    dispatchEvent(event: Event): boolean;
-  }
-  
-  interface EventListener { (evt: Event): void; }
-  interface AddEventListenerOptions { capture?: boolean; once?: boolean; passive?: boolean; }
-  interface EventListenerOptions { capture?: boolean; }
-}
-
-// React namespace for attributes
-declare namespace React {
+  // Add all the HTML attribute interfaces
   interface HTMLAttributes<T> {
     accessKey?: string;
     className?: string;
@@ -543,6 +374,470 @@ declare namespace React {
     width?: number | string; height?: number | string; viewBox?: string;
     xmlns?: string; d?: string; points?: string; transform?: string;
   }
+}
+
+// CRITICAL: Global JSX namespace - this fixes the 7026 error
+declare global {
+  namespace JSX {
+    interface Element extends React.ReactElement<any, any> {}
+    interface ElementClass extends React.Component<any, any> {}
+    interface ElementAttributesProperty { props: {}; }
+    interface ElementChildrenAttribute { children: {}; }
+    
+    // COMPLETE IntrinsicElements interface - this is what was missing!
+    interface IntrinsicElements {
+      // HTML Elements
+      a: React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>;
+      abbr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      address: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      area: React.DetailedHTMLProps<React.AreaHTMLAttributes<HTMLAreaElement>, HTMLAreaElement>;
+      article: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      aside: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      audio: React.DetailedHTMLProps<React.AudioHTMLAttributes<HTMLAudioElement>, HTMLAudioElement>;
+      b: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      base: React.DetailedHTMLProps<React.BaseHTMLAttributes<HTMLBaseElement>, HTMLBaseElement>;
+      bdi: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      bdo: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      big: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      blockquote: React.DetailedHTMLProps<React.BlockquoteHTMLAttributes<HTMLElement>, HTMLElement>;
+      body: React.DetailedHTMLProps<React.HTMLAttributes<HTMLBodyElement>, HTMLBodyElement>;
+      br: React.DetailedHTMLProps<React.HTMLAttributes<HTMLBRElement>, HTMLBRElement>;
+      button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+      canvas: React.DetailedHTMLProps<React.CanvasHTMLAttributes<HTMLCanvasElement>, HTMLCanvasElement>;
+      caption: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      cite: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      code: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      col: React.DetailedHTMLProps<React.ColHTMLAttributes<HTMLTableColElement>, HTMLTableColElement>;
+      colgroup: React.DetailedHTMLProps<React.ColgroupHTMLAttributes<HTMLTableColElement>, HTMLTableColElement>;
+      data: React.DetailedHTMLProps<React.DataHTMLAttributes<HTMLDataElement>, HTMLDataElement>;
+      datalist: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDataListElement>, HTMLDataListElement>;
+      dd: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      del: React.DetailedHTMLProps<React.DelHTMLAttributes<HTMLElement>, HTMLElement>;
+      details: React.DetailedHTMLProps<React.DetailsHTMLAttributes<HTMLElement>, HTMLElement>;
+      dfn: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      dialog: React.DetailedHTMLProps<React.DialogHTMLAttributes<HTMLDialogElement>, HTMLDialogElement>;
+      div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+      dl: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDListElement>, HTMLDListElement>;
+      dt: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      em: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      embed: React.DetailedHTMLProps<React.EmbedHTMLAttributes<HTMLEmbedElement>, HTMLEmbedElement>;
+      fieldset: React.DetailedHTMLProps<React.FieldsetHTMLAttributes<HTMLFieldSetElement>, HTMLFieldSetElement>;
+      figcaption: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      figure: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      footer: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      form: React.DetailedHTMLProps<React.FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>;
+      h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h6: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      head: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadElement>, HTMLHeadElement>;
+      header: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      hgroup: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      hr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHRElement>, HTMLHRElement>;
+      html: React.DetailedHTMLProps<React.HtmlHTMLAttributes<HTMLHtmlElement>, HTMLHtmlElement>;
+      i: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      iframe: React.DetailedHTMLProps<React.IframeHTMLAttributes<HTMLIFrameElement>, HTMLIFrameElement>;
+      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+      input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+      ins: React.DetailedHTMLProps<React.InsHTMLAttributes<HTMLModElement>, HTMLModElement>;
+      kbd: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      keygen: React.DetailedHTMLProps<React.KeygenHTMLAttributes<HTMLElement>, HTMLElement>;
+      label: React.DetailedHTMLProps<React.LabelHTMLAttributes<HTMLLabelElement>, HTMLLabelElement>;
+      legend: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLegendElement>, HTMLLegendElement>;
+      li: React.DetailedHTMLProps<React.LiHTMLAttributes<HTMLLIElement>, HTMLLIElement>;
+      link: React.DetailedHTMLProps<React.LinkHTMLAttributes<HTMLLinkElement>, HTMLLinkElement>;
+      main: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      map: React.DetailedHTMLProps<React.MapHTMLAttributes<HTMLMapElement>, HTMLMapElement>;
+      mark: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      menu: React.DetailedHTMLProps<React.MenuHTMLAttributes<HTMLElement>, HTMLElement>;
+      menuitem: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      meta: React.DetailedHTMLProps<React.MetaHTMLAttributes<HTMLMetaElement>, HTMLMetaElement>;
+      meter: React.DetailedHTMLProps<React.MeterHTMLAttributes<HTMLElement>, HTMLElement>;
+      nav: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      noscript: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      object: React.DetailedHTMLProps<React.ObjectHTMLAttributes<HTMLObjectElement>, HTMLObjectElement>;
+      ol: React.DetailedHTMLProps<React.OlHTMLAttributes<HTMLOListElement>, HTMLOListElement>;
+      optgroup: React.DetailedHTMLProps<React.OptgroupHTMLAttributes<HTMLOptGroupElement>, HTMLOptGroupElement>;
+      option: React.DetailedHTMLProps<React.OptionHTMLAttributes<HTMLOptionElement>, HTMLOptionElement>;
+      output: React.DetailedHTMLProps<React.OutputHTMLAttributes<HTMLElement>, HTMLElement>;
+      p: React.DetailedHTMLProps<React.HTMLAttributes<HTMLParagraphElement>, HTMLParagraphElement>;
+      param: React.DetailedHTMLProps<React.ParamHTMLAttributes<HTMLParamElement>, HTMLParamElement>;
+      picture: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      pre: React.DetailedHTMLProps<React.HTMLAttributes<HTMLPreElement>, HTMLPreElement>;
+      progress: React.DetailedHTMLProps<React.ProgressHTMLAttributes<HTMLProgressElement>, HTMLProgressElement>;
+      q: React.DetailedHTMLProps<React.QuoteHTMLAttributes<HTMLQuoteElement>, HTMLQuoteElement>;
+      rp: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      rt: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      ruby: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      s: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      samp: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      script: React.DetailedHTMLProps<React.ScriptHTMLAttributes<HTMLScriptElement>, HTMLScriptElement>;
+      section: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      select: React.DetailedHTMLProps<React.SelectHTMLAttributes<HTMLSelectElement>, HTMLSelectElement>;
+      small: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      source: React.DetailedHTMLProps<React.SourceHTMLAttributes<HTMLSourceElement>, HTMLSourceElement>;
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+      strong: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
+      sub: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      summary: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      sup: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      table: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>;
+      tbody: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+      td: React.DetailedHTMLProps<React.TdHTMLAttributes<HTMLTableDataCellElement>, HTMLTableDataCellElement>;
+      textarea: React.DetailedHTMLProps<React.TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>;
+      tfoot: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+      th: React.DetailedHTMLProps<React.ThHTMLAttributes<HTMLTableHeaderCellElement>, HTMLTableHeaderCellElement>;
+      thead: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableSectionElement>, HTMLTableSectionElement>;
+      time: React.DetailedHTMLProps<React.TimeHTMLAttributes<HTMLElement>, HTMLElement>;
+      title: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTitleElement>, HTMLTitleElement>;
+      tr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement>;
+      track: React.DetailedHTMLProps<React.TrackHTMLAttributes<HTMLTrackElement>, HTMLTrackElement>;
+      u: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
+      var: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      video: React.DetailedHTMLProps<React.VideoHTMLAttributes<HTMLVideoElement>, HTMLVideoElement>;
+      wbr: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+      webview: React.DetailedHTMLProps<React.WebViewHTMLAttributes<HTMLWebViewElement>, HTMLWebViewElement>;
+
+      // SVG Elements
+      svg: React.SVGProps<SVGSVGElement>;
+      animate: React.SVGProps<SVGElement>;
+      animateMotion: React.SVGProps<SVGElement>;
+      animateTransform: React.SVGProps<SVGElement>;
+      circle: React.SVGProps<SVGCircleElement>;
+      clipPath: React.SVGProps<SVGClipPathElement>;
+      defs: React.SVGProps<SVGDefsElement>;
+      desc: React.SVGProps<SVGDescElement>;
+      ellipse: React.SVGProps<SVGEllipseElement>;
+      feBlend: React.SVGProps<SVGFEBlendElement>;
+      feColorMatrix: React.SVGProps<SVGFEColorMatrixElement>;
+      feComponentTransfer: React.SVGProps<SVGFEComponentTransferElement>;
+      feComposite: React.SVGProps<SVGFECompositeElement>;
+      feConvolveMatrix: React.SVGProps<SVGFEConvolveMatrixElement>;
+      feDiffuseLighting: React.SVGProps<SVGFEDiffuseLightingElement>;
+      feDisplacementMap: React.SVGProps<SVGFEDisplacementMapElement>;
+      feDistantLight: React.SVGProps<SVGFEDistantLightElement>;
+      feDropShadow: React.SVGProps<SVGFEDropShadowElement>;
+      feFlood: React.SVGProps<SVGFEFloodElement>;
+      feFuncA: React.SVGProps<SVGFEFuncAElement>;
+      feFuncB: React.SVGProps<SVGFEFuncBElement>;
+      feFuncG: React.SVGProps<SVGFEFuncGElement>;
+      feFuncR: React.SVGProps<SVGFEFuncRElement>;
+      feGaussianBlur: React.SVGProps<SVGFEGaussianBlurElement>;
+      feImage: React.SVGProps<SVGFEImageElement>;
+      feMerge: React.SVGProps<SVGFEMergeElement>;
+      feMergeNode: React.SVGProps<SVGFEMergeNodeElement>;
+      feMorphology: React.SVGProps<SVGFEMorphologyElement>;
+      feOffset: React.SVGProps<SVGFEOffsetElement>;
+      fePointLight: React.SVGProps<SVGFEPointLightElement>;
+      feSpecularLighting: React.SVGProps<SVGFESpecularLightingElement>;
+      feSpotLight: React.SVGProps<SVGFESpotLightElement>;
+      feTile: React.SVGProps<SVGFETileElement>;
+      feTurbulence: React.SVGProps<SVGFETurbulenceElement>;
+      filter: React.SVGProps<SVGFilterElement>;
+      foreignObject: React.SVGProps<SVGForeignObjectElement>;
+      g: React.SVGProps<SVGGElement>;
+      image: React.SVGProps<SVGImageElement>;
+      line: React.SVGProps<SVGLineElement>;
+      linearGradient: React.SVGProps<SVGLinearGradientElement>;
+      marker: React.SVGProps<SVGMarkerElement>;
+      mask: React.SVGProps<SVGMaskElement>;
+      metadata: React.SVGProps<SVGMetadataElement>;
+      mpath: React.SVGProps<SVGElement>;
+      path: React.SVGProps<SVGPathElement>;
+      pattern: React.SVGProps<SVGPatternElement>;
+      polygon: React.SVGProps<SVGPolygonElement>;
+      polyline: React.SVGProps<SVGPolylineElement>;
+      radialGradient: React.SVGProps<SVGRadialGradientElement>;
+      rect: React.SVGProps<SVGRectElement>;
+      stop: React.SVGProps<SVGStopElement>;
+      switch: React.SVGProps<SVGSwitchElement>;
+      symbol: React.SVGProps<SVGSymbolElement>;
+      text: React.SVGProps<SVGTextElement>;
+      textPath: React.SVGProps<SVGTextPathElement>;
+      tspan: React.SVGProps<SVGTSpanElement>;
+      use: React.SVGProps<SVGUseElement>;
+      view: React.SVGProps<SVGViewElement>;
+    }
+  }
+  
+  // Add missing React attribute interfaces
+  namespace React {
+    interface AreaHTMLAttributes<T> extends HTMLAttributes<T> {
+      alt?: string; coords?: string; download?: any; href?: string;
+      hrefLang?: string; media?: string; referrerPolicy?: string;
+      rel?: string; shape?: string; target?: string;
+    }
+    
+    interface BaseHTMLAttributes<T> extends HTMLAttributes<T> {
+      href?: string; target?: string;
+    }
+    
+    interface BlockquoteHTMLAttributes<T> extends HTMLAttributes<T> {
+      cite?: string;
+    }
+    
+    interface CanvasHTMLAttributes<T> extends HTMLAttributes<T> {
+      height?: number | string; width?: number | string;
+    }
+    
+    interface ColHTMLAttributes<T> extends HTMLAttributes<T> {
+      span?: number; width?: number | string;
+    }
+    
+    interface ColgroupHTMLAttributes<T> extends HTMLAttributes<T> {
+      span?: number;
+    }
+    
+    interface DataHTMLAttributes<T> extends HTMLAttributes<T> {
+      value?: string | ReadonlyArray<string> | number;
+    }
+    
+    interface DelHTMLAttributes<T> extends HTMLAttributes<T> {
+      cite?: string; dateTime?: string;
+    }
+    
+    interface DetailsHTMLAttributes<T> extends HTMLAttributes<T> {
+      open?: boolean;
+    }
+    
+    interface DialogHTMLAttributes<T> extends HTMLAttributes<T> {
+      open?: boolean;
+    }
+    
+    interface EmbedHTMLAttributes<T> extends HTMLAttributes<T> {
+      height?: number | string; src?: string; type?: string; width?: number | string;
+    }
+    
+    interface FieldsetHTMLAttributes<T> extends HTMLAttributes<T> {
+      disabled?: boolean; form?: string; name?: string;
+    }
+    
+    interface HtmlHTMLAttributes<T> extends HTMLAttributes<T> {
+      manifest?: string;
+    }
+    
+    interface IframeHTMLAttributes<T> extends HTMLAttributes<T> {
+      allow?: string; allowFullScreen?: boolean; allowTransparency?: boolean;
+      frameBorder?: number | string; height?: number | string;
+      loading?: "eager" | "lazy"; marginHeight?: number; marginWidth?: number;
+      name?: string; referrerPolicy?: string; sandbox?: string;
+      scrolling?: string; seamless?: boolean; src?: string;
+      srcDoc?: string; width?: number | string;
+    }
+    
+    interface InsHTMLAttributes<T> extends HTMLAttributes<T> {
+      cite?: string; dateTime?: string;
+    }
+    
+    interface KeygenHTMLAttributes<T> extends HTMLAttributes<T> {
+      autoFocus?: boolean; challenge?: string; disabled?: boolean;
+      form?: string; keyType?: string; keyParams?: string; name?: string;
+    }
+    
+    interface LabelHTMLAttributes<T> extends HTMLAttributes<T> {
+      form?: string; htmlFor?: string;
+    }
+    
+    interface LinkHTMLAttributes<T> extends HTMLAttributes<T> {
+      as?: string; crossOrigin?: string; href?: string; hrefLang?: string;
+      integrity?: string; media?: string; referrerPolicy?: string;
+      rel?: string; sizes?: string; type?: string;
+    }
+    
+    interface MapHTMLAttributes<T> extends HTMLAttributes<T> {
+      name?: string;
+    }
+    
+    interface MenuHTMLAttributes<T> extends HTMLAttributes<T> {
+      type?: string;
+    }
+    
+    interface MetaHTMLAttributes<T> extends HTMLAttributes<T> {
+      charSet?: string; content?: string; httpEquiv?: string; name?: string;
+    }
+    
+    interface MeterHTMLAttributes<T> extends HTMLAttributes<T> {
+      form?: string; high?: number; low?: number; max?: number | string;
+      min?: number | string; optimum?: number; value?: string | ReadonlyArray<string> | number;
+    }
+    
+    interface ObjectHTMLAttributes<T> extends HTMLAttributes<T> {
+      classID?: string; data?: string; form?: string; height?: number | string;
+      name?: string; type?: string; useMap?: string; width?: number | string;
+      wmode?: string;
+    }
+    
+    interface OptgroupHTMLAttributes<T> extends HTMLAttributes<T> {
+      disabled?: boolean; label?: string;
+    }
+    
+    interface OutputHTMLAttributes<T> extends HTMLAttributes<T> {
+      form?: string; htmlFor?: string; name?: string;
+    }
+    
+    interface ParamHTMLAttributes<T> extends HTMLAttributes<T> {
+      name?: string; value?: string | ReadonlyArray<string> | number;
+    }
+    
+    interface ProgressHTMLAttributes<T> extends HTMLAttributes<T> {
+      max?: number | string; value?: string | ReadonlyArray<string> | number;
+    }
+    
+    interface QuoteHTMLAttributes<T> extends HTMLAttributes<T> {
+      cite?: string;
+    }
+    
+    interface ScriptHTMLAttributes<T> extends HTMLAttributes<T> {
+      async?: boolean; charSet?: string; crossOrigin?: string;
+      defer?: boolean; integrity?: string; noModule?: boolean;
+      nonce?: string; referrerPolicy?: string; src?: string; type?: string;
+    }
+    
+    interface SourceHTMLAttributes<T> extends HTMLAttributes<T> {
+      media?: string; sizes?: string; src?: string; srcSet?: string; type?: string;
+    }
+    
+    interface StyleHTMLAttributes<T> extends HTMLAttributes<T> {
+      media?: string; nonce?: string; scoped?: boolean; type?: string;
+    }
+    
+    interface TimeHTMLAttributes<T> extends HTMLAttributes<T> {
+      dateTime?: string;
+    }
+    
+    interface TrackHTMLAttributes<T> extends HTMLAttributes<T> {
+      default?: boolean; kind?: string; label?: string; src?: string; srcLang?: string;
+    }
+    
+    interface WebViewHTMLAttributes<T> extends HTMLAttributes<T> {
+      allowFullScreen?: boolean; autoFocus?: boolean; autosize?: boolean;
+      blinkfeatures?: string; disableblinkfeatures?: string; disableguestresize?: boolean;
+      disablewebsecurity?: boolean; guestinstance?: string; httpreferrer?: string;
+      nodeintegration?: boolean; partition?: string; plugins?: boolean;
+      preload?: string; src?: string; useragent?: string; webpreferences?: string;
+    }
+  }
+
+  // Window and DOM globals
+  interface Window {
+    electronAPI: any;
+    monaco: any;
+    require: any;
+    app?: any;
+    layoutManager?: any;
+    chatManager?: any;
+  }
+  
+  interface Document {
+    getElementById(id: string): HTMLElement | null;
+    querySelector(selector: string): Element | null;
+    querySelectorAll(selector: string): NodeListOf<Element>;
+    createElement(tagName: string): HTMLElement;
+    addEventListener(type: string, listener: EventListener): void;
+    removeEventListener(type: string, listener: EventListener): void;
+    body: HTMLBodyElement;
+    head: HTMLHeadElement;
+    readyState: string;
+  }
+  
+  interface Element {
+    innerHTML: string;
+    textContent: string | null;
+    className: string;
+    classList: DOMTokenList;
+    style: CSSStyleDeclaration;
+    addEventListener(type: string, listener: EventListener): void;
+    removeEventListener(type: string, listener: EventListener): void;
+    appendChild(child: Node): Node;
+    removeChild(child: Node): Node;
+    querySelector(selector: string): Element | null;
+    querySelectorAll(selector: string): NodeListOf<Element>;
+    getAttribute(name: string): string | null;
+    setAttribute(name: string, value: string): void;
+    removeAttribute(name: string): void;
+    closest(selector: string): Element | null;
+  }
+  
+  interface HTMLElement extends Element {
+    onclick: ((this: GlobalEventHandlers, ev: MouseEvent) => any) | null;
+    onchange: ((this: GlobalEventHandlers, ev: Event) => any) | null;
+    onkeydown: ((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null;
+    onkeyup: ((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null;
+    focus(): void;
+    blur(): void;
+    click(): void;
+    scrollTop: number;
+    scrollHeight: number;
+    offsetWidth: number;
+    offsetHeight: number;
+    clientWidth: number;
+    clientHeight: number;
+  }
+  
+  var console: {
+    log(...data: any[]): void;
+    error(...data: any[]): void;
+    warn(...data: any[]): void;
+    info(...data: any[]): void;
+    debug(...data: any[]): void;
+  };
+  
+  var document: Document;
+  var window: Window;
+  
+  function setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
+  function clearTimeout(timeoutId: number): void;
+  function setInterval(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
+  function clearInterval(intervalId: number): void;
+  function requestAnimationFrame(callback: FrameRequestCallback): number;
+  function cancelAnimationFrame(handle: number): void;
+  
+  interface FrameRequestCallback { (time: number): void; }
+  
+  // Event types
+  interface Event {
+    type: string;
+    target: EventTarget | null;
+    currentTarget: EventTarget | null;
+    preventDefault(): void;
+    stopPropagation(): void;
+    stopImmediatePropagation(): void;
+  }
+  
+  interface MouseEvent extends Event {
+    clientX: number;
+    clientY: number;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    metaKey: boolean;
+    button: number;
+    buttons: number;
+  }
+  
+  interface KeyboardEvent extends Event {
+    key: string;
+    code: string;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    metaKey: boolean;
+    repeat: boolean;
+  }
+  
+  interface EventTarget {
+    addEventListener(type: string, listener: EventListener | null, options?: boolean | AddEventListenerOptions): void;
+    removeEventListener(type: string, listener: EventListener | null, options?: boolean | EventListenerOptions): void;
+    dispatchEvent(event: Event): boolean;
+  }
+  
+  interface EventListener { (evt: Event): void; }
+  interface AddEventListenerOptions { capture?: boolean; once?: boolean; passive?: boolean; }
+  interface EventListenerOptions { capture?: boolean; }
 }
 `;
 
