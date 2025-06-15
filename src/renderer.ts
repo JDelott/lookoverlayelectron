@@ -322,6 +322,33 @@ class RendererApp {
   private setupGlobalEventListeners(): void {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+      // Don't handle shortcuts if user is typing in Monaco editor
+      const target = e.target as HTMLElement;
+      if (target && (
+        target.closest('#editor-container') || 
+        target.closest('.monaco-editor') ||
+        target.closest('.monaco-inputbox') ||
+        target.hasAttribute('data-editor-id') ||
+        target.classList.contains('monaco-list-row') ||
+        target.closest('.monaco-list')
+      )) {
+        // Only handle shortcuts that should work in editor (like Cmd+S)
+        const isEditorAllowedShortcut = 
+          ((e.ctrlKey || e.metaKey) && e.key === 's') || // Save
+          ((e.ctrlKey || e.metaKey) && e.key === 'w') || // Close tab
+          ((e.ctrlKey || e.metaKey) && e.key === '/') || // Comment
+          (e.shiftKey && e.altKey && e.key === 'F') ||   // Format
+          ((e.ctrlKey || e.metaKey) && e.key === '`') || // Toggle terminal
+          (e.metaKey && e.key === 'j') ||                // Toggle chat
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') || // Command palette
+          ((e.ctrlKey || e.metaKey) && e.key === 'b') || // Toggle sidebar
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F'); // Search
+        
+        if (!isEditorAllowedShortcut) {
+          return; // Let Monaco handle the event
+        }
+      }
+
       // Ctrl/Cmd + ` to toggle terminal
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault();

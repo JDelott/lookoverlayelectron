@@ -63,8 +63,14 @@ export class TerminalManager {
 
   private setupProblemsListeners(): void {
     document.addEventListener('problems-updated', (event: any) => {
-      this.renderTerminalTabs();
-      this.updateTerminalDisplay();
+      // Only update if terminal is currently visible and showing problems
+      if (this.state.terminalVisible && this.state.activeTerminalTab === 'problems') {
+        this.renderTerminalTabs();
+        this.updateTerminalDisplay();
+      } else {
+        // Just update tabs without full display update to avoid focus stealing
+        this.renderTerminalTabs();
+      }
     });
 
     document.addEventListener('problems-count-changed', (event: any) => {
@@ -143,7 +149,17 @@ export class TerminalManager {
       if (input) {
         input.addEventListener('keydown', (e) => this.handleKeyDown(e, input));
         
-        if (wasInputFocused || (this.state.activeTerminalTab === 'terminal' && activeTerminal.isActive)) {
+        // Only focus terminal input if:
+        // 1. It was previously focused AND
+        // 2. Terminal is visible AND
+        // 3. User is not currently typing in Monaco editor
+        const isMonacoFocused = document.activeElement?.closest('#editor-container') || 
+                               document.activeElement?.closest('.monaco-editor');
+        
+        if (wasInputFocused && 
+            this.state.terminalVisible && 
+            this.state.activeTerminalTab === 'terminal' &&
+            !isMonacoFocused) {
           setTimeout(() => {
             input.focus();
           }, 0);
