@@ -40,6 +40,17 @@ export class ChatManager {
   private filePicker: FilePicker | null = null;
   private attachedFiles: Map<string, AttachedFile> = new Map();
 
+  // Scroll and progressive rendering properties
+  private isScrolling = false;
+  private scrollAnimationFrame: number | null = null;
+  private autoScrollEnabled = true;
+  private pendingTextBuffer = '';
+  private bufferUpdateTimeout: number | null = null;
+  private lastScrollPosition = 0;
+  private renderQueue: string[] = [];
+  private isRendering = false;
+  private scrollUpdateScheduled = false;
+
   constructor(state: AppState) {
     this.state = state;
     this.electronAPI = (window as any).electronAPI;
@@ -151,9 +162,9 @@ export class ChatManager {
             </div>
           </div>
 
-          <!-- Messages -->
+          <!-- REFACTORED: Single scrollable messages container -->
           <div id="chat-messages" class="chat-messages">
-            <div class="messages-container" id="messages-container"></div>
+            <!-- Messages will be added directly here, no nested container -->
           </div>
 
           <!-- Quick Actions (hidden by default) -->
@@ -188,7 +199,6 @@ export class ChatManager {
 
           <!-- Input Area -->
           <div class="chat-input-area">
-            <!-- Input Container -->
             <div class="input-container">
               <div class="input-wrapper">
                 <div class="textarea-container">
@@ -238,7 +248,7 @@ export class ChatManager {
     const style = document.createElement('style');
     style.id = 'chat-styles';
     style.textContent = `
-      /* Chat Container */
+      /* REFACTORED: Clean container hierarchy with stable layout */
       .chat-container {
         height: 100%;
         display: flex;
@@ -246,9 +256,93 @@ export class ChatManager {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #1a1a1a;
         color: #e4e4e7;
+        position: relative;
+        overflow: hidden;
       }
 
-      /* Attached Files Header */
+      .chat-main {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* CRITICAL: Stable scrollable container with no layout shifts */
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 1rem;
+        /* Use block layout for stability */
+        display: block;
+        /* Prevent layout shifts during streaming */
+        contain: layout style;
+      }
+
+      /* Individual messages with stable layout */
+      .message {
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+        /* Prevent layout shifts */
+        contain: layout;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      /* Disable animations during streaming to prevent jolting */
+      .message.streaming {
+        animation: none;
+        /* Ensure stable layout during streaming */
+        contain: layout style;
+      }
+
+      .streaming-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        /* Prevent layout shifts */
+        contain: layout;
+      }
+
+      .message-text.typing-cursor {
+        position: relative;
+        /* Ensure stable layout */
+        min-height: 1.2em;
+      }
+
+      /* Optimized typing cursor that doesn't cause layout shifts */
+      .typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+        font-weight: normal;
+        position: absolute;
+        /* Prevent the cursor from affecting layout */
+        width: 0;
+        overflow: visible;
+      }
+
+      @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
+      /* Handle messages with code differently */
+      .message.has-code {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .message.has-code .message-main {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+
+      /* Rest of styles remain the same but with layout stability improvements... */
       .attached-files-header {
         background: #171717;
         border-bottom: 1px solid #2a2a2a;
@@ -339,17 +433,17 @@ export class ChatManager {
         color: #ef4444;
       }
 
-      /* Update attach button style when files are attached */
       .input-action-btn.has-files {
         color: #10b981;
         border-color: #10b981;
         background: rgba(16, 185, 129, 0.1);
       }
 
-      /* Input Area */
+      /* Input Area with stable layout */
       .chat-input-area {
         background: #1a1a1a;
         border-top: 1px solid #262626;
+        flex-shrink: 0;
       }
 
       .input-container {
@@ -373,7 +467,6 @@ export class ChatManager {
         position: relative;
       }
 
-      /* Clean textarea styling */
       .chat-input-area textarea {
         width: 100%;
         background: transparent;
@@ -393,7 +486,6 @@ export class ChatManager {
         color: #71717a;
       }
 
-      /* Input Footer with all buttons */
       .input-footer {
         display: flex;
         align-items: center;
@@ -422,7 +514,6 @@ export class ChatManager {
         align-items: center;
       }
 
-      /* All action buttons styled consistently */
       .input-action-btn {
         background: transparent;
         border: 1px solid #404040;
@@ -476,6 +567,7 @@ export class ChatManager {
         background: #171717;
         border-top: 1px solid #262626;
         border-bottom: 1px solid #262626;
+        flex-shrink: 0;
       }
 
       .quick-actions-grid {
@@ -624,96 +716,6 @@ export class ChatManager {
 
       .api-key-help a:hover {
         text-decoration: underline;
-      }
-
-      /* Main Chat */
-      .chat-main {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-
-      /* Context Bar */
-      .context-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        background: #262626;
-        border-bottom: 1px solid #404040;
-        font-size: 0.75rem;
-      }
-
-      .context-info {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: #a1a1aa;
-      }
-
-      .context-icon {
-        font-size: 0.875rem;
-      }
-
-      .context-file {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-        color: #60a5fa;
-      }
-
-      .context-toggle {
-        background: transparent;
-        border: 1px solid #404040;
-        border-radius: 0.25rem;
-        padding: 0.25rem 0.5rem;
-        color: #a1a1aa;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .context-toggle:hover {
-        border-color: #60a5fa;
-        color: #60a5fa;
-      }
-
-      .context-toggle.active {
-        background: #1e40af;
-        border-color: #3b82f6;
-        color: white;
-      }
-
-      /* Messages */
-      .chat-messages {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        min-height: 0;
-      }
-
-      .messages-container {
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-        min-height: 100%;
-      }
-
-      .message {
-        display: flex;
-        gap: 0.75rem;
-        max-width: 100%;
-        animation: slideIn 0.3s ease-out;
-      }
-
-      /* Handle messages with code differently */
-      .message.has-code {
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-
-      .message.has-code .message-main {
-        display: flex;
-        gap: 0.75rem;
-        align-items: flex-start;
       }
 
       @keyframes slideIn {
@@ -873,20 +875,6 @@ export class ChatManager {
         border: none;
       }
 
-      /* Remove all syntax highlighting classes */
-      .code-content .keyword,
-      .code-content .string,
-      .code-content .comment,
-      .code-content .number,
-      .code-content .function,
-      .code-content .variable,
-      .code-content .operator {
-        color: inherit;
-        font-weight: inherit;
-        font-style: inherit;
-      }
-
-      /* Horizontal scroll styling for code */
       .code-content::-webkit-scrollbar {
         height: 8px;
         background: #161b22;
@@ -905,7 +893,6 @@ export class ChatManager {
         background: #161b22;
       }
 
-      /* Large code block handling */
       .code-block.large {
         max-height: 600px;
         overflow: hidden;
@@ -916,14 +903,12 @@ export class ChatManager {
         overflow: auto;
       }
 
-      /* Better code formatting */
       .code-content pre {
         white-space: pre;
         word-wrap: normal;
         overflow-wrap: normal;
       }
 
-      /* Code syntax highlighting */
       .code-content .keyword { color: #c678dd; }
       .code-content .string { color: #98c379; }
       .code-content .comment { color: #5c6370; font-style: italic; }
@@ -932,37 +917,6 @@ export class ChatManager {
       .code-content .variable { color: #e06c75; }
       .code-content .operator { color: #56b6c2; }
 
-      /* Horizontal scroll styling */
-      .code-content::-webkit-scrollbar {
-        height: 8px;
-        background: #1a1a1a;
-      }
-
-      .code-content::-webkit-scrollbar-thumb {
-        background: #404040;
-        border-radius: 4px;
-      }
-
-      .code-content::-webkit-scrollbar-thumb:hover {
-        background: #525252;
-      }
-
-      .code-content::-webkit-scrollbar-corner {
-        background: #1a1a1a;
-      }
-
-      /* Large code block handling */
-      .code-block.large {
-        max-height: 600px;
-        overflow: hidden;
-      }
-
-      .code-block.large .code-content {
-        max-height: 500px;
-        overflow: auto;
-      }
-
-      /* Inline code */
       .message-text code:not(.code-block code) {
         background: #262626;
         color: #fbbf24;
@@ -973,7 +927,6 @@ export class ChatManager {
         border: 1px solid #404040;
       }
 
-      /* Code input detection */
       .message.user.code-heavy .message-text {
         font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
         background: #0d0d0d;
@@ -986,7 +939,6 @@ export class ChatManager {
         line-height: 1.5;
       }
 
-      /* Typing indicator */
       .typing-indicator {
         display: flex;
         align-items: center;
@@ -994,6 +946,7 @@ export class ChatManager {
         padding: 1rem;
         color: #71717a;
         font-size: 0.875rem;
+        flex-shrink: 0;
       }
 
       .typing-dots {
@@ -1023,7 +976,6 @@ export class ChatManager {
         }
       }
 
-      /* Responsive */
       @media (max-width: 400px) {
         .quick-actions-grid {
           grid-template-columns: 1fr;
@@ -1046,52 +998,14 @@ export class ChatManager {
         }
       }
 
-      /* Streaming message effects */
-      .message.streaming {
-        animation: streamingGlow 2s ease-in-out infinite;
-      }
-
-      @keyframes streamingGlow {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.85; }
-      }
-
-      /* Typing cursor effect */
-      .typing-cursor::after {
-        content: '▊';
-        color: #60a5fa;
-        animation: blink 1s infinite;
-        margin-left: 2px;
-        font-weight: normal;
-      }
-
-      @keyframes blink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0; }
-      }
-
-      /* Enhanced typing indicator for streaming */
-      .typing-indicator.streaming {
-        background: linear-gradient(90deg, #374151, #4b5563, #374151);
-        background-size: 200% 100%;
-        animation: shimmer 2s ease-in-out infinite;
-        border-radius: 0.5rem;
-        padding: 0.75rem 1rem;
-      }
-
-      @keyframes shimmer {
-        0% { background-position: -200% 0; }
-        100% { background-position: 200% 0; }
-      }
-
-      /* Streaming content container */
       .streaming-content {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        /* Prevent layout shifts */
+        contain: layout;
       }
 
-      /* Streaming code blocks */
       .streaming-code {
         border: 2px solid #3b82f6 !important;
         box-shadow: 0 0 10px rgba(59, 130, 246, 0.2) !important;
@@ -1101,7 +1015,6 @@ export class ChatManager {
         position: relative;
       }
 
-      /* Enhanced typing cursor for code */
       .streaming-code-text.typing-cursor::after {
         content: '▊';
         color: #60a5fa;
@@ -1110,7 +1023,6 @@ export class ChatManager {
         font-weight: normal;
       }
 
-      /* Multiple text containers in streaming */
       .streaming-content .message-text {
         margin: 0;
       }
@@ -1119,7 +1031,6 @@ export class ChatManager {
         margin-bottom: 0.5rem;
       }
 
-      /* Microphone button special states */
       .input-action-btn.recording {
         color: #ef4444 !important;
         border-color: #ef4444 !important;
@@ -1132,7 +1043,6 @@ export class ChatManager {
         50% { opacity: 0.7; transform: scale(1.05); }
       }
 
-      /* Speech feedback */
       .speech-feedback {
         padding: 0.75rem 1rem;
         background: #1f1f1f;
@@ -1184,7 +1094,6 @@ export class ChatManager {
         100% { transform: rotate(360deg); }
       }
 
-      /* Speech notifications */
       .speech-notification {
         position: fixed;
         top: 20px;
@@ -1216,6 +1125,365 @@ export class ChatManager {
       @keyframes slideOut {
         from { transform: translateX(0); opacity: 1; }
         to { transform: translateX(100%); opacity: 0; }
+      }
+
+      /* Enhanced progressive loading effects */
+      .message.streaming {
+        animation: none;
+        contain: layout style;
+      }
+
+      .streaming-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        contain: layout;
+      }
+
+      /* Progressive text rendering effects */
+      .message-text.typing-cursor {
+        position: relative;
+        min-height: 1.2em;
+        /* Add subtle background for progressive effect */
+        background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.05), transparent);
+        background-size: 200% 100%;
+        animation: progressiveGlow 2s ease-in-out infinite;
+        border-radius: 4px;
+        padding: 2px 4px;
+        margin: -2px -4px;
+      }
+
+      @keyframes progressiveGlow {
+        0%, 100% { background-position: -200% 0; }
+        50% { background-position: 200% 0; }
+      }
+
+      /* Enhanced typing cursor with progressive effect */
+      .typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: progressiveBlink 1s infinite, pulse 2s ease-in-out infinite;
+        margin-left: 2px;
+        font-weight: normal;
+        position: absolute;
+        width: 0;
+        overflow: visible;
+        text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+      }
+
+      @keyframes progressiveBlink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+
+      /* Progressive code block effects */
+      .streaming-code {
+        border: 2px solid #3b82f6 !important;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.3) !important;
+        animation: codeStreamGlow 1.5s ease-in-out infinite;
+      }
+
+      @keyframes codeStreamGlow {
+        0%, 100% { 
+          box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+        }
+        50% { 
+          box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
+        }
+      }
+
+      .streaming-code-text.typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: progressiveBlink 1s infinite;
+        margin-left: 1px;
+        font-weight: normal;
+        text-shadow: 0 0 6px rgba(96, 165, 250, 0.7);
+      }
+
+      /* Smooth character appearance */
+      .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        /* Smooth transitions for progressive text */
+        transition: all 0.1s ease-out;
+      }
+
+      /* Progressive loading container effects */
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 1rem;
+        display: block;
+        contain: layout style;
+        /* Smooth scrolling for progressive content */
+        scroll-behavior: auto;
+      }
+
+      /* Individual messages with progressive support */
+      .message {
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+        contain: layout;
+        animation: slideIn 0.3s ease-out;
+        /* Support for progressive effects */
+        transition: all 0.2s ease-out;
+      }
+
+      /* Enhanced streaming message appearance */
+      .message.streaming .message-content {
+        background: linear-gradient(135deg, rgba(96, 165, 250, 0.02), rgba(124, 58, 237, 0.02));
+        border-radius: 8px;
+        padding: 8px;
+        margin: -8px;
+        border: 1px solid rgba(96, 165, 250, 0.1);
+      }
+
+      /* Progressive word/character effects */
+      .progressive-char {
+        animation: charAppear 0.3s ease-out;
+      }
+
+      @keyframes charAppear {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.8);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      /* Fix streaming message layout */
+      .message.streaming {
+        animation: none;
+        contain: layout style;
+      }
+
+      .message.streaming .message-text {
+        /* Ensure proper text flow during streaming */
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        min-height: 1.2em;
+        line-height: 1.6;
+      }
+
+      .message.streaming .message-content {
+        /* Ensure content container maintains proper layout */
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      /* Enhanced typing cursor for better visibility */
+      .message-text.typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+        font-weight: normal;
+      }
+
+      @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
+      /* CRITICAL: Fix streaming message layout */
+      .message.streaming {
+        animation: none;
+        contain: layout style;
+        /* Ensure proper message structure during streaming */
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+      }
+
+      .message.streaming .message-content {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .message.streaming .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        /* Ensure the text container has proper styling */
+        background: rgba(124, 58, 237, 0.05);
+        border-radius: 8px;
+        padding: 0.75rem;
+        border: 1px solid rgba(124, 58, 237, 0.1);
+        min-height: 1.2em;
+        position: relative;
+      }
+
+      /* Enhanced typing cursor that doesn't break layout */
+      .message-text.typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+        font-weight: normal;
+        /* Position absolutely to prevent layout shifts */
+        position: absolute;
+        width: 0;
+        overflow: visible;
+      }
+
+      @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+
+      /* Ensure message avatar stays in place during streaming */
+      .message.streaming .message-avatar {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+        background: #7c3aed;
+        color: white;
+      }
+
+      /* Message header styling for streaming */
+      .message.streaming .message-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .message.streaming .message-role {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #e4e4e7;
+      }
+
+      .message.streaming .message-time {
+        font-size: 0.75rem;
+        color: #71717a;
+      }
+
+      /* Ensure proper container layout */
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 1rem;
+        display: block;
+        contain: layout style;
+        /* Ensure smooth scrolling during streaming */
+        scroll-behavior: auto;
+      }
+
+      /* Regular message styling for comparison */
+      .message {
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+        contain: layout;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      .message-avatar {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+      }
+
+      .message.assistant .message-avatar {
+        background: #7c3aed;
+        color: white;
+      }
+
+      .message-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .message-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .message-role {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #e4e4e7;
+      }
+
+      .message-time {
+        font-size: 0.75rem;
+        color: #71717a;
+      }
+
+      .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+      }
+
+      /* Ensure completed messages maintain proper structure */
+      .message:not(.streaming) .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        /* Remove the streaming-specific background */
+        background: none;
+        border: none;
+        padding: 0;
+      }
+
+      .message:not(.streaming) .message-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* Ensure code blocks in completed messages look correct */
+      .message:not(.streaming) .code-block {
+        margin: 1rem 0;
+        border-radius: 0.75rem;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        overflow: hidden;
       }
     `;
     
@@ -1610,7 +1878,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   }
 
   private renderMessages(): void {
-    const container = document.getElementById('messages-container');
+    const container = document.getElementById('chat-messages'); // Direct reference now
     if (!container) return;
 
     container.innerHTML = '';
@@ -1804,17 +2072,21 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   private processSimpleMarkdown(content: string): string {
     let processed = content;
     
+    // Only process basic markdown, don't break structure
     // Bold text
     processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
     // Italic text
     processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
     
-    // Inline code
-    processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Inline code (but not code blocks)
+    processed = processed.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     
     // Bullet points
     processed = processed.replace(/^• (.*$)/gim, '• $1');
+    
+    // Convert newlines to proper line breaks
+    processed = processed.replace(/\n/g, '<br>');
     
     return processed;
   }
@@ -1847,14 +2119,96 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   }
 
   private scrollToBottom(): void {
-    const messagesContainer = document.querySelector('.chat-messages');
+    const messagesContainer = document.getElementById('chat-messages');
     if (messagesContainer) {
+      // Set flag to indicate this is programmatic scrolling
+      this.isScrolling = true;
+      
+      // Force immediate scroll to bottom
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      
+      // Clear the programmatic scrolling flag
+    setTimeout(() => {
+        this.isScrolling = false;
+      }, 50);
     }
   }
 
+  private smoothScrollToBottom(): void {
+    if (!this.autoScrollEnabled) return;
+
+    const messagesContainer = document.getElementById('chat-messages') as HTMLElement;
+    if (!messagesContainer) return;
+
+    // Cancel any existing scroll animation
+    if (this.scrollAnimationFrame) {
+      cancelAnimationFrame(this.scrollAnimationFrame);
+    }
+
+    // Set flag to indicate this is programmatic scrolling
+    this.isScrolling = true;
+
+    // Use requestAnimationFrame for smooth scrolling
+    this.scrollAnimationFrame = requestAnimationFrame(() => {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      this.scrollAnimationFrame = null;
+      
+      // Clear the programmatic scrolling flag
+      setTimeout(() => {
+        this.isScrolling = false;
+      }, 50);
+    });
+  }
+
+  private forceScrollToBottom(): void {
+    const messagesContainer = document.getElementById('chat-messages') as HTMLElement;
+    if (!messagesContainer) return;
+
+    // Use multiple approaches to ensure scrolling works
+    requestAnimationFrame(() => {
+      // Set flag to indicate this is programmatic scrolling
+      this.isScrolling = true;
+
+      // Method 1: Direct scroll to bottom
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      
+      // Method 2: Ensure the last message is visible
+      const lastMessage = messagesContainer.lastElementChild;
+      if (lastMessage) {
+        lastMessage.scrollIntoView({ block: 'end', behavior: 'auto' });
+      }
+      
+      // Method 3: Double-check scroll position after a brief delay
+      setTimeout(() => {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        this.isScrolling = false;
+      }, 10);
+    });
+  }
+
+  private setupScrollMonitoring(): void {
+    const messagesContainer = document.getElementById('chat-messages') as HTMLElement;
+    if (!messagesContainer) return;
+
+    messagesContainer.addEventListener('scroll', () => {
+      // Don't monitor scroll during active streaming - always keep auto-scroll enabled
+      if (this.currentStreamingMessage) {
+        this.autoScrollEnabled = true;
+        return;
+      }
+      
+      // Only check scroll position when not streaming
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      
+      if (!this.isScrolling) {
+        this.autoScrollEnabled = isAtBottom;
+      }
+    });
+  }
+
   private showTypingIndicator(): void {
-    const container = document.getElementById('messages-container');
+    const container = document.getElementById('chat-messages'); // Direct reference now
     if (!container) return;
 
     const indicator = document.createElement('div');
@@ -2707,7 +3061,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         transform: translateY(0);
       }
     `;
-
+    
     document.head.appendChild(style);
   }
 
@@ -2839,6 +3193,12 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Hide typing indicator
     this.hideTypingIndicator();
     
+    // FORCE enable auto-scroll and disable any scroll monitoring during streaming
+    this.autoScrollEnabled = true;
+    this.isScrolling = false;
+    
+    console.log('🚀 Stream started - FORCING auto-scroll enabled');
+    
     // Create streaming message
     this.currentStreamSessionId = sessionId;
     this.currentStreamingMessage = {
@@ -2851,21 +3211,24 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add empty message to state
     this.chatState.messages.push(this.currentStreamingMessage);
     
-    // Create the message element with proper structure
+    // Create the message element
     this.createStreamingMessageElement();
+    
+    // Immediately scroll to the new message
+    this.forceScrollToBottomImmediate();
   }
 
   private createStreamingMessageElement(): void {
     if (!this.currentStreamingMessage) return;
 
-    const container = document.getElementById('messages-container');
+    const container = document.getElementById('chat-messages');
     if (!container) return;
 
-    // Create the message element
+    // Create the message element with proper structure
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant streaming';
     messageDiv.setAttribute('data-message-id', this.currentStreamingMessage.id);
-
+    
     // Avatar
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
@@ -2893,17 +3256,13 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     header.appendChild(role);
     header.appendChild(time);
 
-    // Create a flexible content container that can hold both text and code blocks
-    const streamingContent = document.createElement('div');
-    streamingContent.className = 'streaming-content';
-
-    // Initial text container
-    const textDiv = document.createElement('div');
-    textDiv.className = 'message-text typing-cursor';
-    streamingContent.appendChild(textDiv);
+    // FIXED: Create proper message text container (not streaming-content)
+    const messageText = document.createElement('div');
+    messageText.className = 'message-text typing-cursor';
+    messageText.textContent = ''; // Start empty
 
     contentDiv.appendChild(header);
-    contentDiv.appendChild(streamingContent);
+    contentDiv.appendChild(messageText); // Add text directly to content
 
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(contentDiv);
@@ -2911,15 +3270,15 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add to container
     container.appendChild(messageDiv);
 
-    // Store references
+    // Store references - use the messageText as the streaming container
     this.streamingMessageElement = messageDiv;
-    this.streamingContentContainer = streamingContent;
+    this.streamingContentContainer = messageText; // This is now the text container itself
     this.currentCodeBlock = null;
     this.isInCodeBlock = false;
     this.codeBlockBuffer = '';
 
-    // Scroll to bottom
-    this.scrollToBottom();
+    // Force scroll to the new message
+    this.forceScrollToBottomImmediate();
   }
 
   private handleStreamToken(token: string): void {
@@ -2928,210 +3287,72 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add token to message content
     this.currentStreamingMessage.content += token;
     
-    // Process the token for progressive rendering
-    this.processStreamingToken(token);
+    // Directly append text without complex queuing - this is faster and more reliable
+    this.appendTokenDirectly(token);
+    
+    // CRITICAL: Force scroll to bottom immediately after each token
+    this.forceScrollToBottomImmediate();
   }
 
-  private processStreamingToken(token: string): void {
+  // Fix the appendTokenDirectly method to work with the simpler structure:
+  private appendTokenDirectly(token: string): void {
     if (!this.streamingContentContainer) return;
 
-    // Check for code block markers
-    if (token.includes('```')) {
-      this.handleCodeBlockTransition(token);
-    } else {
-      // Regular content processing
-      if (this.isInCodeBlock) {
-        this.appendToCodeBlock(token);
-      } else {
-        this.appendToTextContent(token);
-      }
-    }
-
-    // Scroll to bottom
-    this.scrollToBottom();
+    // The streamingContentContainer is now the message-text div itself
+    const currentText = this.streamingContentContainer.textContent || '';
+    this.streamingContentContainer.textContent = currentText + token;
+    
+    // Ensure typing cursor is visible
+    this.streamingContentContainer.classList.add('typing-cursor');
   }
 
-  private handleCodeBlockTransition(token: string): void {
-    const parts = token.split('```');
+  // Add this immediate scroll method that's more aggressive:
+  private forceScrollToBottomImmediate(): void {
+    const messagesContainer = document.getElementById('chat-messages') as HTMLElement;
+    if (!messagesContainer) return;
+
+    // Multiple aggressive scroll approaches to ensure it works
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      
-      if (i > 0) {
-        // We hit a ``` marker
-        if (!this.isInCodeBlock) {
-          // Starting a code block
-          this.startCodeBlock(part);
-        } else {
-          // Ending a code block
-          this.endCodeBlock();
-          if (part) {
-            this.appendToTextContent(part);
-          }
-        }
-      } else {
-        // Content before ``` marker
-        if (part) {
-          if (this.isInCodeBlock) {
-            this.appendToCodeBlock(part);
-          } else {
-            this.appendToTextContent(part);
-          }
-        }
-      }
+    // Also use scrollIntoView on the last element
+    const lastElement = messagesContainer.lastElementChild;
+    if (lastElement) {
+      lastElement.scrollIntoView({ block: 'end', behavior: 'auto' });
     }
-  }
-
-  private startCodeBlock(languageAndCode: string): void {
-    if (!this.streamingContentContainer) return;
-
-    this.isInCodeBlock = true;
     
-    // Extract language from first line
-    const lines = languageAndCode.split('\n');
-    const language = lines[0].trim() || 'text';
-    const initialCode = lines.slice(1).join('\n');
-
-    // Create code block structure
-    const codeBlock = document.createElement('div');
-    codeBlock.className = 'code-block streaming-code';
-
-    // Header
-    const header = document.createElement('div');
-    header.className = 'code-header';
-
-    const langSpan = document.createElement('span');
-    langSpan.className = 'code-language';
-    langSpan.textContent = language.toUpperCase();
-
-    const actions = document.createElement('div');
-    actions.className = 'code-actions';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'code-action';
-
-    const insertBtn = document.createElement('button');
-    insertBtn.className = 'code-action';
-
-    actions.appendChild(copyBtn);
-    actions.appendChild(insertBtn);
-
-    header.appendChild(langSpan);
-    header.appendChild(actions);
-
-    // Content
-    const content = document.createElement('div');
-    content.className = 'code-content';
-
-    const pre = document.createElement('pre');
-    const codeElement = document.createElement('code');
-    codeElement.className = 'streaming-code-text';
-    
-    pre.appendChild(codeElement);
-    content.appendChild(pre);
-
-    codeBlock.appendChild(header);
-    codeBlock.appendChild(content);
-
-    // Add to streaming container
-    this.streamingContentContainer.appendChild(codeBlock);
-    this.currentCodeBlock = codeElement;
-
-    // Add initial code if any
-    if (initialCode) {
-      this.appendToCodeBlock(initialCode);
-    }
-
-    // Remove typing cursor from text element
-    const textElement = this.streamingContentContainer.querySelector('.message-text');
-    textElement?.classList.remove('typing-cursor');
-  }
-
-  private appendToCodeBlock(text: string): void {
-    if (!this.currentCodeBlock) return;
-
-    this.codeBlockBuffer += text;
-    this.currentCodeBlock.textContent = this.codeBlockBuffer;
-    
-    // Add typing cursor to code block
-    this.currentCodeBlock.classList.add('typing-cursor');
-  }
-
-  private endCodeBlock(): void {
-    if (!this.currentCodeBlock) return;
-
-    this.isInCodeBlock = false;
-    this.currentCodeBlock.classList.remove('typing-cursor');
-    
-    // Set up copy and insert functionality
-    const codeBlock = this.currentCodeBlock.closest('.code-block');
-    if (codeBlock) {
-      const copyBtn = codeBlock.querySelector('.code-action');
-      const insertBtn = codeBlock.querySelectorAll('.code-action')[1];
-      
-      if (copyBtn) {
-        copyBtn.addEventListener('click', () => this.copyCodeToClipboard(this.codeBlockBuffer));
-      }
-      if (insertBtn) {
-        insertBtn.addEventListener('click', () => this.insertCodeIntoEditor(this.codeBlockBuffer));
-      }
-      
-      codeBlock.classList.remove('streaming-code');
-    }
-
-    this.currentCodeBlock = null;
-    this.codeBlockBuffer = '';
-
-    // Create new text container for content after code block
-    this.createNewTextContainer();
-  }
-
-  private appendToTextContent(text: string): void {
-    if (!this.streamingContentContainer) return;
-
-    // Find the last text container
-    let textContainer = this.streamingContentContainer.querySelector('.message-text:last-of-type') as HTMLElement;
-    
-    if (!textContainer) {
-      this.createNewTextContainer();
-      textContainer = this.streamingContentContainer.querySelector('.message-text:last-of-type') as HTMLElement;
-    }
-
-    if (textContainer) {
-      // Process simple markdown for the text
-      const currentText = textContainer.innerHTML.replace(/<span class="typing-cursor[^"]*"[^>]*><\/span>/g, '');
-      const newText = currentText + text;
-      textContainer.innerHTML = this.processSimpleMarkdown(newText);
-      
-      // Ensure typing cursor is present
-      textContainer.classList.add('typing-cursor');
-    }
-  }
-
-  private createNewTextContainer(): void {
-    if (!this.streamingContentContainer) return;
-
-    const textDiv = document.createElement('div');
-    textDiv.className = 'message-text typing-cursor';
-    this.streamingContentContainer.appendChild(textDiv);
+    // Force another scroll after a tiny delay to handle any layout changes
+    setTimeout(() => {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }, 1);
   }
 
   private handleStreamEnd(): void {
+    console.log('✅ Stream ended - cleaning up');
+    
     // Clean up streaming state
     if (this.streamingMessageElement) {
       this.streamingMessageElement.classList.remove('streaming');
       
-      // Remove all typing cursors
-      const cursors = this.streamingMessageElement.querySelectorAll('.typing-cursor');
-      cursors.forEach(cursor => cursor.classList.remove('typing-cursor'));
+      // Remove typing cursor
+      if (this.streamingContentContainer) {
+        this.streamingContentContainer.classList.remove('typing-cursor');
+        
+        // FIXED: Instead of replacing innerHTML, process markdown while preserving structure
+        const finalText = this.streamingContentContainer.textContent || '';
+        if (finalText) {
+          // Check if the content has code blocks or complex markdown
+          if (finalText.includes('```') || finalText.includes('**') || finalText.includes('*')) {
+            // For complex content, rebuild the message properly
+            this.rebuildMessageWithMarkdown(finalText);
+          } else {
+            // For simple text, just apply basic formatting
+            this.streamingContentContainer.innerHTML = this.processSimpleMarkdown(finalText);
+          }
+        }
+      }
     }
 
-    // Clean up streaming-specific classes
-    if (this.streamingContentContainer) {
-      const streamingCodes = this.streamingContentContainer.querySelectorAll('.streaming-code');
-      streamingCodes.forEach(code => code.classList.remove('streaming-code'));
-    }
-
+    // Reset streaming state
     this.currentStreamingMessage = null;
     this.currentStreamSessionId = null;
     this.streamingMessageElement = null;
@@ -3141,8 +3362,15 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     this.codeBlockBuffer = '';
     this.chatState.isLoading = false;
 
-    // Final render to ensure everything is properly formatted
-    this.renderMessages();
+    // Re-enable normal scroll monitoring
+    this.autoScrollEnabled = true;
+    
+    // Final scroll to bottom
+    setTimeout(() => {
+      this.forceScrollToBottom();
+    }, 100);
+    
+    console.log('✅ Stream cleanup complete');
   }
 
   private handleStreamError(error: string): void {
@@ -3487,5 +3715,189 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
   public isInitialized(): boolean {
     const chatContent = document.getElementById('ai-chat-content');
     return !!(chatContent && chatContent.querySelector('.chat-container'));
+  }
+
+  // Add this new method to handle scroll scheduling
+
+
+  private scheduleScrollUpdate(): void {
+    if (this.scrollUpdateScheduled) return;
+    
+    this.scrollUpdateScheduled = true;
+    
+    // Use requestAnimationFrame to batch scroll updates
+    requestAnimationFrame(() => {
+      this.smoothScrollToBottomDuringStreaming();
+      this.scrollUpdateScheduled = false;
+    });
+  }
+
+  // Add this new smooth scroll method specifically for streaming
+  private smoothScrollToBottomDuringStreaming(): void {
+    const messagesContainer = document.getElementById('chat-messages') as HTMLElement;
+    if (!messagesContainer) return;
+
+    // Always scroll to bottom during progressive rendering for better UX
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    
+    // More aggressive auto-scroll during progressive rendering
+    if (distanceFromBottom <= 200) { // Increased threshold for progressive rendering
+      messagesContainer.scrollTo({
+        top: messagesContainer.scrollHeight,
+        behavior: 'auto'
+      });
+    }
+  }
+
+  private handleCodeBlockTransition(text: string): void {
+    const parts = text.split(/(```[\w]*)/);
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      
+      if (part.startsWith('```')) {
+        if (!this.isInCodeBlock) {
+          // Starting a code block
+          this.isInCodeBlock = true;
+          this.codeBlockBuffer = '';
+          const language = part.replace('```', '') || 'text';
+          this.createNewCodeBlock(language);
+        } else {
+          // Ending a code block
+          this.isInCodeBlock = false;
+          this.finalizeCodeBlock();
+          this.createNewTextContainer();
+        }
+      } else if (part) {
+        // Regular text content - use the direct append method instead
+        if (this.isInCodeBlock) {
+          this.codeBlockBuffer += part;
+          this.appendToCodeBlockDirectly(part);
+        } else {
+          this.appendTokenDirectly(part);
+        }
+      }
+    }
+  }
+
+  private createNewTextContainer(): void {
+    if (!this.streamingContentContainer) return;
+
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text typing-cursor';
+    this.streamingContentContainer.appendChild(textDiv);
+  }
+
+  private createNewCodeBlock(language: string): void {
+    if (!this.streamingContentContainer) return;
+
+    const codeBlock = document.createElement('div');
+    codeBlock.className = 'code-block streaming-code';
+    
+    // Header
+    const header = document.createElement('div');
+    header.className = 'code-header';
+    
+    const langSpan = document.createElement('span');
+    langSpan.className = 'code-language';
+    langSpan.textContent = language;
+    
+    header.appendChild(langSpan);
+    
+    // Content
+    const content = document.createElement('div');
+    content.className = 'code-content';
+    
+    const pre = document.createElement('pre');
+    const codeElement = document.createElement('code');
+    codeElement.className = 'streaming-code-text typing-cursor';
+    
+    pre.appendChild(codeElement);
+    content.appendChild(pre);
+    
+    codeBlock.appendChild(header);
+    codeBlock.appendChild(content);
+    
+    this.streamingContentContainer.appendChild(codeBlock);
+    this.currentCodeBlock = codeElement;
+  }
+
+  private finalizeCodeBlock(): void {
+    if (this.currentCodeBlock) {
+      this.currentCodeBlock.classList.remove('typing-cursor', 'streaming-code-text');
+      this.currentCodeBlock.textContent = this.codeBlockBuffer;
+      
+      const codeBlock = this.currentCodeBlock.closest('.code-block');
+      if (codeBlock) {
+        codeBlock.classList.remove('streaming-code');
+        
+        // Add copy and insert buttons
+        const header = codeBlock.querySelector('.code-header');
+        if (header) {
+          const actions = document.createElement('div');
+          actions.className = 'code-actions';
+          
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'code-action';
+          copyBtn.innerHTML = '📋 Copy';
+          copyBtn.onclick = () => this.copyCodeToClipboard(this.codeBlockBuffer);
+          
+          const insertBtn = document.createElement('button');
+          insertBtn.className = 'code-action';
+          insertBtn.innerHTML = '📥 Insert';
+          insertBtn.onclick = () => this.insertCodeIntoEditor(this.codeBlockBuffer);
+          
+          actions.appendChild(copyBtn);
+          actions.appendChild(insertBtn);
+          header.appendChild(actions);
+        }
+      }
+      
+      this.currentCodeBlock = null;
+      this.codeBlockBuffer = '';
+    }
+  }
+
+  // Add the missing appendToCodeBlockDirectly method:
+  private appendToCodeBlockDirectly(text: string): void {
+    if (!this.currentCodeBlock) return;
+
+    // Directly append text to the current code block
+    this.currentCodeBlock.textContent = (this.currentCodeBlock.textContent || '') + text;
+    
+    // Ensure typing cursor is visible
+    this.currentCodeBlock.classList.add('typing-cursor');
+  }
+
+  // Add this new method to properly rebuild messages with markdown:
+  private rebuildMessageWithMarkdown(content: string): void {
+    if (!this.streamingMessageElement || !this.currentStreamingMessage) return;
+
+    // Find the message content container
+    const messageContent = this.streamingMessageElement.querySelector('.message-content');
+    if (!messageContent) return;
+
+    // Keep the header, rebuild the content
+    const header = messageContent.querySelector('.message-header');
+    
+    // Clear content but keep header
+    messageContent.innerHTML = '';
+    if (header) {
+      messageContent.appendChild(header);
+    }
+
+    // Process content with proper markdown handling
+    if (content.includes('```')) {
+      // Has code blocks - use the full markdown processor
+      const processedContent = this.processMarkdownWithCodeBlocks(content);
+      messageContent.appendChild(processedContent);
+    } else {
+      // Simple content - create a single text div
+      const textDiv = document.createElement('div');
+      textDiv.className = 'message-text';
+      textDiv.innerHTML = this.processSimpleMarkdown(content);
+      messageContent.appendChild(textDiv);
+    }
   }
 }
