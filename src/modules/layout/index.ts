@@ -63,7 +63,6 @@ export class LayoutManager {
         --safe-area-inset-right: env(safe-area-inset-right, 0px);
         --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
         --safe-area-inset-left: env(safe-area-inset-left, 0px);
-        --header-height: 40px;
         --status-height: 24px;
         --sidebar-width: ${this.panelSizes.sidebarWidth}px;
         --chat-width: ${this.panelSizes.aiChatWidth}px;
@@ -337,6 +336,7 @@ export class LayoutManager {
         overflow: hidden;
       }
       
+      /* Comment out or remove header-area styles since we're not using it
       .header-area { 
         height: var(--header-height);
         background: rgb(31 41 55);
@@ -348,6 +348,7 @@ export class LayoutManager {
         flex-shrink: 0;
         z-index: 10;
       }
+      */
 
       .content-area {
         flex: 1;
@@ -1193,16 +1194,7 @@ export class LayoutManager {
     return `
       <div class="viewport-container">
         <div class="ide-container">
-          <!-- Header -->
-          <div class="header-area">
-            <div class="flex items-center">
-              <span class="text-lg font-bold text-gray-200">Satellite Ai</span>
-            </div>
-            
-            <div class="flex items-center gap-3">
-              <!-- Header buttons removed -->
-            </div>
-          </div>
+          <!-- Header removed entirely -->
 
           <!-- Content Area (Sidebar + Main + Chat) -->
           <div class="content-area">
