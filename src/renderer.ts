@@ -31,7 +31,7 @@ class RendererApp {
   constructor() {
     this.state = {
       currentFile: '',
-      currentWorkingDirectory: '/Users/jacobdelott/Downloads/lookoverlayelectron-main',
+      currentWorkingDirectory: '',
       showProjectSelector: true,
       openTabs: new Map(),
       activeTabPath: '',

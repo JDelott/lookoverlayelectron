@@ -1919,6 +1919,13 @@ export class LayoutManager {
         
         // Update state
         this.state.currentWorkingDirectory = projectPath;
+        
+        // Also update the main app state if available
+        const app = (window as any).app;
+        if (app && app.state) {
+          app.state.currentWorkingDirectory = projectPath;
+        }
+        
         this.state.showProjectSelector = false;
         
         console.log('🔧 Creating main layout...');
@@ -1926,7 +1933,6 @@ export class LayoutManager {
         this.createLayout();
         
         // Check if app is available
-        const app = (window as any).app;
         console.log('🔧 Window.app available:', !!app);
         
         if (app) {
