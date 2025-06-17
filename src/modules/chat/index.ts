@@ -1485,6 +1485,68 @@ export class ChatManager {
         border: 1px solid #30363d;
         overflow: hidden;
       }
+
+      /* FIXED: Ensure streaming text stays within container borders */
+      .message.streaming .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        /* Ensure proper containment */
+        background: rgba(124, 58, 237, 0.05);
+        border-radius: 8px;
+        padding: 0.75rem;
+        border: 1px solid rgba(124, 58, 237, 0.1);
+        min-height: 1.2em;
+        position: relative;
+        /* CRITICAL: Prevent text overflow */
+        overflow-wrap: break-word;
+        word-break: break-word;
+        max-width: 100%;
+        box-sizing: border-box;
+        /* Ensure content doesn't exceed container */
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Enhanced typing cursor that doesn't break layout or overflow */
+      .message-text.typing-cursor::after {
+        content: '▊';
+        color: #60a5fa;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+        font-weight: normal;
+        /* Position absolutely within the container */
+        position: absolute;
+        right: 0.75rem;
+        width: 0;
+        overflow: visible;
+        z-index: 1;
+      }
+
+      /* Ensure the message container itself has proper bounds */
+      .message.streaming {
+        animation: none;
+        contain: layout style;
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+        /* Prevent overflow */
+        overflow: hidden;
+      }
+
+      .message.streaming .message-content {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        /* Ensure content doesn't overflow */
+        max-width: 100%;
+        overflow: hidden;
+      }
     `;
     
     document.head.appendChild(style);
@@ -3314,9 +3376,9 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Multiple aggressive scroll approaches to ensure it works
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
-    // Also use scrollIntoView on the last element
+    // Also use scrollIntoView on the last element with proper type checking
     const lastElement = messagesContainer.lastElementChild;
-    if (lastElement) {
+    if (lastElement && lastElement instanceof HTMLElement) {
       lastElement.scrollIntoView({ block: 'end', behavior: 'auto' });
     }
     
@@ -3887,17 +3949,58 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       messageContent.appendChild(header);
     }
 
-    // Process content with proper markdown handling
+    // FIXED: Process content with better markdown handling that keeps instructions separate
     if (content.includes('```')) {
-      // Has code blocks - use the full markdown processor
-      const processedContent = this.processMarkdownWithCodeBlocks(content);
-      messageContent.appendChild(processedContent);
+      // Has code blocks - process with improved separation
+      this.processMarkdownWithProperSeparation(content, messageContent as HTMLElement);
     } else {
       // Simple content - create a single text div
       const textDiv = document.createElement('div');
       textDiv.className = 'message-text';
       textDiv.innerHTML = this.processSimpleMarkdown(content);
       messageContent.appendChild(textDiv);
+    }
+  }
+
+  // Add this new method to properly separate instructions from code blocks:
+  private processMarkdownWithProperSeparation(content: string, container: HTMLElement): void {
+    // Split content by code blocks while preserving the markers
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    
+    parts.forEach(part => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        // This is a code block
+        const lines = part.split('\n');
+        const firstLine = lines[0].replace('```', '');
+        const language = firstLine.trim() || 'text';
+        const code = lines.slice(1, -1).join('\n');
+        
+        if (code.trim()) {
+          const codeBlock = this.createCodeBlock(code, language);
+          container.appendChild(codeBlock);
+        }
+      } else if (part.trim()) {
+        // This is regular text (instructions/comments) - keep it separate
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.innerHTML = this.processSimpleMarkdown(part.trim());
+        container.appendChild(textDiv);
+      }
+    });
+  }
+
+  // Add this method to ensure text stays visible during streaming:
+  private ensureTextVisibility(): void {
+    if (!this.streamingContentContainer) return;
+    
+    // Scroll the text container itself if it's getting too long
+    const container = this.streamingContentContainer;
+    const containerHeight = container.scrollHeight;
+    const visibleHeight = container.clientHeight;
+    
+    // If content is taller than visible area, scroll to bottom
+    if (containerHeight > visibleHeight) {
+      container.scrollTop = containerHeight;
     }
   }
 }
