@@ -2098,7 +2098,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     
     const copyBtn = document.createElement('button');
     copyBtn.className = 'code-action';
-    copyBtn.innerHTML = '📋 Copy';
+    copyBtn.innerHTML = '📋 Copy All';
     copyBtn.onclick = () => this.copyCodeToClipboard(code);
     
     const insertBtn = document.createElement('button');
@@ -2112,19 +2112,75 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     header.appendChild(langSpan);
     header.appendChild(actions);
     
-    // Content
+    // Content - CRITICAL: Make this a proper textarea for full text editing capabilities
     const content = document.createElement('div');
     content.className = 'code-content';
     
-    const pre = document.createElement('pre');
-    const codeElement = document.createElement('code');
+    // Use a textarea instead of pre/code for full cursor control
+    const textarea = document.createElement('textarea');
+    textarea.className = 'code-textarea';
+    textarea.value = code;
+    textarea.readOnly = false; // Allow editing for full cursor control
+    textarea.spellcheck = false;
     
-    // Don't apply syntax highlighting - just show clean code
-    codeElement.textContent = code;
+    // Set up the textarea for proper code display
+    textarea.style.cssText = `
+        width: 100%;
+      height: ${Math.min(Math.max(code.split('\n').length * 1.6 + 2, 4), 30)}rem;
+      background: transparent;
+        border: none;
+      outline: none;
+      resize: vertical;
+      padding: 1.25rem;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+        font-size: 0.8125rem;
+      line-height: 1.6;
+        color: #e6edf3;
+      white-space: pre;
+      overflow-wrap: normal;
+      overflow-x: auto;
+      tab-size: 2;
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      cursor: text;
+    `;
     
-    pre.appendChild(codeElement);
-    content.appendChild(pre);
+    // Add event handlers for better UX
+    textarea.addEventListener('focus', () => {
+      codeBlock.classList.add('focused');
+    });
     
+    textarea.addEventListener('blur', () => {
+      codeBlock.classList.remove('focused');
+    });
+    
+    // Add keyboard shortcuts
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        textarea.select();
+      }
+    });
+    
+    // Update copy button to work with current selection
+    const copySelectedBtn = document.createElement('button');
+    copySelectedBtn.className = 'code-action';
+    copySelectedBtn.innerHTML = '📋 Copy Selected';
+    copySelectedBtn.onclick = () => {
+      const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+      if (selectedText) {
+        this.copyCodeToClipboard(selectedText);
+          } else {
+        this.copyCodeToClipboard(code);
+      }
+    };
+    
+    // Insert the copy selected button
+    actions.insertBefore(copySelectedBtn, insertBtn);
+    
+    content.appendChild(textarea);
     codeBlock.appendChild(header);
     codeBlock.appendChild(content);
     
@@ -4003,4 +4059,37 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       container.scrollTop = containerHeight;
     }
   }
+
+  // Add these two missing methods to the ChatManager class:
+
+  // NEW METHOD: Process markdown but always create interactive code blocks
+  private processMarkdownWithInteractiveCodeBlocks(content: string, container: HTMLElement): void {
+    // Split content by code blocks while preserving the markers
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    
+    parts.forEach(part => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        // This is a code block - ALWAYS create interactive version
+        const lines = part.split('\n');
+        const firstLine = lines[0].replace('```', '');
+        const language = firstLine.trim() || 'text';
+        const code = lines.slice(1, -1).join('\n');
+        
+        if (code.trim()) {
+          // Use the same createCodeBlock method that creates interactive textareas
+          const codeBlock = this.createCodeBlock(code, language);
+          container.appendChild(codeBlock);
+        }
+      } else if (part.trim()) {
+        // This is regular text (instructions/comments) - keep it separate
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.innerHTML = this.processSimpleMarkdown(part.trim());
+        container.appendChild(textDiv);
+      }
+    });
+  }
+
+  // Update the existing rebuildMessageWithMarkdown method:
+  
 }
