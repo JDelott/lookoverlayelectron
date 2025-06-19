@@ -123,6 +123,7 @@ export class MonacoEditorManager {
         7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
         // Add these to help with array inference issues
         2339, // Property does not exist on type '{}' - when it's clearly an array
+        2488, // ADD THIS: '[Symbol.iterator]()' method that returns an iterator - React useState false positive
       ]
     };
 

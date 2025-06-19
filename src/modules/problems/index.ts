@@ -182,30 +182,12 @@ export class ProblemsManager {
           return;
         }
 
-        // Get the correct file path from the model URI
-        let filePath = model.uri.path;
-        
-        // Handle Monaco's internal URI schemes 
-        if (model.uri.scheme === 'file') {
-          filePath = model.uri.path;
-        } else if (model.uri.toString().includes('file://')) {
-          filePath = model.uri.toString().replace('file://', '');
-        } else {
-          // For models that don't have proper file paths, try to get from tab manager
-          const app = (window as any).app;
-          const currentFile = app?.state?.currentFile || app?.tabManager?.state?.activeTabPath;
-          if (currentFile && currentFile !== '/1') {
-            filePath = currentFile;
-          }
-        }
-        
-        console.log('🔍 Processing marker for file:', filePath, 'URI:', model.uri.toString());
-        
+        const filePath = model.uri.path;
         const fileName = filePath.split('/').pop() || filePath;
         
-        // Create problem with simpler ID
+        // Create problem for everything that gets through
         const problem: ProblemItem = {
-          id: `${fileName}-${marker.startLineNumber}-${marker.startColumn}`, // Much simpler ID
+          id: `${filePath}-${marker.startLineNumber}-${marker.startColumn}-${marker.code}-${marker.severity}-${Date.now()}`,
           filePath,
           fileName,
           message: marker.message,
@@ -220,7 +202,7 @@ export class ProblemsManager {
             marker.relatedInformation.map((info: any) => info.message).join('; ') : undefined
         };
 
-        console.log(`➕ Adding problem: ${problem.severity.toUpperCase()}: ${problem.message.substring(0, 60)}... in ${problem.fileName}`);
+        console.log(`➕ Adding problem: ${problem.severity.toUpperCase()}: ${problem.message.substring(0, 60)}...`);
         problems.push(problem);
       });
     });
@@ -246,6 +228,9 @@ export class ProblemsManager {
       'cannot find name \'react\'',
       'cannot find name \'jsx\'',
       '\'jsx\' refers to a umd global',
+      // ADD THESE LINES for React Hook iterator errors:
+      '[symbol.iterator]() method that returns an iterator',
+      'must have a \'[symbol.iterator]()\' method',
     ];
 
     // Check for exact noise patterns
@@ -254,36 +239,28 @@ export class ProblemsManager {
       return true;
     }
 
-    // ONLY ignore these specific error codes in specific contexts
-    const contextualIgnores = [
-      // Only ignore 8006 and 8010 if they're about TypeScript features in .tsx files
-      { code: 8006, condition: () => message.includes('interface') && message.includes('typescript files') },
-      { code: 8010, condition: () => message.includes('type annotations') && message.includes('typescript files') },
-      // Only ignore React-specific module resolution issues
-      { code: 2307, condition: () => message.includes('react/jsx-runtime') },
-      { code: 2304, condition: () => message.includes('react') && !message.includes('declared') },
-      { code: 2591, condition: () => message.includes('jsx') },
-      { code: 2786, condition: () => message.includes('jsx') && message.includes('umd global') },
+    // Only ignore these specific error codes
+    const specificNoiseCodes = [
+      7026, // JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists
+      8006, // 'interface' declarations can only be used in TypeScript files
+      8010, // Type annotations can only be used in TypeScript files
+      2307, // Cannot find module 'react/jsx-runtime' (when it's specifically react/jsx-runtime)
+      2304, // Cannot find name 'React' (when it's specifically React)
+      2591, // Cannot find name 'JSX'
+      2786, // 'JSX' refers to a UMD global
     ];
 
-    // Check contextual ignores
-    for (const ignore of contextualIgnores) {
-      if (marker.code === ignore.code && ignore.condition()) {
-        console.log(`❌ Filtering contextual noise code: ${marker.code}`);
+    // Only ignore if it's the specific codes AND about React/JSX/TypeScript usage in TS files
+    if (specificNoiseCodes.includes(marker.code)) {
+      if (message.includes('react') || message.includes('jsx') || 
+          message.includes('interface') && message.includes('typescript') ||
+          message.includes('type annotations') && message.includes('typescript')) {
+        console.log(`❌ Filtering specific noise code: ${marker.code}`);
         return true;
       }
     }
 
-    // **ALLOW ALL OTHER TYPESCRIPT ERRORS THROUGH** - including:
-    // - 6133 (unused variables)
-    // - 6196 (unused parameters) 
-    // - 2322 (type assignment errors)
-    // - 2339 (property does not exist)
-    // - 2531/2532 (null/undefined errors)
-    // - 7006 (implicit any parameters)
-    // - 1011 (element access expression errors)
-    // - And all other real TypeScript errors
-
+    // Allow everything else through
     console.log(`✅ Allowing marker through`);
     return false;
   }
@@ -636,59 +613,40 @@ export class ProblemsManager {
   }
 
   private navigateToLocation(problem: ProblemItem): void {
-    // Try multiple ways to get Monaco editor
-    let monacoEditor = (window as any).monacoEditor;
-    
-    // Fallback to getting it from app state
-    if (!monacoEditor) {
-      const app = (window as any).app;
-      monacoEditor = app?.state?.monacoEditor || app?.editorManager?.state?.monacoEditor;
-    }
-    
-    // Another fallback - get the current active editor
-    if (!monacoEditor && window.monaco) {
-      const activeEditor = window.monaco.editor.getEditors()?.[0];
-      if (activeEditor) {
-        monacoEditor = activeEditor;
-      }
-    }
-
+    // Get the current Monaco editor from the global reference
+    const monacoEditor = (window as any).monacoEditor;
     if (monacoEditor && window.monaco) {
-      console.log(`📍 Navigating to line ${problem.line}, column ${problem.column} in ${problem.fileName}`);
+      console.log(`📍 Navigating to line ${problem.line}, column ${problem.column}`);
       
-      try {
-        // Set the cursor position
-        monacoEditor.setPosition({
-          lineNumber: problem.line,
-          column: problem.column
-        });
+      // Set the cursor position
+      monacoEditor.setPosition({
+        lineNumber: problem.line,
+        column: problem.column
+      });
 
-        // Scroll to reveal the position in center
-        monacoEditor.revealPositionInCenter({
-          lineNumber: problem.line,
-          column: problem.column
-        });
+      // Scroll to reveal the position in center
+      monacoEditor.revealPositionInCenter({
+        lineNumber: problem.line,
+        column: problem.column
+      });
 
-        // Focus Monaco editor
-        setTimeout(() => {
-          monacoEditor.focus();
-        }, 100);
+      // DON'T steal focus - let Monaco keep focus if it already has it
+      // Only focus if no other input is currently focused
+      const activeElement = document.activeElement;
+      if (!activeElement || !activeElement.matches('input, textarea, [contenteditable]')) {
+        setTimeout(() => monacoEditor.focus(), 100);
+      }
 
-        // Optionally highlight the problem range
-        if (problem.endLine && problem.endColumn) {
-          const range = new window.monaco.Range(
-            problem.line, problem.column,
-            problem.endLine, problem.endColumn
-          );
-          monacoEditor.setSelection(range);
-        }
-        
-        console.log('✅ Successfully navigated to problem location');
-      } catch (error) {
-        console.error('❌ Error during navigation:', error);
+      // Optionally highlight the problem range
+      if (problem.endLine && problem.endColumn) {
+        const range = new window.monaco.Range(
+          problem.line, problem.column,
+          problem.endLine, problem.endColumn
+        );
+        monacoEditor.setSelection(range);
       }
     } else {
-      console.error('❌ Monaco editor not available for navigation. Global ref:', !!(window as any).monacoEditor, 'Monaco available:', !!window.monaco);
+      console.error('Monaco editor not available for navigation');
     }
   }
 
