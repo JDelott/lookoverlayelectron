@@ -19,6 +19,56 @@ export class ChatStyles {
 
   private getStyles(): string {
     return `
+      ${this.getExistingStyles()}
+      
+      /* CRITICAL: Interactive textarea code blocks */
+      .code-textarea {
+        width: 100%;
+        background: transparent !important;
+        border: none !important;
+        outline: none !important;
+        resize: vertical;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace !important;
+        font-size: 0.8125rem !important;
+        line-height: 1.6 !important;
+        color: #e6edf3 !important;
+        white-space: pre !important;
+        overflow-wrap: normal !important;
+        overflow-x: auto;
+        tab-size: 2;
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+        cursor: text !important;
+        padding: 1.25rem !important;
+      }
+      
+      .code-textarea:focus {
+        outline: none !important;
+      }
+      
+      /* Enhanced code block focus state */
+      .code-block.focused {
+        border-color: #60a5fa !important;
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2) !important;
+      }
+      
+      /* Better selection highlighting in code blocks */
+      .code-textarea::selection {
+        background: rgba(96, 165, 250, 0.3) !important;
+        color: inherit !important;
+      }
+      
+      .code-textarea::-moz-selection {
+        background: rgba(96, 165, 250, 0.3) !important;
+        color: inherit !important;
+      }
+    `;
+  }
+
+  private getExistingStyles(): string {
+    return `
       /* REFACTORED: Clean container hierarchy with stable layout */
       .chat-container {
         height: 100%;
@@ -552,6 +602,7 @@ export class ChatStyles {
         overflow: hidden;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+        transition: all 0.2s ease;
       }
 
       .message.has-code .code-block {
@@ -609,9 +660,7 @@ export class ChatStyles {
 
       .code-content {
         position: relative;
-        overflow-x: auto;
-        overflow-y: hidden;
-        max-height: 500px;
+        overflow: hidden;
         background: #0d1117;
       }
 

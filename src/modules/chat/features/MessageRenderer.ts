@@ -113,7 +113,7 @@ export class MessageRenderer {
         const language = firstLine.trim() || 'text';
         const code = lines.slice(1, -1).join('\n');
         
-        const codeBlock = this.createCodeBlock(code, language);
+        const codeBlock = this.createInteractiveCodeBlock(code, language);
         fragment.appendChild(codeBlock);
       } else if (part.trim()) {
         const textDiv = document.createElement('div');
@@ -126,10 +126,14 @@ export class MessageRenderer {
     return fragment;
   }
 
-  private createCodeBlock(code: string, language: string): HTMLElement {
+  // CRITICAL: Create interactive code blocks with textarea for full cursor control
+  private createInteractiveCodeBlock(code: string, language: string): HTMLElement {
     const codeBlock = document.createElement('div');
-    codeBlock.className = 'code-block';
+    const isLarge = code.split('\n').length > 20 || code.length > 1000;
     
+    codeBlock.className = `code-block ${isLarge ? 'large' : ''}`;
+    
+    // Header
     const header = document.createElement('div');
     header.className = 'code-header';
     
@@ -142,8 +146,14 @@ export class MessageRenderer {
     
     const copyBtn = document.createElement('button');
     copyBtn.className = 'code-action';
-    copyBtn.innerHTML = '📋 Copy';
-    copyBtn.onclick = () => this.copyToClipboard(code);
+    copyBtn.innerHTML = '📋 Copy All';
+    copyBtn.onclick = () => this.copyCodeToClipboard(code);
+    
+    // Add copy selected button
+    const copySelectedBtn = document.createElement('button');
+    copySelectedBtn.className = 'code-action';
+    copySelectedBtn.innerHTML = '📋 Copy Selected';
+    copySelectedBtn.onclick = () => this.copySelectedCode(codeBlock);
     
     const insertBtn = document.createElement('button');
     insertBtn.className = 'code-action';
@@ -151,24 +161,81 @@ export class MessageRenderer {
     insertBtn.onclick = () => this.insertCode(code);
     
     actions.appendChild(copyBtn);
+    actions.appendChild(copySelectedBtn);
     actions.appendChild(insertBtn);
+    
     header.appendChild(langSpan);
     header.appendChild(actions);
     
+    // CRITICAL: Use textarea instead of pre/code for full interaction
     const content = document.createElement('div');
     content.className = 'code-content';
     
-    const pre = document.createElement('pre');
-    const codeElement = document.createElement('code');
-    codeElement.textContent = code;
+    const textarea = document.createElement('textarea');
+    textarea.className = 'code-textarea';
+    textarea.value = code;
+    textarea.readOnly = false; // Allow editing for full cursor control
+    textarea.spellcheck = false;
     
-    pre.appendChild(codeElement);
-    content.appendChild(pre);
+    // Set up the textarea for proper code display and interaction
+    textarea.style.cssText = `
+      width: 100%;
+      height: ${Math.min(Math.max(code.split('\n').length * 1.6 + 2, 4), 30)}rem;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: vertical;
+      padding: 1.25rem;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+      font-size: 0.8125rem;
+      line-height: 1.6;
+      color: #e6edf3;
+      white-space: pre;
+      overflow-wrap: normal;
+      overflow-x: auto;
+      tab-size: 2;
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      cursor: text;
+    `;
     
+    // Add event handlers for better UX
+    textarea.addEventListener('focus', () => {
+      codeBlock.classList.add('focused');
+    });
+    
+    textarea.addEventListener('blur', () => {
+      codeBlock.classList.remove('focused');
+    });
+    
+    // Add keyboard shortcuts
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        textarea.select();
+      }
+    });
+    
+    content.appendChild(textarea);
     codeBlock.appendChild(header);
     codeBlock.appendChild(content);
     
     return codeBlock;
+  }
+
+  private copySelectedCode(codeBlock: HTMLElement): void {
+    const textarea = codeBlock.querySelector('.code-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    
+    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+    if (selectedText) {
+      this.copyCodeToClipboard(selectedText);
+    } else {
+      // If nothing selected, copy all
+      this.copyCodeToClipboard(textarea.value);
+    }
   }
 
   private processSimpleMarkdown(content: string): string {
@@ -180,12 +247,24 @@ export class MessageRenderer {
       .replace(/\n/g, '<br>');
   }
 
-  private async copyToClipboard(code: string): Promise<void> {
+  private async copyCodeToClipboard(code: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(code);
-      DOMHelpers.showNotification('✅ Copied to clipboard', 'success');
+      
+      // Show brief success feedback
+      const button = event?.target as HTMLElement;
+      if (button) {
+        const originalText = button.innerHTML;
+        button.innerHTML = '✅ Copied!';
+        button.style.color = '#10b981';
+        setTimeout(() => {
+          button.innerHTML = originalText;
+          button.style.color = '';
+        }, 2000);
+      }
     } catch (error) {
       console.error('Failed to copy:', error);
+      DOMHelpers.showNotification('❌ Failed to copy code', 'error');
     }
   }
 
