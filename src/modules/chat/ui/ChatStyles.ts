@@ -64,6 +64,105 @@ export class ChatStyles {
         background: rgba(96, 165, 250, 0.3) !important;
         color: inherit !important;
       }
+
+      .chunked-progress-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background: rgba(124, 58, 237, 0.05);
+        border: 1px solid rgba(124, 58, 237, 0.2);
+        border-radius: 0.5rem;
+      }
+
+      .progress-text {
+        font-size: 0.875rem;
+        color: #a855f7;
+        font-weight: 500;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: rgba(124, 58, 237, 0.2);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: #a855f7;
+        transition: width 0.3s ease;
+        border-radius: 2px;
+      }
+
+      .chunked-completion {
+        text-align: center;
+        padding: 0.5rem;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+
+      .completion-text {
+        font-size: 0.75rem;
+        color: #10b981;
+        font-weight: 500;
+        background: rgba(16, 185, 129, 0.1);
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        display: inline-block;
+      }
+
+      .message.chunked-complete .message-text::after {
+        content: '✓ Complete Response';
+        display: block;
+        font-size: 0.75rem;
+        color: #10b981;
+        margin-top: 0.5rem;
+        font-weight: 500;
+      }
+
+      .message.streaming .message-text {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #d4d4d8;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        background: rgba(124, 58, 237, 0.05);
+        border-radius: 8px;
+        padding: 0.75rem;
+        border: 1px solid rgba(124, 58, 237, 0.1);
+        min-height: 1.2em;
+        position: relative;
+        overflow-wrap: break-word;
+        word-break: break-word;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      @media (max-width: 400px) {
+        .quick-actions-grid {
+          grid-template-columns: 1fr;
+        }
+        
+        .input-container {
+          padding: 0.75rem;
+        }
+        
+        .api-key-setup {
+          padding: 1rem;
+        }
+        
+        .api-key-content h3 {
+          font-size: 1.1rem;
+        }
+        
+        .api-key-content p {
+          font-size: 0.75rem;
+        }
+      }
     `;
   }
 
@@ -819,48 +918,6 @@ export class ChatStyles {
 
       .speech-notification.error {
         background: #ef4444;
-      }
-
-      .message.streaming .message-text {
-        font-size: 0.875rem;
-        line-height: 1.6;
-        color: #d4d4d8;
-        word-wrap: break-word;
-        white-space: pre-wrap;
-        background: rgba(124, 58, 237, 0.05);
-        border-radius: 8px;
-        padding: 0.75rem;
-        border: 1px solid rgba(124, 58, 237, 0.1);
-        min-height: 1.2em;
-        position: relative;
-        overflow-wrap: break-word;
-        word-break: break-word;
-        max-width: 100%;
-        box-sizing: border-box;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      @media (max-width: 400px) {
-        .quick-actions-grid {
-          grid-template-columns: 1fr;
-        }
-        
-        .input-container {
-          padding: 0.75rem;
-        }
-        
-        .api-key-setup {
-          padding: 1rem;
-        }
-        
-        .api-key-content h3 {
-          font-size: 1.1rem;
-        }
-        
-        .api-key-content p {
-          font-size: 0.75rem;
-        }
       }
     `;
   }

@@ -106,4 +106,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Interactive input support
   sendProcessInput: (processId: string, input: string) => ipcRenderer.invoke('send-process-input', processId, input),
+  
+  // Add chunked processing event listeners
+  onAIChunkedStart: (callback: (data: { totalChunks: number }) => void) => 
+    ipcRenderer.on('ai-chunked-start', (_event, data) => callback(data)),
+  onAIChunkedProgress: (callback: (data: { currentChunk: number; totalChunks: number }) => void) => 
+    ipcRenderer.on('ai-chunked-progress', (_event, data) => callback(data)),
+  onAIChunkedComplete: (callback: (data: { totalChunks: number; wasCompleted: boolean }) => void) => 
+    ipcRenderer.on('ai-chunked-complete', (_event, data) => callback(data)),
+  onAIChunkedError: (callback: (data: { error: string }) => void) => 
+    ipcRenderer.on('ai-chunked-error', (_event, data) => callback(data)),
 });

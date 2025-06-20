@@ -721,159 +721,200 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
   }
 });
 
-// Smarter truncation detection
-function isResponseTruncated(text: string): boolean {
-  const trimmedText = text.trim();
+// Update the complex query detection to be more conservative
+function isComplexQuery(messages: any[]): boolean {
+  const lastMessage = messages[messages.length - 1]?.content || '';
+  const totalContextLength = messages.reduce((total, msg) => total + (msg.content?.length || 0), 0);
   
-  // Don't flag short responses
-  if (trimmedText.length < 100) {
-    return false;
-  }
+  // Only use chunking for really complex scenarios
+  const isVeryLongContext = totalContextLength > 25000; // Increased threshold
+  const isVeryDetailedQuery = lastMessage.length > 5000; // Increased threshold
+  const hasManyCodeBlocks = (lastMessage.match(/```/g) || []).length > 6; // Increased threshold
+  const hasVeryComplexPatterns = /comprehensive|detailed analysis|full review|complete explanation|step by step|thoroughly|in depth/i.test(lastMessage);
   
-  // Check for incomplete code blocks (most reliable indicator)
-  const hasOpenCodeBlock = /```[a-zA-Z]*\s*$/.test(trimmedText) || 
-                          /```[^`]*[^`]{10,}$/.test(trimmedText);
-  
-  // Check for obviously incomplete sentences (more refined)
-  const lastSentence = trimmedText.split(/[.!?]/).pop()?.trim() || '';
-  const endsIncomplete = lastSentence.length > 20 && // Substantial content
-                        !/[.!?"`]$/.test(trimmedText) && // No proper ending
-                        /[a-zA-Z]$/.test(trimmedText) && // Ends with letter
-                        (
-                          lastSentence.split(' ').length < 5 || // Very short "sentence"
-                          /\b(the|and|or|but|with|for|to|in|on|at|by)$/i.test(trimmedText) || // Ends with preposition/conjunction
-                          /\b[a-z]+e$/i.test(trimmedText.split(' ').pop() || '') // Ends with what looks like a partial word
-                        );
-  
-  // Check for incomplete formatting
-  const hasIncompleteFormatting = /\*\*[^*]{20,}$/.test(trimmedText) || // Long unclosed bold
-                                 /\([^)]{30,}$/.test(trimmedText); // Long unclosed parenthesis
-  
-  const isTruncated = hasOpenCodeBlock || endsIncomplete || hasIncompleteFormatting;
-  
-  if (isTruncated) {
-    console.log('Truncation detected:', {
-      hasOpenCodeBlock,
-      endsIncomplete,
-      hasIncompleteFormatting,
-      lastChars: trimmedText.slice(-30),
-      lastSentence: lastSentence.slice(-20)
-    });
-  }
-  
-  return isTruncated;
+  // Be more selective about when to chunk
+  return isVeryLongContext || isVeryDetailedQuery || (hasManyCodeBlocks && hasVeryComplexPatterns);
 }
 
-// Simplified API handler with better logging
-ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
+function prepareChunkedContext(messages: any[], isFollowup: boolean = false): any[] {
+  if (isFollowup) {
+    // For follow-up requests, keep more recent context
+    return messages.slice(-3); // Increased from -2 to -3
+  }
+  
+  // For initial complex queries, keep more context but still truncate very long messages
+  const recent = messages.slice(-6); // Increased from -4 to -6
+  return recent.map(msg => ({
+    ...msg,
+    content: msg.content.length > 4000 ? // Increased from 2000 to 4000
+      msg.content.substring(0, 4000) + '...\n[Content truncated for processing]' : 
+      msg.content
+  }));
+}
+
+// Update the callAnthropicAPI function to handle much longer responses
+async function callAnthropicAPI(messages: any[], systemPrompt: string, options: any = {}): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY not found in environment variables');
   }
+
+  const {
+    maxTokens = 16384, // Increased from 8192 to 16384
+    timeout = 120000   // Increased from 60000 to 120000 (2 minutes)
+  } = options;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
+        role: m.role,
+        content: m.content
+      })),
+      temperature: 0.7,
+      top_p: 0.9,
+    }),
+    signal: AbortSignal.timeout(timeout)
+  });
   
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+  
+  const data = await response.json() as AnthropicResponse;
+  
+  if (!data.content || !data.content[0] || !data.content[0].text) {
+    throw new Error('Incomplete response from Anthropic API');
+  }
+  
+  return data.content[0].text;
+}
+
+// Update the main anthropic-api-call handler with much larger token limits
+ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   try {
     console.log(`Anthropic API call - ${messages.length} messages`);
     
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
-          role: m.role,
-          content: m.content
-        })),
-        temperature: 0.7,
-        top_p: 0.9,
-      }),
-      signal: AbortSignal.timeout(60000)
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-    
-    const data = await response.json() as AnthropicResponse;
-    
-    if (!data.content || !data.content[0] || !data.content[0].text) {
-      throw new Error('Incomplete response from Anthropic API');
-    }
-    
-    const responseText = data.content[0].text;
-    console.log(`Response received: ${responseText.length} characters`);
-    console.log(`Response ending: "${responseText.slice(-50)}"`);
-    
-    // Check for truncation
-    if (isResponseTruncated(responseText)) {
-      console.warn('Truncation detected, retrying with shorter context...');
+    // Check if this query needs chunking - make the threshold higher
+    if (isComplexQuery(messages)) {
+      console.log('Complex query detected, using chunked approach with high token limits');
       
-      try {
-        // Single retry with reduced context
-        const shorterMessages = messages.slice(-2); // Even more aggressive reduction
-        const retryResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 6000, // Larger limit for retry
-            system: systemPrompt,
-            messages: shorterMessages.filter((m: any) => m.role !== 'system').map((m: any) => ({
-              role: m.role,
-              content: m.content
-            })),
-            temperature: 0.7,
-            top_p: 0.9,
-          }),
-          signal: AbortSignal.timeout(45000)
+      // Notify renderer about chunked processing
+      mainWindow?.webContents.send('ai-chunked-start', { totalChunks: 3 });
+      
+      let fullResponse = '';
+      let chunkNumber = 1;
+      const maxChunks = 4; // Increased from 3 to 4
+      
+      while (chunkNumber <= maxChunks) {
+        console.log(`Processing chunk ${chunkNumber}/${maxChunks}`);
+        
+        // Notify renderer of progress
+        mainWindow?.webContents.send('ai-chunked-progress', { 
+          currentChunk: chunkNumber, 
+          totalChunks: maxChunks 
         });
         
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json() as AnthropicResponse;
-          if (retryData.content && retryData.content[0] && retryData.content[0].text) {
-            const retryText = retryData.content[0].text;
-            console.log(`Retry successful: ${retryText.length} characters`);
-            
-            // Check if retry is actually better (longer or ends more naturally)
-            const retryLooksComplete = !isResponseTruncated(retryText);
-            const retryIsLonger = retryText.length > responseText.length;
-            
-            if (retryLooksComplete || retryIsLonger) {
-              return {
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: retryText,
-                timestamp: new Date().toISOString()
-              };
-            }
-          }
+        // Prepare context for this chunk
+        let processedMessages;
+        let chunkSystemPrompt = systemPrompt;
+        
+        if (chunkNumber === 1) {
+          // First chunk: use prepared context with larger token limit
+          processedMessages = prepareChunkedContext(messages, false);
+          chunkSystemPrompt += '\n\nIMPORTANT: This is a complex query that may require multiple parts. Provide a comprehensive response. If you need to continue, end with an incomplete thought that can be naturally continued.';
+        } else {
+          // Follow-up chunks: use minimal context + continuation
+          processedMessages = prepareChunkedContext(messages, true);
+          const continuationPrompt = `Continue your previous response. You were in the middle of: "${fullResponse.slice(-500)}"`;
+          processedMessages.push({
+            role: 'user',
+            content: continuationPrompt
+          });
+          chunkSystemPrompt += '\n\nIMPORTANT: Continue seamlessly from where your previous response ended. Pick up the exact thread of thought and continue naturally.';
         }
-      } catch (retryError) {
-        console.log('Retry failed, using original response');
+        
+        try {
+          const chunkResponse = await callAnthropicAPI(processedMessages, chunkSystemPrompt, {
+            maxTokens: chunkNumber === 1 ? 16384 : 12288, // Very large for first chunk, large for subsequent
+            timeout: 180000 // 3 minutes per chunk
+          });
+          
+          fullResponse += (chunkNumber > 1 ? '\n\n' : '') + chunkResponse;
+          
+          // More sophisticated completion detection
+          const responseLength = chunkResponse.length;
+          const seemsComplete = 
+            responseLength < 8000 || // Much higher threshold
+            (chunkResponse.endsWith('.') && responseLength < 12000) ||
+            chunkResponse.endsWith('```') ||
+            chunkResponse.includes('In summary') ||
+            chunkResponse.includes('In conclusion') ||
+            chunkResponse.includes('To summarize') ||
+            chunkResponse.includes('That covers') ||
+            chunkResponse.includes('These are the main') ||
+            (chunkNumber >= 3 && responseLength < 10000); // Force completion after 3 chunks if reasonably sized
+          
+          if (seemsComplete) {
+            console.log(`Response complete at chunk ${chunkNumber} (${responseLength} chars)`);
+            break;
+          }
+          
+          // Add delay between chunks to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          chunkNumber++;
+          
+        } catch (chunkError) {
+          console.error(`Error in chunk ${chunkNumber}:`, chunkError);
+          const errorMessage = chunkError instanceof Error ? chunkError.message : 'Unknown error';
+          
+          if (chunkNumber === 1) {
+            mainWindow?.webContents.send('ai-chunked-error', { error: errorMessage });
+            throw chunkError; // If first chunk fails, propagate the error
+          }
+          // If later chunk fails, return what we have
+          fullResponse += '\n\n*[Response continues but additional content unavailable due to processing constraints]*';
+          break;
+        }
       }
       
-      // If retry fails or isn't better, return original with note
+      // Notify renderer that chunked processing is complete
+      mainWindow?.webContents.send('ai-chunked-complete', { 
+        totalChunks: chunkNumber,
+        wasCompleted: chunkNumber <= maxChunks
+      });
+      
       return {
         id: Date.now().toString(),
         role: 'assistant',
-        content: responseText + '\n\n*[Note: Response may be incomplete]*',
-        timestamp: new Date().toISOString()
+        content: fullResponse,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          wasChunked: true,
+          totalChunks: chunkNumber,
+          isComplete: true,
+          totalLength: fullResponse.length
+        }
       };
     }
     
-    // Response looks complete
-    console.log('Response appears complete');
+    // For simple queries, use much larger token limits
+    console.log('Simple query, using direct approach with high token limit');
+    const responseText = await callAnthropicAPI(messages, systemPrompt, {
+      maxTokens: 16384, // Much higher for simple queries too
+      timeout: 120000   // 2 minutes
+    });
+    
     return {
       id: Date.now().toString(),
       role: 'assistant',
@@ -887,7 +928,7 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   }
 });
 
-// Add streaming API handler
+// Also update the streaming API handler with higher token limits
 ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   
@@ -907,7 +948,7 @@ ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: 16384, // Increased from 8192
         system: systemPrompt,
         messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
           role: m.role,
@@ -915,9 +956,9 @@ ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt
         })),
         temperature: 0.7,
         top_p: 0.9,
-        stream: true, // Enable streaming
+        stream: true,
       }),
-      signal: AbortSignal.timeout(60000)
+      signal: AbortSignal.timeout(180000) // Increased from 60000 to 180000 (3 minutes)
     });
     
     if (!response.ok) {

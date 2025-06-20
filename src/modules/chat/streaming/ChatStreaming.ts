@@ -48,6 +48,27 @@ export class ChatStreaming {
       console.error('❌ Stream error:', data.error);
       this.handleStreamError(data.error);
     });
+
+    // Add chunked processing listeners
+    window.electronAPI.onAIChunkedStart?.((data: { totalChunks: number }) => {
+      console.log('🔄 Chunked processing started:', data.totalChunks, 'chunks');
+      this.handleChunkedStart(data.totalChunks);
+    });
+
+    window.electronAPI.onAIChunkedProgress?.((data: { currentChunk: number; totalChunks: number }) => {
+      console.log('🔄 Chunked progress:', data.currentChunk, '/', data.totalChunks);
+      this.handleChunkedProgress(data.currentChunk, data.totalChunks);
+    });
+
+    window.electronAPI.onAIChunkedComplete?.((data: { totalChunks: number; wasCompleted: boolean }) => {
+      console.log('✅ Chunked processing complete:', data.totalChunks, 'chunks');
+      this.handleChunkedComplete(data.totalChunks, data.wasCompleted);
+    });
+
+    window.electronAPI.onAIChunkedError?.((data: { error: string }) => {
+      console.error('❌ Chunked processing error:', data.error);
+      this.handleChunkedError(data.error);
+    });
   }
 
   private handleStreamStart(sessionId: string): void {
@@ -189,5 +210,90 @@ export class ChatStreaming {
       console.error('Failed to start streaming:', error);
       this.handleStreamError(this.getErrorMessage(error as Error));
     }
+  }
+
+  private handleChunkedStart(totalChunks: number): void {
+    // Show chunked processing indicator
+    this.showChunkedProgress(0, totalChunks);
+  }
+
+  private handleChunkedProgress(currentChunk: number, totalChunks: number): void {
+    // Update progress indicator
+    this.showChunkedProgress(currentChunk, totalChunks);
+  }
+
+  private handleChunkedComplete(totalChunks: number, wasCompleted: boolean): void {
+    // Hide progress and show completion
+    this.hideChunkedProgress();
+    
+    if (wasCompleted) {
+      this.showChunkedCompletionIndicator(totalChunks);
+    }
+  }
+
+  private handleChunkedError(error: string): void {
+    this.hideChunkedProgress();
+    // Handle error (could show in chat or log)
+    console.error('Chunked processing failed:', error);
+  }
+
+  private showChunkedProgress(currentChunk: number, totalChunks: number): void {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+
+    // Remove existing progress if any
+    const existingProgress = container.querySelector('.chunked-progress');
+    if (existingProgress) {
+      existingProgress.remove();
+    }
+
+    // Create progress indicator
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'chunked-progress message assistant';
+    progressDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-role">Claude</span>
+          <span class="message-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <div class="chunked-progress-content">
+          <div class="progress-text">Processing complex request... ${currentChunk > 0 ? `(${currentChunk}/${totalChunks})` : 'Starting...'}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${currentChunk > 0 ? (currentChunk / totalChunks) * 100 : 0}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(progressDiv);
+    this.scrollManager.forceScrollToBottom();
+  }
+
+  private hideChunkedProgress(): void {
+    const existingProgress = document.querySelector('.chunked-progress');
+    if (existingProgress) {
+      existingProgress.remove();
+    }
+  }
+
+  private showChunkedCompletionIndicator(totalChunks: number): void {
+    // Add a small completion indicator that fades out
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+
+    const completionDiv = document.createElement('div');
+    completionDiv.className = 'chunked-completion';
+    completionDiv.innerHTML = `
+      <div class="completion-text">✅ Complete response assembled from ${totalChunks} parts</div>
+    `;
+    
+    container.appendChild(completionDiv);
+    
+    // Fade out after 3 seconds
+    setTimeout(() => {
+      completionDiv.style.opacity = '0';
+      setTimeout(() => completionDiv.remove(), 300);
+    }, 3000);
   }
 }

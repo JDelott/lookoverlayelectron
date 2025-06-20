@@ -2,9 +2,22 @@ import { ChatMessage, StreamingState } from '../core/ChatTypes.js';
 import { ChatStateManager } from '../core/ChatStateManager.js';
 import { ScrollManager } from '../utils/ScrollManager.js';
 
+// Add chunked response support
+interface ChunkedResponseState {
+  isChunked: boolean;
+  currentChunk: number;
+  totalChunks: number;
+  progressElement?: HTMLElement;
+}
+
 export class StreamingRenderer {
   private stateManager: ChatStateManager;
   private scrollManager: ScrollManager;
+  private chunkedState: ChunkedResponseState = {
+    isChunked: false,
+    currentChunk: 0,
+    totalChunks: 0
+  };
 
   constructor(stateManager: ChatStateManager, scrollManager: ScrollManager) {
     this.stateManager = stateManager;
@@ -321,5 +334,47 @@ export class StreamingRenderer {
     // This will be handled by the CodeInsertion module
     const event = new CustomEvent('insertCode', { detail: { code } });
     document.dispatchEvent(event);
+  }
+
+  // Add method to show chunked response progress
+  showChunkedProgress(currentChunk: number, totalChunks: number): void {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+
+    // Remove existing progress if any
+    const existingProgress = container.querySelector('.chunked-progress');
+    if (existingProgress) {
+      existingProgress.remove();
+    }
+
+    // Create progress indicator
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'chunked-progress message assistant';
+    progressDiv.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-role">Claude</span>
+          <span class="message-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <div class="chunked-progress-content">
+          <div class="progress-text">Processing complex request... (${currentChunk}/${totalChunks})</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${(currentChunk / totalChunks) * 100}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(progressDiv);
+    this.chunkedState.progressElement = progressDiv;
+    this.scrollManager.forceScrollToBottom();
+  }
+
+  hideChunkedProgress(): void {
+    if (this.chunkedState.progressElement) {
+      this.chunkedState.progressElement.remove();
+      this.chunkedState.progressElement = undefined;
+    }
   }
 }
