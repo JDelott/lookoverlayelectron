@@ -1891,28 +1891,133 @@ I have access to your current file context and can provide tailored assistance. 
   }
 
   private getSystemPrompt(): string {
-    const contextInfo = this.state.currentFile ? `
+    // Enhanced context with more detailed information
+    const contextInfo = this.buildEnhancedContext();
 
-**Current Context:**
-- File: ${this.state.currentFile}
-- Project: ${this.state.currentWorkingDirectory}` : '';
+    return `You are an expert TypeScript and Node.js senior developer and architect. Write clean, minimal, and strictly typed code using modern standards (ES2022+, Node.js 20+). 
 
-    return `You are Claude, an expert AI coding assistant integrated into a developer's IDE. You excel at:
+**Core Principles:**
+- Avoid 'any' types - use proper type definitions
+- Write production-ready, maintainable code
+- Use modern TypeScript features (satisfies, const assertions, template literals)
+- Implement proper error handling with Result/Either patterns when appropriate
+- Follow SOLID principles and clean architecture
+- Use functional programming concepts where beneficial
 
-1. **Code Analysis & Review** - Understand, explain, and critique code
-2. **Code Generation** - Create high-quality, production-ready code
-3. **Debugging & Problem Solving** - Identify and fix issues efficiently
-4. **Architecture & Best Practices** - Suggest improvements and patterns
-5. **Documentation** - Generate clear, helpful documentation
+**Code Standards:**
+- Prefer 'const' over 'let', avoid 'var'
+- Use destructuring, spread operator, and modern array methods
+- Implement proper async/await patterns, avoid callback hell
+- Use type guards and discriminated unions for type safety
+- Prefer composition over inheritance
+- Write self-documenting code - avoid unnecessary comments
 
-**Guidelines:**
-- Provide concise, actionable responses
-- Use markdown formatting for code blocks with proper language syntax highlighting
-- When generating code, make it complete and ready to use
-- Explain your reasoning when making suggestions
-- Ask clarifying questions when requirements are unclear${contextInfo}
+**Response Format:**
+- Return working code that passes TypeScript strict mode
+- Include complete imports and exports
+- Provide multiple approaches for complex problems
+- Show type definitions for complex data structures
+- Include error handling and edge cases
+- Optimize for performance and memory efficiency
 
-Be helpful, accurate, and focus on practical solutions that improve the developer's workflow.`;
+**Avoid:**
+- Browser-specific APIs (unless explicitly requested)
+- Deprecated Node.js features
+- Any/unknown types without proper type guards
+- Mutating operations on arrays/objects (prefer immutable patterns)
+- Console.log in production code (use proper logging)
+
+${contextInfo}
+
+Focus on practical, enterprise-grade solutions that improve code quality, performance, and maintainability.`;
+  }
+
+  private buildEnhancedContext(): string {
+    if (!this.state.currentFile && !this.state.currentWorkingDirectory) {
+      return '';
+    }
+
+    let context = '\n**Enhanced Context:**\n';
+    
+    if (this.state.currentFile) {
+      const fileName = this.state.currentFile.split('/').pop() || '';
+      const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+      const fileType = this.getFileTypeDescription(fileExtension);
+      
+      context += `- **Current File:** ${fileName} (${fileType})\n`;
+      context += `- **Full Path:** ${this.state.currentFile}\n`;
+    }
+
+    if (this.state.currentWorkingDirectory) {
+      const projectName = this.state.currentWorkingDirectory.split('/').pop() || 'Unknown';
+      context += `- **Project:** ${projectName}\n`;
+      context += `- **Working Directory:** ${this.state.currentWorkingDirectory}\n`;
+    }
+
+    // Add selected text context if available
+    const selectedText = this.getSelectedText();
+    if (selectedText && selectedText.length > 0) {
+      const lineCount = selectedText.split('\n').length;
+      context += `- **Selected Text:** ${lineCount} line${lineCount !== 1 ? 's' : ''} selected in editor\n`;
+      
+      // Analyze selected text
+      const hasTypes = /:\s*(string|number|boolean|object|Array|Promise|any)/.test(selectedText);
+      const hasAsync = /async|await|Promise/.test(selectedText);
+      const hasImports = /import|require/.test(selectedText);
+      
+      if (hasTypes || hasAsync || hasImports) {
+        context += `- **Code Features:** `;
+        const features: string[] = []; // Fix: Explicitly type as string[]
+        if (hasTypes) features.push('Type annotations');
+        if (hasAsync) features.push('Async operations');
+        if (hasImports) features.push('Module imports');
+        context += features.join(', ') + '\n';
+      }
+    }
+
+    // Add attached files context
+    if (this.attachedFiles.size > 0) {
+      context += `- **Attached Files:** ${this.attachedFiles.size} file${this.attachedFiles.size !== 1 ? 's' : ''} provided\n`;
+      
+      const fileTypes = Array.from(this.attachedFiles.values())
+        .map(file => file.language)
+        .filter((lang, index, arr) => arr.indexOf(lang) === index);
+      
+      if (fileTypes.length > 0) {
+        context += `- **File Types:** ${fileTypes.join(', ')}\n`;
+      }
+    }
+
+    context += '\n**Instructions:** Analyze the provided context and deliver TypeScript/Node.js solutions that leverage the specific files, selection, and project structure mentioned above.';
+    
+    return context;
+  }
+
+  private getFileTypeDescription(extension: string): string {
+    const typeMap: { [key: string]: string } = {
+      'ts': 'TypeScript',
+      'js': 'JavaScript', 
+      'tsx': 'TypeScript React',
+      'jsx': 'JavaScript React',
+      'json': 'JSON Configuration',
+      'md': 'Markdown Documentation',
+      'yml': 'YAML Configuration',
+      'yaml': 'YAML Configuration',
+      'html': 'HTML Template',
+      'css': 'CSS Stylesheet',
+      'scss': 'SCSS Stylesheet',
+      'less': 'LESS Stylesheet',
+      'env': 'Environment Variables',
+      'gitignore': 'Git Ignore Rules',
+      'dockerfile': 'Docker Configuration',
+      'sql': 'SQL Database',
+      'graphql': 'GraphQL Schema',
+      'test.ts': 'TypeScript Test',
+      'spec.ts': 'TypeScript Test',
+      'd.ts': 'TypeScript Declarations'
+    };
+    
+    return typeMap[extension] || 'Source Code';
   }
 
   private detectCodeContent(content: string): boolean {

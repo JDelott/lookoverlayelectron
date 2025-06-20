@@ -784,7 +784,7 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: systemPrompt,
         messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
           role: m.role,
@@ -827,7 +827,7 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 3000, // Smaller limit for retry
+            max_tokens: 6000, // Larger limit for retry
             system: systemPrompt,
             messages: shorterMessages.filter((m: any) => m.role !== 'system').map((m: any) => ({
               role: m.role,
@@ -907,7 +907,7 @@ ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: systemPrompt,
         messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
           role: m.role,
