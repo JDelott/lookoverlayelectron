@@ -2431,14 +2431,8 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     
     modal.innerHTML = `
       <div class="insertion-preview-header">
-        <h3>Code Insertion Preview</h3>
+        <h3>Replace Selection</h3>
         <button class="close-btn" onclick="this.closest('.insertion-preview-overlay').remove()">✕</button>
-      </div>
-      
-      <div class="insertion-preview-tabs">
-        <button class="tab-btn active" data-tab="smart">Smart Insert</button>
-        <button class="tab-btn" data-tab="replace">Replace Selection</button>
-        <button class="tab-btn" data-tab="append">Append to File</button>
       </div>
       
       <div class="insertion-preview-content">
@@ -2461,7 +2455,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       
       <div class="insertion-preview-actions">
         <button class="btn-secondary" onclick="this.closest('.insertion-preview-overlay').remove()">Cancel</button>
-        <button class="btn-primary" id="confirm-insert">Insert Code</button>
+        <button class="btn-primary" id="confirm-insert">Replace Selection</button>
       </div>
     `;
 
@@ -2471,23 +2465,19 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     // Add styles for the modal
     this.injectInsertionPreviewStyles();
 
-    // Store data for tab switching
+    // Store data - only need for replace mode now
     (modal as any)._insertionData = { code, currentContent, selection, cursorPosition };
 
-    // Setup tab switching with proper data
-    this.setupPreviewTabs(modal);
-    
-    // Initialize with smart insert preview
-    this.updateInsertionPreview('smart', code, currentContent, selection, cursorPosition);
+    // Initialize with replace preview directly
+    this.updateInsertionPreview('replace', code, currentContent, selection, cursorPosition);
 
-    // Setup confirm button
+    // Setup confirm button - always use replace mode
     const confirmBtn = modal.querySelector('#confirm-insert') as HTMLButtonElement;
     confirmBtn.onclick = () => {
-      const activeTab = modal.querySelector('.tab-btn.active')?.getAttribute('data-tab') || 'smart';
       const formatOnInsert = (modal.querySelector('#format-on-insert') as HTMLInputElement).checked;
       const addImports = (modal.querySelector('#add-imports') as HTMLInputElement).checked;
       
-      this.performInsertion(activeTab, code, selection, cursorPosition, { formatOnInsert, addImports });
+      this.performInsertion('replace', code, selection, cursorPosition, { formatOnInsert, addImports });
       overlay.remove();
     };
 
@@ -2505,42 +2495,6 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     modal.focus();
   }
 
-  private setupPreviewTabs(modal: HTMLElement): void {
-    const tabs = modal.querySelectorAll('.tab-btn');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        // Remove active class from all tabs
-        tabs.forEach(t => t.classList.remove('active'));
-        // Add active class to clicked tab
-        tab.classList.add('active');
-        
-        // Get stored data
-        const data = (modal as any)._insertionData;
-        if (!data) return;
-
-        // Update preview based on selected tab with real data
-        const tabType = tab.getAttribute('data-tab') || 'smart';
-        this.updateInsertionPreview(tabType, data.code, data.currentContent, data.selection, data.cursorPosition);
-        
-        // Update button text based on mode
-        this.updateInsertButtonText(modal, tabType);
-      });
-    });
-  }
-
-  private updateInsertButtonText(modal: HTMLElement, mode: string): void {
-    const insertBtn = modal.querySelector('#confirm-insert') as HTMLButtonElement;
-    if (!insertBtn) return;
-
-    const buttonText = {
-      'smart': 'Smart Insert',
-      'replace': 'Replace Selection',
-      'append': 'Append to File'
-    };
-
-    insertBtn.textContent = buttonText[mode as keyof typeof buttonText] || 'Insert Code';
-  }
-
   private updateInsertionPreview(mode: string, code: string, currentContent: string, selection: any, cursorPosition: any): void {
     const diffContainer = document.getElementById('diff-container');
     if (!diffContainer) return;
@@ -2550,26 +2504,22 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
 
     // Small delay to show loading state
     setTimeout(() => {
-    const lines = currentContent.split('\n');
-    const newCodeLines = code.split('\n');
-    
-    let previewHTML = '';
-    
-    if (mode === 'smart') {
-      const insertionPoint = this.findSmartInsertionPoint(code, currentContent, cursorPosition);
-      previewHTML = this.generateSmartInsertionPreview(lines, newCodeLines, insertionPoint);
-    } else if (mode === 'replace') {
+      const lines = currentContent.split('\n');
+      const newCodeLines = code.split('\n');
+      
+      let previewHTML = '';
+      
+      // Only handle replace mode now
+      if (mode === 'replace') {
         // Check if there's actually a selection
         if (this.hasValidSelection(selection)) {
-      previewHTML = this.generateReplacementPreview(lines, newCodeLines, selection);
+          previewHTML = this.generateReplacementPreview(lines, newCodeLines, selection);
         } else {
           previewHTML = this.generateNoSelectionMessage();
         }
-    } else if (mode === 'append') {
-      previewHTML = this.generateAppendPreview(lines, newCodeLines);
-    }
-    
-    diffContainer.innerHTML = previewHTML;
+      }
+      
+      diffContainer.innerHTML = previewHTML;
     }, 100);
   }
 
@@ -2591,103 +2541,6 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
         </div>
       </div>
     `;
-  }
-
-  private findSmartInsertionPoint(code: string, currentContent: string, cursorPosition: any): { line: number; column: number; reason: string } {
-    const lines = currentContent.split('\n');
-    const currentLine = (cursorPosition?.lineNumber || 1) - 1; // Convert to 0-based
-    
-    // More sophisticated heuristics for smart insertion
-    if (code.includes('import ') || code.includes('require(')) {
-      // Find the last import statement or beginning of file
-      let insertLine = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (line && !line.startsWith('import') && !line.startsWith('//') && !line.startsWith('/*') && !line.includes('require(')) {
-          insertLine = i;
-          break;
-        }
-        if (line.startsWith('import') || line.includes('require(')) {
-          insertLine = i + 1;
-        }
-      }
-      return { line: insertLine, column: 0, reason: 'Import statements should be grouped at the top' };
-    }
-    
-    // Check for React component patterns
-    if (code.includes('export default') || code.includes('export const') || code.includes('export function')) {
-      // Insert at the end of the file for exports
-      return { line: lines.length, column: 0, reason: 'Export statements should be at the end' };
-    }
-    
-    if (code.includes('function ') || code.includes('const ') || code.includes('let ') || code.includes('var ')) {
-      // Insert at current cursor position with proper spacing
-      let insertLine = currentLine;
-      
-      // Try to find a good spot near the cursor
-      while (insertLine > 0 && lines[insertLine - 1].trim() === '') {
-        insertLine--;
-      }
-      
-      return { line: insertLine, column: 0, reason: 'Function/variable declaration near cursor position' };
-    }
-    
-    if (code.includes('class ')) {
-      // Insert classes with proper spacing
-      return { line: currentLine, column: 0, reason: 'Class declaration at cursor position' };
-    }
-    
-    // Default: insert at cursor with smart spacing
-    let insertLine = currentLine;
-    
-    // Don't insert in the middle of a block
-    const currentLineText = lines[currentLine]?.trim() || '';
-    if (currentLineText && !currentLineText.endsWith('{') && !currentLineText.endsWith(';')) {
-      // Find next appropriate line
-      while (insertLine < lines.length && lines[insertLine].trim() !== '') {
-        insertLine++;
-      }
-    }
-    
-    return { line: insertLine, column: 0, reason: 'Insert at cursor position with smart spacing' };
-  }
-
-  private generateSmartInsertionPreview(lines: string[], newCodeLines: string[], insertionPoint: { line: number; column: number; reason: string }): string {
-    let preview = '';
-    const contextLines = 4;
-    
-    const startLine = Math.max(0, insertionPoint.line - contextLines);
-    const endLine = Math.min(lines.length, insertionPoint.line + contextLines + newCodeLines.length + 2);
-    
-    // Add reason header
-    preview += `<div class="preview-reason">${insertionPoint.reason}</div>`;
-    
-    for (let i = startLine; i < endLine; i++) {
-      if (i === insertionPoint.line) {
-        // Add empty line before insertion if needed
-        if (i > 0 && lines[i - 1].trim() !== '') {
-          preview += `<div class="diff-line added empty-line" data-line="+">""</div>`;
-        }
-        
-        // Show insertion point
-        newCodeLines.forEach((codeLine, idx) => {
-          const lineNumber = `+${insertionPoint.line + idx + 1}`;
-          preview += `<div class="diff-line added" data-line="${lineNumber}">${this.escapeHtml(codeLine)}</div>`;
-        });
-        
-        // Add empty line after insertion if needed
-        if (i < lines.length && lines[i].trim() !== '') {
-          preview += `<div class="diff-line added empty-line" data-line="+">""</div>`;
-        }
-      }
-      
-      if (i < lines.length) {
-        const className = 'context';
-        preview += `<div class="diff-line ${className}" data-line="${i + 1}">${this.escapeHtml(lines[i])}</div>`;
-  }
-}
-
-    return preview;
   }
 
   private generateReplacementPreview(lines: string[], newCodeLines: string[], selection: any): string {
@@ -2772,58 +2625,24 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
     let insertOperation;
     
     try {
-      switch (mode) {
-        case 'smart':
-          const insertionPoint = this.findSmartInsertionPoint(code, this.state.monacoEditor.getValue(), cursorPosition);
-          insertOperation = {
-            range: {
-              startLineNumber: insertionPoint.line + 1,
-              startColumn: 1,
-              endLineNumber: insertionPoint.line + 1,
-              endColumn: 1
-            },
-            text: (insertionPoint.line > 0 ? '\n' : '') + code + '\n'
-          };
-          break;
-          
-        case 'replace':
-          if (!this.hasValidSelection(selection)) {
-            this.showError('No text selected. Please select text to replace.');
-            return;
-          }
-          
-          insertOperation = {
-            range: {
-              startLineNumber: selection.startLineNumber,
-              startColumn: selection.startColumn,
-              endLineNumber: selection.endLineNumber,
-              endColumn: selection.endColumn
-            },
-            text: code
-          };
-          break;
-          
-        case 'append':
-          const model = this.state.monacoEditor.getModel();
-          if (!model) return;
-          
-          const lineCount = model.getLineCount();
-          const lastLineContent = model.getLineContent(lineCount);
-          const needsNewline = lastLineContent.trim() !== '';
-          
-          insertOperation = {
-            range: {
-              startLineNumber: lineCount,
-              startColumn: model.getLineMaxColumn(lineCount),
-              endLineNumber: lineCount,
-              endColumn: model.getLineMaxColumn(lineCount)
-            },
-            text: (needsNewline ? '\n\n' : '\n') + code
-          };
-          break;
-          
-        default:
+      // Only handle replace mode now
+      if (mode === 'replace') {
+        if (!this.hasValidSelection(selection)) {
+          this.showError('No text selected. Please select text to replace.');
           return;
+        }
+        
+        insertOperation = {
+          range: {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn
+          },
+          text: code
+        };
+      } else {
+        return; // Only replace mode is supported
       }
 
       // Perform the insertion
@@ -2840,17 +2659,15 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       this.state.monacoEditor.focus();
       
       // Position cursor at the end of inserted content
-      if (mode === 'replace' || mode === 'smart') {
-        const insertedLines = code.split('\n');
-        const newPosition = {
-          lineNumber: (insertOperation.range.startLineNumber) + insertedLines.length - 1,
-          column: insertedLines[insertedLines.length - 1].length + 1
-        };
-        this.state.monacoEditor.setPosition(newPosition);
-      }
+      const insertedLines = code.split('\n');
+      const newPosition = {
+        lineNumber: (insertOperation.range.startLineNumber) + insertedLines.length - 1,
+        column: insertedLines[insertedLines.length - 1].length + 1
+      };
+      this.state.monacoEditor.setPosition(newPosition);
 
       // Show success indicator
-      this.showInsertionSuccess(mode);
+      this.showInsertionSuccess('replace');
       
     } catch (error) {
       console.error('Insertion failed:', error);
@@ -2950,35 +2767,6 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
       .close-btn:hover {
         background: #374151;
         color: #e4e4e7;
-      }
-
-      .insertion-preview-tabs {
-        display: flex;
-        border-bottom: 1px solid #404040;
-        background: #171717;
-      }
-
-      .tab-btn {
-        background: none;
-        border: none;
-        padding: 0.75rem 1rem;
-        color: #71717a;
-        cursor: pointer;
-        font-size: 0.875rem;
-        border-bottom: 2px solid transparent;
-        transition: all 0.2s;
-        position: relative;
-      }
-
-      .tab-btn:hover {
-        color: #d4d4d8;
-        background: #262626;
-      }
-
-      .tab-btn.active {
-        color: #60a5fa;
-        border-bottom-color: #60a5fa;
-        background: #1a1a1a;
       }
 
       .insertion-preview-content {
@@ -3185,7 +2973,7 @@ Be helpful, accurate, and focus on practical solutions that improve the develope
 
   private showInsertionSuccess(mode: string): void {
     const indicator = document.createElement('div');
-    indicator.textContent = `✅ Code inserted using ${mode} mode`;
+    indicator.textContent = `✅ Code replaced successfully`;
     indicator.style.cssText = `
       position: fixed; top: 20px; right: 20px; background: #10b981;
       color: white; padding: 12px 16px; border-radius: 6px; z-index: 10001;
