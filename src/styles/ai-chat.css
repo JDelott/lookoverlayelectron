@@ -1076,3 +1076,118 @@
     width: 100%;
   }
 }
+
+/* Progressive Streaming Containers */
+.streaming-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.streaming-text {
+  color: #e6edf3;
+  line-height: 1.6;
+  font-size: 14px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Streaming File Creation Containers */
+.file-creation-container.streaming {
+  border: 1px solid #1f6feb;
+  box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.3);
+}
+
+.file-creation-container.streaming .file-code-textarea {
+  background-color: rgba(31, 111, 235, 0.05);
+}
+
+.code-block.streaming {
+  border: 1px solid #1f6feb;
+  box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.3);
+}
+
+.code-block.streaming .code-textarea {
+  background-color: rgba(31, 111, 235, 0.05);
+}
+
+/* Streaming Cursor for Containers */
+.streaming-cursor {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  color: #1f6feb;
+  font-weight: bold;
+  animation: blink 1s infinite;
+  pointer-events: none;
+}
+
+.file-creation-content {
+  position: relative;
+}
+
+.code-content {
+  position: relative;
+}
+
+/* Enhanced Streaming Text Area */
+.file-code-textarea.streaming,
+.code-textarea.streaming {
+  border: none;
+  background: transparent;
+  color: #e6edf3;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 16px;
+  padding-right: 40px; /* Space for cursor */
+  resize: none;
+  overflow-y: auto;
+  white-space: pre;
+  word-wrap: normal;
+  tab-size: 2;
+}
+
+/* Progressive Animation */
+.file-creation-container.streaming,
+.code-block.streaming {
+  animation: streamingGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes streamingGlow {
+  from {
+    box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.3);
+  }
+  to {
+    box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.6);
+  }
+}
+
+/* Ensure proper spacing between streaming elements */
+.streaming-area > * {
+  margin-bottom: 8px;
+}
+
+.streaming-area > .file-creation-container,
+.streaming-area > .code-block {
+  margin-bottom: 16px;
+}
+
+/* Add this to the end of your existing CSS */
+
+.message.streaming-complete {
+  /* Ensure smooth transition when streaming completes */
+  transition: all 0.2s ease;
+}
+
+.message.streaming-complete .file-creation-container,
+.message.streaming-complete .code-block {
+  /* Preserve the container styling */
+  opacity: 1;
+  transform: none;
+}
+
+.message.streaming-complete .streaming-cursor {
+  /* Hide any remaining cursors */
+  display: none !important;
+}

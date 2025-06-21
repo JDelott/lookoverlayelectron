@@ -13,11 +13,30 @@ export class MessageRenderer {
     const container = document.getElementById('chat-messages');
     if (!container) return;
 
+    // Find existing messages that should be preserved
+    const existingPreserved = container.querySelectorAll('[data-preserve-structure="true"]');
+    const preservedMap = new Map<string, HTMLElement>();
+    
+    existingPreserved.forEach(element => {
+      const messageId = element.getAttribute('data-message-id');
+      if (messageId) {
+        preservedMap.set(messageId, element as HTMLElement);
+      }
+    });
+
     container.innerHTML = '';
 
     messages.forEach(message => {
-      const messageElement = this.createMessageElement(message);
-      container.appendChild(messageElement);
+      // Check if this message should preserve its structure
+      const preserved = preservedMap.get(message.id);
+      if (preserved) {
+        // Re-append the preserved element instead of recreating
+        container.appendChild(preserved);
+      } else {
+        const messageElement = this.createMessageElement(message);
+        messageElement.setAttribute('data-message-id', message.id);
+        container.appendChild(messageElement);
+      }
     });
   }
 

@@ -2,11 +2,21 @@ import { ChatMessage, StreamingState } from '../core/ChatTypes.js';
 import { ChatStateManager } from '../core/ChatStateManager.js';
 import { ScrollManager } from '../utils/ScrollManager.js';
 
-// Enhanced streaming with better performance
+// Enhanced streaming with progressive container building
 interface StreamingBuffer {
   tokens: string[];
   lastUpdate: number;
   updateScheduled: boolean;
+}
+
+interface ProgressiveContainer {
+  type: 'file-creation' | 'code-block';
+  startPattern: string;
+  element: HTMLElement;
+  content: string;
+  language: string;
+  filePath?: string;
+  isComplete: boolean;
 }
 
 interface ChunkedResponseState {
@@ -26,6 +36,11 @@ export class StreamingRenderer {
     totalChunks: 0
   };
 
+  // Progressive container tracking
+  private currentContainer: ProgressiveContainer | null = null;
+  private pendingText: string = '';
+  private fullStreamedContent: string = '';
+
   // Configuration for smooth streaming
   private readonly BATCH_UPDATE_INTERVAL = 16; // ~60fps
   private readonly BATCH_SIZE = 5; // Tokens per batch
@@ -41,13 +56,13 @@ export class StreamingRenderer {
   }
 
   createStreamingMessageElement(message: ChatMessage): void {
-    const container = document.getElementById('chat-messages');
-    if (!container) return;
+    const messagesContainer = document.getElementById('chat-messages');
+    if (!messagesContainer) return;
 
-    // Create the message element with better structure
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant streaming';
-    messageDiv.setAttribute('data-message-id', message.id);
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = 'message assistant streaming';
+    messageElement.setAttribute('data-message-id', message.id);
     
     // Avatar with improved styling
     const avatar = document.createElement('div');
@@ -82,47 +97,39 @@ export class StreamingRenderer {
     header.appendChild(time);
     header.appendChild(indicator);
 
-    // Create the streaming text container with proper structure
-    const messageText = document.createElement('div');
-    messageText.className = 'message-text streaming-text';
-    
-    // Pre-create a content span for smoother updates
-    const contentSpan = document.createElement('span');
-    contentSpan.className = 'streaming-content';
-    contentSpan.textContent = '';
-    
-    // Add typing cursor
-    const cursor = document.createElement('span');
-    cursor.className = 'typing-cursor';
-    cursor.textContent = '▊';
-    
-    messageText.appendChild(contentSpan);
-    messageText.appendChild(cursor);
+    // Create the streaming content area (this will hold both text and containers)
+    const streamingArea = document.createElement('div');
+    streamingArea.className = 'streaming-area';
 
     contentDiv.appendChild(header);
-    contentDiv.appendChild(messageText);
+    contentDiv.appendChild(streamingArea);
 
-    messageDiv.appendChild(avatar);
-    messageDiv.appendChild(contentDiv);
+    messageElement.appendChild(avatar);
+    messageElement.appendChild(contentDiv);
 
     // Add to container with smooth animation
-    messageDiv.style.opacity = '0';
-    messageDiv.style.transform = 'translateY(10px)';
-    container.appendChild(messageDiv);
+    messageElement.style.opacity = '0';
+    messageElement.style.transform = 'translateY(10px)';
+    messagesContainer.appendChild(messageElement);
 
     // Animate in
     requestAnimationFrame(() => {
-      messageDiv.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      messageDiv.style.opacity = '1';
-      messageDiv.style.transform = 'translateY(0)';
+      messageElement.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      messageElement.style.opacity = '1';
+      messageElement.style.transform = 'translateY(0)';
     });
 
     // Update state with references
     this.stateManager.setStreamingState({
-      streamingMessageElement: messageDiv,
-      streamingContentContainer: contentSpan,
+      streamingMessageElement: messageElement,
+      streamingContentContainer: streamingArea,
       streamingIndicator: indicator
     });
+
+    // Reset progressive state
+    this.currentContainer = null;
+    this.pendingText = '';
+    this.fullStreamedContent = '';
 
     // Smooth scroll to the new message
     this.scrollManager.scheduleScrollUpdate();
@@ -160,26 +167,246 @@ export class StreamingRenderer {
     const tokens = this.streamingBuffer.tokens.splice(0);
     const newText = tokens.join('');
     
-    // Update content smoothly
-    const currentText = streamingState.streamingContentContainer.textContent || '';
-    const updatedText = currentText + newText;
-    
-    // Use textContent for better performance during streaming
-    streamingState.streamingContentContainer.textContent = updatedText;
-    
-    // Update the cursor position (keep it at the end)
-    const cursor = streamingState.streamingContentContainer.parentElement?.querySelector('.typing-cursor') as HTMLElement;
-    if (cursor) {
-      cursor.style.opacity = '1';
-    }
+    // Add to full content and pending text
+    this.fullStreamedContent += newText;
+    this.pendingText += newText;
+
+    // Process the text progressively
+    this.processProgressiveContent(streamingState.streamingContentContainer);
     
     // Schedule smooth scroll update
     this.scrollManager.scheduleScrollUpdate();
   }
 
+  private processProgressiveContent(container: HTMLElement): void {
+    // Check if we're currently building a container
+    if (this.currentContainer) {
+      this.updateCurrentContainer();
+      return;
+    }
+
+    // Look for container start patterns in pending text
+    const codeBlockMatch = this.pendingText.match(/(```(\w*):([^\n]+)|```(\w*))\n/);
+    
+    if (codeBlockMatch) {
+      // We found a potential file creation or code block
+      const beforePattern = this.pendingText.substring(0, codeBlockMatch.index!);
+      
+      // Render any text before the pattern
+      if (beforePattern.trim()) {
+        this.renderTextContent(beforePattern, container);
+      }
+
+      // Start building the container
+      this.startProgressiveContainer(codeBlockMatch, container);
+      
+      // Remove processed text from pending
+      this.pendingText = this.pendingText.substring(codeBlockMatch.index! + codeBlockMatch[0].length);
+    } else {
+      // No pattern found, check if we should render current text
+      const lines = this.pendingText.split('\n');
+      if (lines.length > 1) {
+        // Render complete lines, keep the last incomplete line
+        const completeLines = lines.slice(0, -1).join('\n') + '\n';
+        this.renderTextContent(completeLines, container);
+        this.pendingText = lines[lines.length - 1];
+      }
+    }
+  }
+
+  private renderTextContent(text: string, container: HTMLElement): void {
+    if (!text.trim()) return;
+
+    // Create or get the current text element
+    let textElement = container.querySelector('.streaming-text') as HTMLElement;
+    if (!textElement) {
+      textElement = document.createElement('div');
+      textElement.className = 'streaming-text';
+      container.appendChild(textElement);
+    }
+
+    // Process simple markdown in the text
+    const processedText = this.processSimpleMarkdown(text);
+    textElement.innerHTML += processedText;
+  }
+
+  private startProgressiveContainer(match: RegExpMatchArray, container: HTMLElement): void {
+    const isFileCreation = match[3] !== undefined; // Has file path
+    const language = isFileCreation ? match[2] : match[4] || 'text';
+    const filePath = match[3] || '';
+
+    // Create the container element
+    const containerElement = document.createElement('div');
+    containerElement.className = isFileCreation ? 'file-creation-container streaming' : 'code-block streaming';
+
+    if (isFileCreation) {
+      this.createFileCreationStructure(containerElement, language, filePath);
+    } else {
+      this.createCodeBlockStructure(containerElement, language);
+    }
+
+    // Add to DOM
+    container.appendChild(containerElement);
+
+    // Track the progressive container
+    this.currentContainer = {
+      type: isFileCreation ? 'file-creation' : 'code-block',
+      startPattern: match[0],
+      element: containerElement,
+      content: '',
+      language,
+      filePath,
+      isComplete: false
+    };
+  }
+
+  private updateCurrentContainer(): void {
+    if (!this.currentContainer) return;
+
+    // Look for the end pattern
+    const endPattern = '\n```';
+    const endIndex = this.pendingText.indexOf(endPattern);
+
+    if (endIndex !== -1) {
+      // Container is complete
+      const containerContent = this.pendingText.substring(0, endIndex);
+      this.currentContainer.content += containerContent;
+      
+      // Finalize the container
+      this.finalizeContainer();
+      
+      // Remove processed content from pending
+      this.pendingText = this.pendingText.substring(endIndex + endPattern.length);
+      this.currentContainer = null;
+    } else {
+      // Still building, add all pending text to container
+      this.currentContainer.content += this.pendingText;
+      this.updateContainerContent();
+      this.pendingText = '';
+    }
+  }
+
+  private createFileCreationStructure(container: HTMLElement, language: string, filePath: string): void {
+    container.innerHTML = `
+      <div class="file-creation-header">
+        <div class="file-creation-info">
+          <span class="file-creation-icon">${this.getFileIcon(filePath)}</span>
+          <span class="file-creation-path">${filePath}</span>
+          <span class="file-creation-status new">NEW</span>
+        </div>
+        <div class="file-creation-actions">
+          <button class="file-action-btn create-btn">
+            <span class="btn-icon">📁</span><span class="btn-text">Create File</span>
+          </button>
+          <button class="file-action-btn copy-btn">
+            <span class="btn-icon">📋</span><span class="btn-text">Copy</span>
+          </button>
+        </div>
+      </div>
+      <div class="file-creation-content">
+        <textarea class="file-code-textarea streaming" readonly></textarea>
+        <div class="streaming-cursor">▊</div>
+      </div>
+    `;
+  }
+
+  private createCodeBlockStructure(container: HTMLElement, language: string): void {
+    container.innerHTML = `
+      <div class="code-header">
+        <span class="code-language">${language}</span>
+        <div class="code-actions">
+          <button class="code-action">📋 Copy</button>
+        </div>
+      </div>
+      <div class="code-content">
+        <textarea class="code-textarea streaming" readonly></textarea>
+        <div class="streaming-cursor">▊</div>
+      </div>
+    `;
+  }
+
+  private updateContainerContent(): void {
+    if (!this.currentContainer) return;
+
+    const textarea = this.currentContainer.element.querySelector('textarea') as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.value = this.currentContainer.content;
+      // Auto-resize
+      const lines = this.currentContainer.content.split('\n').length;
+      textarea.rows = Math.max(Math.min(lines + 2, 30), 5);
+    }
+  }
+
+  private finalizeContainer(): void {
+    if (!this.currentContainer) return;
+
+    // Update final content
+    this.updateContainerContent();
+
+    // Remove streaming classes and cursor
+    this.currentContainer.element.classList.remove('streaming');
+    const cursor = this.currentContainer.element.querySelector('.streaming-cursor');
+    if (cursor) {
+      cursor.remove();
+    }
+
+    // Set up button handlers for file creation
+    if (this.currentContainer.type === 'file-creation') {
+      this.setupFileCreationButtons();
+    } else {
+      this.setupCodeBlockButtons();
+    }
+
+    // Make textarea editable
+    const textarea = this.currentContainer.element.querySelector('textarea') as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.readOnly = false;
+      textarea.classList.remove('streaming');
+    }
+  }
+
+  private setupFileCreationButtons(): void {
+    if (!this.currentContainer) return;
+
+    const createBtn = this.currentContainer.element.querySelector('.create-btn') as HTMLButtonElement;
+    const copyBtn = this.currentContainer.element.querySelector('.copy-btn') as HTMLButtonElement;
+
+    if (createBtn) {
+      createBtn.onclick = () => this.createFile(
+        this.currentContainer!.filePath!,
+        this.currentContainer!.content,
+        this.currentContainer!.element
+      );
+    }
+
+    if (copyBtn) {
+      copyBtn.onclick = () => this.copyCodeToClipboard(this.currentContainer!.content);
+    }
+  }
+
+  private setupCodeBlockButtons(): void {
+    if (!this.currentContainer) return;
+
+    const copyBtn = this.currentContainer.element.querySelector('.code-action') as HTMLButtonElement;
+    if (copyBtn) {
+      copyBtn.onclick = () => this.copyCodeToClipboard(this.currentContainer!.content);
+    }
+  }
+
   finalizeStreamingMessage(): void {
     const streamingState = this.stateManager.getStreamingState();
     
+    // Finalize any pending container
+    if (this.currentContainer) {
+      this.finalizeContainer();
+      this.currentContainer = null;
+    }
+
+    // Render any remaining pending text
+    if (this.pendingText.trim() && streamingState.streamingContentContainer) {
+      this.renderTextContent(this.pendingText, streamingState.streamingContentContainer);
+    }
+
     if (streamingState.streamingMessageElement) {
       // Remove streaming classes and indicators
       streamingState.streamingMessageElement.classList.remove('streaming');
@@ -191,200 +418,18 @@ export class StreamingRenderer {
           streamingState.streamingIndicator?.remove();
         }, 300);
       }
-      
-      // Remove typing cursor with smooth fade
-      const cursor = streamingState.streamingMessageElement.querySelector('.typing-cursor') as HTMLElement;
-      if (cursor) {
-        cursor.style.opacity = '0';
-        setTimeout(() => cursor.remove(), 300);
-      }
-      
-      // Process final content with markdown after a brief delay
-      setTimeout(() => {
-        if (streamingState.streamingContentContainer) {
-          const finalText = streamingState.streamingContentContainer.textContent || '';
-          if (finalText) {
-            this.processFinalContent(finalText, streamingState.streamingContentContainer);
-          }
-        }
-      }, 200);
+
+      // CRITICAL FIX: Mark the message as preserving its current DOM structure
+      // This prevents MessageRenderer from re-processing the content
+      streamingState.streamingMessageElement.setAttribute('data-preserve-structure', 'true');
+      streamingState.streamingMessageElement.classList.add('streaming-complete');
     }
 
-    // Clear buffer
+    // Clear streaming state
     this.streamingBuffer.tokens = [];
     this.streamingBuffer.updateScheduled = false;
-  }
-
-  private processFinalContent(content: string, container: HTMLElement): void {
-    // Check if content needs markdown processing
-    const needsMarkdown = content.includes('```') || 
-                         content.includes('**') || 
-                         content.includes('*') ||
-                         content.includes('`') ||
-                         /^\s*[-•]\s/.test(content);
-
-    if (needsMarkdown) {
-      // For complex content, rebuild with proper markdown processing
-      this.rebuildWithMarkdown(content, container);
-    } else {
-      // For simple text, just clean up and format
-      container.innerHTML = this.processSimpleText(content);
-    }
-  }
-
-  private rebuildWithMarkdown(content: string, container: HTMLElement): void {
-    // Find the parent message content to rebuild
-    const messageContent = container.closest('.message-content') as HTMLElement;
-    if (!messageContent) return;
-
-    // Keep the header, rebuild the content
-    const header = messageContent.querySelector('.message-header');
-    
-    // Smooth transition out
-    const currentHeight = messageContent.offsetHeight;
-    messageContent.style.height = currentHeight + 'px';
-    messageContent.style.overflow = 'hidden';
-    
-    setTimeout(() => {
-      // Clear content but keep header
-      messageContent.innerHTML = '';
-      if (header) {
-        messageContent.appendChild(header);
-      }
-
-      // Process content with proper markdown handling
-      if (content.includes('```')) {
-        this.processMarkdownWithCodeBlocks(content, messageContent);
-      } else {
-        // Simple content - create a single text div
-        const textDiv = document.createElement('div');
-        textDiv.className = 'message-text';
-        textDiv.innerHTML = this.processSimpleMarkdown(content);
-        messageContent.appendChild(textDiv);
-      }
-      
-      // Smooth transition back
-      messageContent.style.height = 'auto';
-      const newHeight = messageContent.offsetHeight;
-      messageContent.style.height = currentHeight + 'px';
-      
-      requestAnimationFrame(() => {
-        messageContent.style.transition = 'height 0.3s ease';
-        messageContent.style.height = newHeight + 'px';
-        
-        setTimeout(() => {
-          messageContent.style.height = 'auto';
-          messageContent.style.overflow = 'visible';
-          messageContent.style.transition = '';
-        }, 300);
-      });
-    }, 100);
-  }
-
-  private processMarkdownWithCodeBlocks(content: string, container: HTMLElement): void {
-    const parts = content.split(/(```[\s\S]*?```)/g);
-    
-    parts.forEach(part => {
-      if (part.startsWith('```') && part.endsWith('```')) {
-        // This is a code block
-        const lines = part.split('\n');
-        const firstLine = lines[0].replace('```', '');
-        
-        // Check for file path pattern
-        let language = firstLine.trim() || 'text';
-        let filePath = '';
-        
-        if (firstLine.includes(':')) {
-          const colonIndex = firstLine.indexOf(':');
-          language = firstLine.substring(0, colonIndex).trim() || 'text';
-          filePath = firstLine.substring(colonIndex + 1).trim();
-        }
-        
-        const code = lines.slice(1, -1).join('\n');
-        
-        if (code.trim()) {
-          if (filePath) {
-            // This is a file creation block
-            const fileBlock = this.createFileCreationBlock(code, language, filePath);
-            container.appendChild(fileBlock);
-          } else {
-            // Regular code block
-            const codeBlock = this.createInteractiveCodeBlock(code, language);
-            container.appendChild(codeBlock);
-          }
-        }
-      } else if (part.trim()) {
-        // This is regular text
-        const textDiv = document.createElement('div');
-        textDiv.className = 'message-text';
-        textDiv.innerHTML = this.processSimpleMarkdown(part.trim());
-        container.appendChild(textDiv);
-      }
-    });
-  }
-
-  private createFileCreationBlock(code: string, language: string, filePath: string): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'file-creation-container';
-
-    // File header
-    const header = document.createElement('div');
-    header.className = 'file-creation-header';
-
-    const fileInfo = document.createElement('div');
-    fileInfo.className = 'file-creation-info';
-
-    const fileIcon = document.createElement('span');
-    fileIcon.className = 'file-creation-icon';
-    fileIcon.textContent = this.getFileIcon(filePath);
-
-    const pathSpan = document.createElement('span');
-    pathSpan.className = 'file-creation-path';
-    pathSpan.textContent = filePath;
-
-    const status = document.createElement('span');
-    status.className = 'file-creation-status new';
-    status.textContent = 'NEW';
-
-    fileInfo.appendChild(fileIcon);
-    fileInfo.appendChild(pathSpan);
-    fileInfo.appendChild(status);
-
-    // Actions
-    const actions = document.createElement('div');
-    actions.className = 'file-creation-actions';
-
-    const createBtn = document.createElement('button');
-    createBtn.className = 'file-action-btn create-btn';
-    createBtn.innerHTML = '<span class="btn-icon">📁</span><span class="btn-text">Create File</span>';
-    createBtn.onclick = () => this.createFile(filePath, code, container);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'file-action-btn copy-btn';
-    copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
-    copyBtn.onclick = () => this.copyCodeToClipboard(code);
-
-    actions.appendChild(createBtn);
-    actions.appendChild(copyBtn);
-
-    header.appendChild(fileInfo);
-    header.appendChild(actions);
-
-    // Code content
-    const content = document.createElement('div');
-    content.className = 'file-creation-content';
-
-    const textarea = document.createElement('textarea');
-    textarea.className = 'file-code-textarea';
-    textarea.value = code;
-    textarea.readOnly = true;
-    textarea.rows = Math.min(Math.max(code.split('\n').length + 1, 5), 30);
-
-    content.appendChild(textarea);
-    container.appendChild(header);
-    container.appendChild(content);
-
-    return container;
+    this.pendingText = '';
+    this.fullStreamedContent = '';
   }
 
   private async createFile(filePath: string, content: string, container: HTMLElement): Promise<void> {
@@ -424,51 +469,6 @@ export class StreamingRenderer {
     return iconMap[ext] || '📄';
   }
 
-  private createInteractiveCodeBlock(code: string, language: string): HTMLElement {
-    const codeBlock = document.createElement('div');
-    codeBlock.className = 'code-block';
-    
-    // Header
-    const header = document.createElement('div');
-    header.className = 'code-header';
-    
-    const langSpan = document.createElement('span');
-    langSpan.className = 'code-language';
-    langSpan.textContent = language;
-    
-    const actions = document.createElement('div');
-    actions.className = 'code-actions';
-    
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'code-action';
-    copyBtn.innerHTML = '📋 Copy';
-    copyBtn.onclick = () => this.copyCodeToClipboard(code);
-    
-    actions.appendChild(copyBtn);
-    header.appendChild(langSpan);
-    header.appendChild(actions);
-    
-    // Content
-    const content = document.createElement('div');
-    content.className = 'code-content';
-    
-    const textarea = document.createElement('textarea');
-    textarea.className = 'code-textarea';
-    textarea.value = code;
-    textarea.readOnly = false;
-    textarea.spellcheck = false;
-    
-    // Auto-size
-    const lines = code.split('\n').length;
-    textarea.rows = Math.min(Math.max(lines + 1, 5), 30);
-    
-    content.appendChild(textarea);
-    codeBlock.appendChild(header);
-    codeBlock.appendChild(content);
-    
-    return codeBlock;
-  }
-
   private processSimpleMarkdown(content: string): string {
     let processed = content;
     
@@ -488,10 +488,6 @@ export class StreamingRenderer {
     processed = processed.replace(/\n/g, '<br>');
     
     return processed;
-  }
-
-  private processSimpleText(content: string): string {
-    return content.replace(/\n/g, '<br>');
   }
 
   private async copyCodeToClipboard(code: string): Promise<void> {
