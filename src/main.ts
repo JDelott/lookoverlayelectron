@@ -47,6 +47,22 @@ interface StreamingToken {
   };
 }
 
+// Add this new interface for enhanced file operations
+interface FileCreationRequest {
+  path: string;
+  content: string;
+  createDirectories?: boolean;
+  overwrite?: boolean;
+}
+
+interface FileCreationResponse {
+  success: boolean;
+  path?: string;
+  created?: boolean;
+  error?: string;
+  parentDirectories?: string[];
+}
+
 let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
 let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running processes
@@ -1530,6 +1546,419 @@ ipcMain.handle('send-process-input', async (event, processId: string, input: str
     return { success: false, error: 'Process not found or stdin not available' };
   } catch (error) {
     return { success: false, error: (error as Error).message };
+  }
+});
+
+// Batch file creation for multiple files
+ipcMain.handle('create-files-batch', async (event, requests: FileCreationRequest[]) => {
+  try {
+    const results: FileCreationResponse[] = [];
+    const allCreatedDirectories = new Set<string>();
+    
+    for (const request of requests) {
+      const result = await createFileWithContent(request);
+      results.push(result);
+      
+      if (result.parentDirectories) {
+        result.parentDirectories.forEach(dir => allCreatedDirectories.add(dir));
+      }
+    }
+    
+    // Send batch notification
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'batch-create', 
+      results,
+      createdDirectories: Array.from(allCreatedDirectories)
+    });
+    
+    return {
+      success: results.every(r => r.success),
+      results,
+      createdDirectories: Array.from(allCreatedDirectories)
+    };
+    
+  } catch (error) {
+    console.error('Error in batch file creation:', error);
+    return {
+      success: false,
+      error: (error as Error).message,
+      results: []
+    };
+  }
+});
+
+// Extract the file creation logic into a separate function
+async function createFileWithContent(request: FileCreationRequest): Promise<FileCreationResponse> {
+  try {
+    const { path: filePath, content, createDirectories = true, overwrite = false } = request;
+    const currentDir = process.cwd();
+    
+    // Resolve the full path
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(currentDir, filePath);
+    const dirPath = path.dirname(fullPath);
+    
+    console.log(`Creating file: ${fullPath}`);
+    console.log(`Directory: ${dirPath}`);
+    
+    // Check if file already exists
+    if (fs.existsSync(fullPath) && !overwrite) {
+      return {
+        success: false,
+        error: `File already exists: ${filePath}`,
+        path: fullPath
+      };
+    }
+    
+    const createdDirectories: string[] = [];
+    
+    // Create directories if they don't exist
+    if (createDirectories && !fs.existsSync(dirPath)) {
+      console.log(`Creating directories: ${dirPath}`);
+      await fs.promises.mkdir(dirPath, { recursive: true });
+      
+      // Track which directories were created
+      let currentPath = dirPath;
+      while (currentPath !== path.dirname(currentPath)) {
+        if (!fs.existsSync(currentPath)) {
+          createdDirectories.push(currentPath);
+        }
+        currentPath = path.dirname(currentPath);
+      }
+    }
+    
+    // Write the file
+    await fs.promises.writeFile(fullPath, content, 'utf-8');
+    
+    console.log(`✅ File created successfully: ${fullPath}`);
+    
+    // Notify renderer to refresh file tree
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'create-file-enhanced', 
+      path: fullPath,
+      parentPath: dirPath,
+      createdDirectories
+    });
+    
+    return {
+      success: true,
+      path: fullPath,
+      created: true,
+      parentDirectories: createdDirectories
+    };
+    
+  } catch (error) {
+    console.error('Error creating file with content:', error);
+    return {
+      success: false,
+      error: (error as Error).message
+    };
+  }
+}
+
+// Update the original handler to use the extracted function
+ipcMain.handle('create-file-with-content', async (event, request: FileCreationRequest) => {
+  return await createFileWithContent(request);
+});
+
+// Enhanced file validation and path resolution
+ipcMain.handle('validate-file-path', async (event, filePath: string) => {
+  try {
+    const currentDir = process.cwd();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(currentDir, filePath);
+    const dirPath = path.dirname(fullPath);
+    
+    return {
+      success: true,
+      fullPath,
+      dirPath,
+      fileName: path.basename(fullPath),
+      exists: fs.existsSync(fullPath),
+      dirExists: fs.existsSync(dirPath),
+      isValidPath: true,
+      extension: path.extname(fullPath)
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message,
+      isValidPath: false
+    };
+  }
+});
+
+// Get file suggestions based on project structure
+ipcMain.handle('get-file-suggestions', async (event, basePath?: string) => {
+  try {
+    const currentDir = basePath || process.cwd();
+    const suggestions: any[] = [];
+    
+    // Get common project patterns
+    const commonFiles = [
+      'package.json',
+      'tsconfig.json',
+      'webpack.config.js',
+      'vite.config.js',
+      '.gitignore',
+      'README.md'
+    ];
+    
+    const commonDirs = [
+      'src',
+      'components',
+      'utils',
+      'types',
+      'styles',
+      'assets',
+      'public',
+      'dist',
+      'build'
+    ];
+    
+    // Check existing structure
+    const items = await fs.promises.readdir(currentDir, { withFileTypes: true });
+    
+    commonFiles.forEach(file => {
+      const exists = items.some(item => item.name === file && item.isFile());
+      suggestions.push({
+        type: 'file',
+        name: file,
+        path: file,
+        exists,
+        common: true
+      });
+    });
+    
+    commonDirs.forEach(dir => {
+      const exists = items.some(item => item.name === dir && item.isDirectory());
+      suggestions.push({
+        type: 'directory',
+        name: dir,
+        path: dir,
+        exists,
+        common: true
+      });
+    });
+    
+    return suggestions;
+  } catch (error) {
+    console.error('Error getting file suggestions:', error);
+    return [];
+  }
+});
+
+// Enhanced directory creation with better error handling
+ipcMain.handle('create-directories', async (event, directories: string[]) => {
+  try {
+    const results: any[] = [];
+    const currentDir = process.cwd();
+    
+    for (const dir of directories) {
+      const fullPath = path.isAbsolute(dir) ? dir : path.resolve(currentDir, dir);
+      
+      try {
+        if (!fs.existsSync(fullPath)) {
+          await fs.promises.mkdir(fullPath, { recursive: true });
+          results.push({
+            path: fullPath,
+            success: true,
+            created: true
+          });
+          
+          console.log(`✅ Directory created: ${fullPath}`);
+        } else {
+          results.push({
+            path: fullPath,
+            success: true,
+            created: false,
+            message: 'Directory already exists'
+          });
+        }
+      } catch (dirError) {
+        results.push({
+          path: fullPath,
+          success: false,
+          error: (dirError as Error).message
+        });
+      }
+    }
+    
+    // Notify renderer
+    mainWindow?.webContents.send('file-system-changed', { 
+      type: 'directories-created', 
+      results
+    });
+    
+    return {
+      success: results.every(r => r.success),
+      results
+    };
+    
+  } catch (error) {
+    console.error('Error creating directories:', error);
+    return {
+      success: false,
+      error: (error as Error).message,
+      results: []
+    };
+  }
+});
+
+// File template system
+ipcMain.handle('get-file-template', async (event, fileType: string, fileName?: string) => {
+  try {
+    const templates: { [key: string]: string } = {
+      'javascript': `// ${fileName || 'index.js'}
+export default function() {
+  // Your code here
+}
+`,
+      'typescript': `// ${fileName || 'index.ts'}
+export interface ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'MyInterface'} {
+  // Define your interface here
+}
+
+export default function ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'myFunction'}(): void {
+  // Your code here
+}
+`,
+      'react-component': `import React from 'react';
+
+interface ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'Component'}Props {
+  // Define props here
+}
+
+const ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'Component'}: React.FC<${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'Component'}Props> = () => {
+  return (
+    <div>
+      {/* Your component JSX here */}
+    </div>
+  );
+};
+
+export default ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'Component'};
+`,
+      'css': `/* ${fileName || 'styles.css'} */
+
+.container {
+  /* Your styles here */
+}
+`,
+      'html': `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName?.replace(/\.[^/.]+$/, "") || 'Document'}</title>
+</head>
+<body>
+  <!-- Your content here -->
+</body>
+</html>
+`,
+      'json': `{
+  "name": "${fileName?.replace(/\.[^/.]+$/, "") || 'project'}",
+  "version": "1.0.0"
+}
+`,
+      'markdown': `# ${fileName?.replace(/\.[^/.]+$/, "").replace(/^\w/, c => c.toUpperCase()) || 'Title'}
+
+## Overview
+
+<!-- Your content here -->
+`
+    };
+    
+    return {
+      success: true,
+      template: templates[fileType] || `// ${fileName || 'file'}\n\n// Your code here\n`,
+      fileType
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    };
+  }
+});
+
+// Enhanced project structure analysis
+ipcMain.handle('analyze-project-structure', async (event, projectPath?: string) => {
+  try {
+    const targetPath = projectPath || process.cwd();
+    const analysis: any = {
+      path: targetPath,
+      type: 'unknown',
+      framework: 'none',
+      structure: {},
+      suggestions: []
+    };
+    
+    // Check for common project files
+    const packageJsonPath = path.join(targetPath, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf-8'));
+        analysis.type = 'node';
+        analysis.name = packageJson.name;
+        analysis.version = packageJson.version;
+        
+        // Detect framework
+        const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+        if (dependencies.react) analysis.framework = 'react';
+        if (dependencies.vue) analysis.framework = 'vue';
+        if (dependencies.angular) analysis.framework = 'angular';
+        if (dependencies.next) analysis.framework = 'nextjs';
+        if (dependencies.nuxt) analysis.framework = 'nuxtjs';
+        if (dependencies.vite) analysis.buildTool = 'vite';
+        if (dependencies.webpack) analysis.buildTool = 'webpack';
+        
+      } catch (parseError) {
+        console.warn('Failed to parse package.json:', parseError);
+      }
+    }
+    
+    // Analyze directory structure
+    const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const dirs = items.filter(item => item.isDirectory()).map(item => item.name);
+    const files = items.filter(item => item.isFile()).map(item => item.name);
+    
+    analysis.structure = {
+      directories: dirs,
+      files: files,
+      hasSource: dirs.includes('src'),
+      hasComponents: dirs.includes('components'),
+      hasUtils: dirs.includes('utils'),
+      hasStyles: dirs.includes('styles'),
+      hasPublic: dirs.includes('public'),
+      hasTests: dirs.some(dir => dir.includes('test') || dir.includes('spec'))
+    };
+    
+    // Generate suggestions based on analysis
+    if (analysis.framework === 'react' && !analysis.structure.hasComponents) {
+      analysis.suggestions.push({
+        type: 'directory',
+        path: 'src/components',
+        reason: 'React projects typically have a components directory'
+      });
+    }
+    
+    if (!analysis.structure.hasUtils) {
+      analysis.suggestions.push({
+        type: 'directory',
+        path: 'src/utils',
+        reason: 'Utils directory for helper functions'
+      });
+    }
+    
+    return {
+      success: true,
+      analysis
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message
+    };
   }
 });
 

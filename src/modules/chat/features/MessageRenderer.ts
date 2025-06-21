@@ -1,7 +1,14 @@
 import { ChatMessage, AttachedFile } from '../core/ChatTypes.js';
 import { DOMHelpers } from '../utils/DOMHelpers.js';
+import { FileCreationRenderer, FileCreationInfo } from './FileCreationRenderer.js';
 
 export class MessageRenderer {
+  private fileCreationRenderer: FileCreationRenderer;
+
+  constructor() {
+    this.fileCreationRenderer = new FileCreationRenderer();
+  }
+
   renderMessages(messages: ChatMessage[]): void {
     const container = document.getElementById('chat-messages');
     if (!container) return;
@@ -15,6 +22,9 @@ export class MessageRenderer {
   }
 
   private createMessageElement(message: ChatMessage): HTMLElement {
+    // Detect file creations first
+    const fileCreations = this.fileCreationRenderer.detectFileCreations(message.content);
+    const hasFileCreations = fileCreations.length > 0;
     const hasCodeBlocks = /```[\s\S]*?```/.test(message.content);
     const isCodeHeavy = DOMHelpers.detectCodeContent(message.content);
     
@@ -23,9 +33,10 @@ export class MessageRenderer {
     
     if (hasCodeBlocks) messageDiv.classList.add('has-code');
     if (isCodeHeavy && message.role === 'user') messageDiv.classList.add('code-heavy');
+    if (hasFileCreations) messageDiv.classList.add('has-file-creations');
 
-    if (hasCodeBlocks) {
-      this.createComplexMessage(messageDiv, message);
+    if (hasFileCreations || hasCodeBlocks) {
+      this.createComplexMessage(messageDiv, message, fileCreations);
     } else {
       this.createSimpleMessage(messageDiv, message, isCodeHeavy);
     }
@@ -33,7 +44,7 @@ export class MessageRenderer {
     return messageDiv;
   }
 
-  private createComplexMessage(messageDiv: HTMLElement, message: ChatMessage): void {
+  private createComplexMessage(messageDiv: HTMLElement, message: ChatMessage, fileCreations: FileCreationInfo[]): void {
     const mainDiv = document.createElement('div');
     mainDiv.className = 'message-main';
     
@@ -45,9 +56,45 @@ export class MessageRenderer {
     mainDiv.appendChild(contentDiv);
     messageDiv.appendChild(mainDiv);
     
-    // Process content with code blocks
-    const processedContent = this.processMarkdownWithCodeBlocks(message.content);
-    messageDiv.appendChild(processedContent);
+    // Process content with file creations and code blocks
+    if (fileCreations.length > 0) {
+      const processedContent = this.processContentWithFileCreations(message.content, fileCreations);
+      messageDiv.appendChild(processedContent);
+    } else {
+      const processedContent = this.processMarkdownWithCodeBlocks(message.content);
+      messageDiv.appendChild(processedContent);
+    }
+  }
+
+  private processContentWithFileCreations(content: string, fileCreations: FileCreationInfo[]): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    
+    // Process content and replace file creation patterns
+    let processedContent = this.fileCreationRenderer.processContentWithFileCreations(content);
+    
+    // Split by file creation placeholders and regular content
+    const parts = processedContent.split(/(<div class="file-creation-placeholder" data-file-index="\d+"><\/div>)/);
+    
+    parts.forEach(part => {
+      if (part.includes('file-creation-placeholder')) {
+        // Extract file index from placeholder
+        const match = part.match(/data-file-index="(\d+)"/);
+        if (match) {
+          const index = parseInt(match[1]);
+          const file = fileCreations[index];
+          if (file) {
+            const fileContainer = this.fileCreationRenderer.createFileContainers([file])[0];
+            fragment.appendChild(fileContainer);
+          }
+        }
+      } else if (part.trim()) {
+        // Process remaining content (may still have code blocks)
+        const remainingFragment = this.processMarkdownWithCodeBlocks(part);
+        fragment.appendChild(remainingFragment);
+      }
+    });
+    
+    return fragment;
   }
 
   private createSimpleMessage(messageDiv: HTMLElement, message: ChatMessage, isCodeHeavy: boolean): void {
@@ -72,7 +119,9 @@ export class MessageRenderer {
   private createAvatar(role: string): HTMLElement {
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.textContent = role === 'user' ? '👤' : '🤖';
+    avatar.innerHTML = role === 'user' ? 
+      '<div class="avatar-icon user">👤</div>' : 
+      '<div class="avatar-icon assistant">🤖</div>';
     return avatar;
   }
 
