@@ -22,6 +22,7 @@ export interface StreamingState {
   currentStreamSessionId: string | null;
   streamingMessageElement: HTMLElement | null;
   streamingContentContainer: HTMLElement | null;
+  streamingIndicator: HTMLElement | null;
   currentCodeBlock: HTMLElement | null;
   isInCodeBlock: boolean;
   codeBlockBuffer: string;

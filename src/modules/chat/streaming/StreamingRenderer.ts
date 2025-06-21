@@ -2,7 +2,13 @@ import { ChatMessage, StreamingState } from '../core/ChatTypes.js';
 import { ChatStateManager } from '../core/ChatStateManager.js';
 import { ScrollManager } from '../utils/ScrollManager.js';
 
-// Add chunked response support
+// Enhanced streaming with better performance
+interface StreamingBuffer {
+  tokens: string[];
+  lastUpdate: number;
+  updateScheduled: boolean;
+}
+
 interface ChunkedResponseState {
   isChunked: boolean;
   currentChunk: number;
@@ -13,30 +19,40 @@ interface ChunkedResponseState {
 export class StreamingRenderer {
   private stateManager: ChatStateManager;
   private scrollManager: ScrollManager;
+  private streamingBuffer: StreamingBuffer;
   private chunkedState: ChunkedResponseState = {
     isChunked: false,
     currentChunk: 0,
     totalChunks: 0
   };
 
+  // Configuration for smooth streaming
+  private readonly BATCH_UPDATE_INTERVAL = 16; // ~60fps
+  private readonly BATCH_SIZE = 5; // Tokens per batch
+
   constructor(stateManager: ChatStateManager, scrollManager: ScrollManager) {
     this.stateManager = stateManager;
     this.scrollManager = scrollManager;
+    this.streamingBuffer = {
+      tokens: [],
+      lastUpdate: 0,
+      updateScheduled: false
+    };
   }
 
   createStreamingMessageElement(message: ChatMessage): void {
     const container = document.getElementById('chat-messages');
     if (!container) return;
 
-    // Create the message element with proper structure
+    // Create the message element with better structure
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant streaming';
     messageDiv.setAttribute('data-message-id', message.id);
     
-    // Avatar
+    // Avatar with improved styling
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.textContent = '🤖';
+    avatar.innerHTML = '<div class="avatar-icon assistant">🤖</div>';
 
     // Content container
     const contentDiv = document.createElement('div');
@@ -57,13 +73,31 @@ export class StreamingRenderer {
       minute: '2-digit' 
     });
 
+    // Add streaming indicator
+    const indicator = document.createElement('span');
+    indicator.className = 'streaming-indicator';
+    indicator.innerHTML = '<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+
     header.appendChild(role);
     header.appendChild(time);
+    header.appendChild(indicator);
 
-    // Create proper message text container
+    // Create the streaming text container with proper structure
     const messageText = document.createElement('div');
-    messageText.className = 'message-text typing-cursor';
-    messageText.textContent = '';
+    messageText.className = 'message-text streaming-text';
+    
+    // Pre-create a content span for smoother updates
+    const contentSpan = document.createElement('span');
+    contentSpan.className = 'streaming-content';
+    contentSpan.textContent = '';
+    
+    // Add typing cursor
+    const cursor = document.createElement('span');
+    cursor.className = 'typing-cursor';
+    cursor.textContent = '▊';
+    
+    messageText.appendChild(contentSpan);
+    messageText.appendChild(cursor);
 
     contentDiv.appendChild(header);
     contentDiv.appendChild(messageText);
@@ -71,85 +105,180 @@ export class StreamingRenderer {
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(contentDiv);
 
-    // Add to container
+    // Add to container with smooth animation
+    messageDiv.style.opacity = '0';
+    messageDiv.style.transform = 'translateY(10px)';
     container.appendChild(messageDiv);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      messageDiv.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      messageDiv.style.opacity = '1';
+      messageDiv.style.transform = 'translateY(0)';
+    });
 
     // Update state with references
     this.stateManager.setStreamingState({
       streamingMessageElement: messageDiv,
-      streamingContentContainer: messageText
+      streamingContentContainer: contentSpan,
+      streamingIndicator: indicator
     });
 
-    // Force scroll to the new message
-    this.scrollManager.forceScrollToBottom();
+    // Smooth scroll to the new message
+    this.scrollManager.scheduleScrollUpdate();
   }
 
   appendToken(token: string): void {
-    const streamingState = this.stateManager.getStreamingState();
-    if (!streamingState.streamingContentContainer) return;
-
-    // Direct text append for simple streaming
-    const currentText = streamingState.streamingContentContainer.textContent || '';
-    streamingState.streamingContentContainer.textContent = currentText + token;
+    // Add token to buffer for batched updates
+    this.streamingBuffer.tokens.push(token);
     
-    // Ensure typing cursor is visible
-    streamingState.streamingContentContainer.classList.add('typing-cursor');
+    // Schedule update if not already scheduled
+    if (!this.streamingBuffer.updateScheduled) {
+      this.scheduleBufferUpdate();
+    }
+  }
+
+  private scheduleBufferUpdate(): void {
+    if (this.streamingBuffer.updateScheduled) return;
+    
+    this.streamingBuffer.updateScheduled = true;
+    
+    // Use requestAnimationFrame for smooth 60fps updates
+    requestAnimationFrame(() => {
+      this.flushBuffer();
+      this.streamingBuffer.updateScheduled = false;
+    });
+  }
+
+  private flushBuffer(): void {
+    const streamingState = this.stateManager.getStreamingState();
+    if (!streamingState.streamingContentContainer || this.streamingBuffer.tokens.length === 0) {
+      return;
+    }
+
+    // Get all pending tokens
+    const tokens = this.streamingBuffer.tokens.splice(0);
+    const newText = tokens.join('');
+    
+    // Update content smoothly
+    const currentText = streamingState.streamingContentContainer.textContent || '';
+    const updatedText = currentText + newText;
+    
+    // Use textContent for better performance during streaming
+    streamingState.streamingContentContainer.textContent = updatedText;
+    
+    // Update the cursor position (keep it at the end)
+    const cursor = streamingState.streamingContentContainer.parentElement?.querySelector('.typing-cursor') as HTMLElement;
+    if (cursor) {
+      cursor.style.opacity = '1';
+    }
+    
+    // Schedule smooth scroll update
+    this.scrollManager.scheduleScrollUpdate();
   }
 
   finalizeStreamingMessage(): void {
     const streamingState = this.stateManager.getStreamingState();
     
     if (streamingState.streamingMessageElement) {
+      // Remove streaming classes and indicators
       streamingState.streamingMessageElement.classList.remove('streaming');
       
-      // Remove typing cursor
-      if (streamingState.streamingContentContainer) {
-        streamingState.streamingContentContainer.classList.remove('typing-cursor');
-        
-        // Process final content with markdown
-        const finalText = streamingState.streamingContentContainer.textContent || '';
-        if (finalText) {
-          this.processFinalContent(finalText, streamingState.streamingContentContainer);
-        }
+      // Hide streaming indicator
+      if (streamingState.streamingIndicator) {
+        (streamingState.streamingIndicator as HTMLElement).style.opacity = '0';
+        setTimeout(() => {
+          streamingState.streamingIndicator?.remove();
+        }, 300);
       }
+      
+      // Remove typing cursor with smooth fade
+      const cursor = streamingState.streamingMessageElement.querySelector('.typing-cursor') as HTMLElement;
+      if (cursor) {
+        cursor.style.opacity = '0';
+        setTimeout(() => cursor.remove(), 300);
+      }
+      
+      // Process final content with markdown after a brief delay
+      setTimeout(() => {
+        if (streamingState.streamingContentContainer) {
+          const finalText = streamingState.streamingContentContainer.textContent || '';
+          if (finalText) {
+            this.processFinalContent(finalText, streamingState.streamingContentContainer);
+          }
+        }
+      }, 200);
     }
+
+    // Clear buffer
+    this.streamingBuffer.tokens = [];
+    this.streamingBuffer.updateScheduled = false;
   }
 
   private processFinalContent(content: string, container: HTMLElement): void {
-    // Check if content has code blocks or complex markdown
-    if (content.includes('```') || content.includes('**') || content.includes('*')) {
+    // Check if content needs markdown processing
+    const needsMarkdown = content.includes('```') || 
+                         content.includes('**') || 
+                         content.includes('*') ||
+                         content.includes('`') ||
+                         /^\s*[-•]\s/.test(content);
+
+    if (needsMarkdown) {
       // For complex content, rebuild with proper markdown processing
       this.rebuildWithMarkdown(content, container);
     } else {
-      // For simple text, just apply basic formatting
-      container.innerHTML = this.processSimpleMarkdown(content);
+      // For simple text, just clean up and format
+      container.innerHTML = this.processSimpleText(content);
     }
   }
 
   private rebuildWithMarkdown(content: string, container: HTMLElement): void {
     // Find the parent message content to rebuild
-    const messageContent = container.closest('.message-content');
+    const messageContent = container.closest('.message-content') as HTMLElement;
     if (!messageContent) return;
 
     // Keep the header, rebuild the content
     const header = messageContent.querySelector('.message-header');
     
-    // Clear content but keep header
-    messageContent.innerHTML = '';
-    if (header) {
-      messageContent.appendChild(header);
-    }
+    // Smooth transition out
+    const currentHeight = messageContent.offsetHeight;
+    messageContent.style.height = currentHeight + 'px';
+    messageContent.style.overflow = 'hidden';
+    
+    setTimeout(() => {
+      // Clear content but keep header
+      messageContent.innerHTML = '';
+      if (header) {
+        messageContent.appendChild(header);
+      }
 
-    // Process content with proper markdown handling
-    if (content.includes('```')) {
-      this.processMarkdownWithCodeBlocks(content, messageContent as HTMLElement);
-    } else {
-      // Simple content - create a single text div
-      const textDiv = document.createElement('div');
-      textDiv.className = 'message-text';
-      textDiv.innerHTML = this.processSimpleMarkdown(content);
-      messageContent.appendChild(textDiv);
-    }
+      // Process content with proper markdown handling
+      if (content.includes('```')) {
+        this.processMarkdownWithCodeBlocks(content, messageContent);
+      } else {
+        // Simple content - create a single text div
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.innerHTML = this.processSimpleMarkdown(content);
+        messageContent.appendChild(textDiv);
+      }
+      
+      // Smooth transition back
+      messageContent.style.height = 'auto';
+      const newHeight = messageContent.offsetHeight;
+      messageContent.style.height = currentHeight + 'px';
+      
+      requestAnimationFrame(() => {
+        messageContent.style.transition = 'height 0.3s ease';
+        messageContent.style.height = newHeight + 'px';
+        
+        setTimeout(() => {
+          messageContent.style.height = 'auto';
+          messageContent.style.overflow = 'visible';
+          messageContent.style.transition = '';
+        }, 300);
+      });
+    }, 100);
   }
 
   private processMarkdownWithCodeBlocks(content: string, container: HTMLElement): void {
@@ -160,12 +289,29 @@ export class StreamingRenderer {
         // This is a code block
         const lines = part.split('\n');
         const firstLine = lines[0].replace('```', '');
-        const language = firstLine.trim() || 'text';
+        
+        // Check for file path pattern
+        let language = firstLine.trim() || 'text';
+        let filePath = '';
+        
+        if (firstLine.includes(':')) {
+          const colonIndex = firstLine.indexOf(':');
+          language = firstLine.substring(0, colonIndex).trim() || 'text';
+          filePath = firstLine.substring(colonIndex + 1).trim();
+        }
+        
         const code = lines.slice(1, -1).join('\n');
         
         if (code.trim()) {
-          const codeBlock = this.createInteractiveCodeBlock(code, language);
-          container.appendChild(codeBlock);
+          if (filePath) {
+            // This is a file creation block
+            const fileBlock = this.createFileCreationBlock(code, language, filePath);
+            container.appendChild(fileBlock);
+          } else {
+            // Regular code block
+            const codeBlock = this.createInteractiveCodeBlock(code, language);
+            container.appendChild(codeBlock);
+          }
         }
       } else if (part.trim()) {
         // This is regular text
@@ -177,33 +323,110 @@ export class StreamingRenderer {
     });
   }
 
-  private processSimpleMarkdown(content: string): string {
-    let processed = content;
-    
-    // Bold text
-    processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    
-    // Italic text
-    processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
-    // Inline code
-    processed = processed.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    
-    // Bullet points
-    processed = processed.replace(/^• (.*$)/gim, '• $1');
-    
-    // Convert newlines to proper line breaks
-    processed = processed.replace(/\n/g, '<br>');
-    
-    return processed;
+  private createFileCreationBlock(code: string, language: string, filePath: string): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'file-creation-container';
+
+    // File header
+    const header = document.createElement('div');
+    header.className = 'file-creation-header';
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-creation-info';
+
+    const fileIcon = document.createElement('span');
+    fileIcon.className = 'file-creation-icon';
+    fileIcon.textContent = this.getFileIcon(filePath);
+
+    const pathSpan = document.createElement('span');
+    pathSpan.className = 'file-creation-path';
+    pathSpan.textContent = filePath;
+
+    const status = document.createElement('span');
+    status.className = 'file-creation-status new';
+    status.textContent = 'NEW';
+
+    fileInfo.appendChild(fileIcon);
+    fileInfo.appendChild(pathSpan);
+    fileInfo.appendChild(status);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'file-creation-actions';
+
+    const createBtn = document.createElement('button');
+    createBtn.className = 'file-action-btn create-btn';
+    createBtn.innerHTML = '<span class="btn-icon">📁</span><span class="btn-text">Create File</span>';
+    createBtn.onclick = () => this.createFile(filePath, code, container);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'file-action-btn copy-btn';
+    copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
+    copyBtn.onclick = () => this.copyCodeToClipboard(code);
+
+    actions.appendChild(createBtn);
+    actions.appendChild(copyBtn);
+
+    header.appendChild(fileInfo);
+    header.appendChild(actions);
+
+    // Code content
+    const content = document.createElement('div');
+    content.className = 'file-creation-content';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'file-code-textarea';
+    textarea.value = code;
+    textarea.readOnly = true;
+    textarea.rows = Math.min(Math.max(code.split('\n').length + 1, 5), 30);
+
+    content.appendChild(textarea);
+    container.appendChild(header);
+    container.appendChild(content);
+
+    return container;
   }
 
-  // CRITICAL: Create interactive code blocks with textarea for full cursor control
+  private async createFile(filePath: string, content: string, container: HTMLElement): Promise<void> {
+    try {
+      const result = await (window as any).electronAPI.createFileWithContent({
+        path: filePath,
+        content: content,
+        createDirectories: true
+      });
+      
+      if (result.success) {
+        const status = container.querySelector('.file-creation-status') as HTMLElement;
+        const createBtn = container.querySelector('.create-btn') as HTMLButtonElement;
+        
+        if (status) {
+          status.textContent = 'CREATED';
+          status.className = 'file-creation-status created';
+        }
+        
+        if (createBtn) {
+          createBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Created</span>';
+          createBtn.disabled = true;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create file:', error);
+    }
+  }
+
+  private getFileIcon(filePath: string): string {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const iconMap: { [key: string]: string } = {
+      'js': '🟨', 'ts': '🔷', 'jsx': '⚛️', 'tsx': '⚛️',
+      'py': '🐍', 'html': '🌐', 'css': '🎨', 'scss': '🎨',
+      'json': '📋', 'md': '📝', 'yml': '⚙️', 'yaml': '⚙️'
+    };
+    return iconMap[ext] || '📄';
+  }
+
   private createInteractiveCodeBlock(code: string, language: string): HTMLElement {
     const codeBlock = document.createElement('div');
-    const isLarge = code.split('\n').length > 20 || code.length > 1000;
-    
-    codeBlock.className = `code-block ${isLarge ? 'large' : ''}`;
+    codeBlock.className = 'code-block';
     
     // Header
     const header = document.createElement('div');
@@ -218,77 +441,26 @@ export class StreamingRenderer {
     
     const copyBtn = document.createElement('button');
     copyBtn.className = 'code-action';
-    copyBtn.innerHTML = '📋 Copy All';
+    copyBtn.innerHTML = '📋 Copy';
     copyBtn.onclick = () => this.copyCodeToClipboard(code);
     
-    // Add copy selected button
-    const copySelectedBtn = document.createElement('button');
-    copySelectedBtn.className = 'code-action';
-    copySelectedBtn.innerHTML = '📋 Copy Selected';
-    copySelectedBtn.onclick = () => this.copySelectedCode(codeBlock);
-    
-    const insertBtn = document.createElement('button');
-    insertBtn.className = 'code-action';
-    insertBtn.innerHTML = '📥 Insert';
-    insertBtn.onclick = () => this.insertCodeIntoEditor(code);
-    
     actions.appendChild(copyBtn);
-    actions.appendChild(copySelectedBtn);
-    actions.appendChild(insertBtn);
-    
     header.appendChild(langSpan);
     header.appendChild(actions);
     
-    // CRITICAL: Use textarea instead of pre/code for full interaction
+    // Content
     const content = document.createElement('div');
     content.className = 'code-content';
     
     const textarea = document.createElement('textarea');
     textarea.className = 'code-textarea';
     textarea.value = code;
-    textarea.readOnly = false; // Allow editing for full cursor control
+    textarea.readOnly = false;
     textarea.spellcheck = false;
     
-    // Set up the textarea for proper code display and interaction
-    textarea.style.cssText = `
-      width: 100%;
-      height: ${Math.min(Math.max(code.split('\n').length * 1.6 + 2, 4), 30)}rem;
-      background: transparent;
-      border: none;
-      outline: none;
-      resize: vertical;
-      padding: 1.25rem;
-      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
-      font-size: 0.8125rem;
-      line-height: 1.6;
-      color: #e6edf3;
-      white-space: pre;
-      overflow-wrap: normal;
-      overflow-x: auto;
-      tab-size: 2;
-      user-select: text;
-      -webkit-user-select: text;
-      -moz-user-select: text;
-      -ms-user-select: text;
-      cursor: text;
-    `;
-    
-    // Add event handlers for better UX
-    textarea.addEventListener('focus', () => {
-      codeBlock.classList.add('focused');
-    });
-    
-    textarea.addEventListener('blur', () => {
-      codeBlock.classList.remove('focused');
-    });
-    
-    // Add keyboard shortcuts
-    textarea.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-        e.preventDefault();
-        textarea.select();
-      }
-    });
+    // Auto-size
+    const lines = code.split('\n').length;
+    textarea.rows = Math.min(Math.max(lines + 1, 5), 30);
     
     content.appendChild(textarea);
     codeBlock.appendChild(header);
@@ -297,84 +469,114 @@ export class StreamingRenderer {
     return codeBlock;
   }
 
-  private copySelectedCode(codeBlock: HTMLElement): void {
-    const textarea = codeBlock.querySelector('.code-textarea') as HTMLTextAreaElement;
-    if (!textarea) return;
+  private processSimpleMarkdown(content: string): string {
+    let processed = content;
     
-    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-    if (selectedText) {
-      this.copyCodeToClipboard(selectedText);
-    } else {
-      // If nothing selected, copy all
-      this.copyCodeToClipboard(textarea.value);
-    }
+    // Bold text
+    processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Italic text  
+    processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Inline code
+    processed = processed.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    
+    // Bullet points
+    processed = processed.replace(/^[-•]\s+(.*$)/gim, '• $1');
+    
+    // Convert newlines to proper line breaks
+    processed = processed.replace(/\n/g, '<br>');
+    
+    return processed;
+  }
+
+  private processSimpleText(content: string): string {
+    return content.replace(/\n/g, '<br>');
   }
 
   private async copyCodeToClipboard(code: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(code);
-      
-      // Show brief success feedback
-      const button = event?.target as HTMLElement;
-      if (button) {
-        const originalText = button.innerHTML;
-        button.innerHTML = '✅ Copied!';
-        button.style.color = '#10b981';
-        setTimeout(() => {
-          button.innerHTML = originalText;
-          button.style.color = '';
-        }, 2000);
-      }
+      // Could add success feedback here
     } catch (error) {
-      console.error('Failed to copy code:', error);
+      console.error('Failed to copy:', error);
     }
   }
 
-  private insertCodeIntoEditor(code: string): void {
-    // This will be handled by the CodeInsertion module
-    const event = new CustomEvent('insertCode', { detail: { code } });
-    document.dispatchEvent(event);
+  // Chunked processing UI
+  showChunkedProgress(currentChunk: number, totalChunks: number): void {
+    this.chunkedState.isChunked = true;
+    this.chunkedState.currentChunk = currentChunk;
+    this.chunkedState.totalChunks = totalChunks;
+
+    if (!this.chunkedState.progressElement) {
+      this.createChunkedProgressElement();
+    }
+
+    this.updateChunkedProgress();
   }
 
-  // Add method to show chunked response progress
-  showChunkedProgress(currentChunk: number, totalChunks: number): void {
+  private createChunkedProgressElement(): void {
     const container = document.getElementById('chat-messages');
     if (!container) return;
 
-    // Remove existing progress if any
-    const existingProgress = container.querySelector('.chunked-progress');
-    if (existingProgress) {
-      existingProgress.remove();
-    }
-
-    // Create progress indicator
     const progressDiv = document.createElement('div');
-    progressDiv.className = 'chunked-progress message assistant';
+    progressDiv.className = 'chunked-progress-container';
+    
     progressDiv.innerHTML = `
-      <div class="message-avatar">🤖</div>
-      <div class="message-content">
-        <div class="message-header">
-          <span class="message-role">Claude</span>
-          <span class="message-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      <div class="chunked-progress">
+        <div class="chunked-progress-icon">🔄</div>
+        <div class="chunked-progress-text">
+          <span class="chunked-progress-title">Processing complex response...</span>
+          <span class="chunked-progress-status">Chunk <span class="current-chunk">1</span> of <span class="total-chunks">1</span></span>
         </div>
-        <div class="chunked-progress-content">
-          <div class="progress-text">Processing complex request... (${currentChunk}/${totalChunks})</div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${(currentChunk / totalChunks) * 100}%"></div>
-          </div>
+        <div class="chunked-progress-bar">
+          <div class="chunked-progress-fill"></div>
         </div>
       </div>
     `;
 
     container.appendChild(progressDiv);
     this.chunkedState.progressElement = progressDiv;
-    this.scrollManager.forceScrollToBottom();
+
+    // Animate in
+    requestAnimationFrame(() => {
+      progressDiv.style.opacity = '1';
+      progressDiv.style.transform = 'translateY(0)';
+    });
+  }
+
+  private updateChunkedProgress(): void {
+    if (!this.chunkedState.progressElement) return;
+
+    const currentSpan = this.chunkedState.progressElement.querySelector('.current-chunk') as HTMLElement;
+    const totalSpan = this.chunkedState.progressElement.querySelector('.total-chunks') as HTMLElement;
+    const progressFill = this.chunkedState.progressElement.querySelector('.chunked-progress-fill') as HTMLElement;
+
+    if (currentSpan) currentSpan.textContent = this.chunkedState.currentChunk.toString();
+    if (totalSpan) totalSpan.textContent = this.chunkedState.totalChunks.toString();
+    
+    if (progressFill) {
+      const percent = (this.chunkedState.currentChunk / this.chunkedState.totalChunks) * 100;
+      progressFill.style.width = `${percent}%`;
+    }
   }
 
   hideChunkedProgress(): void {
     if (this.chunkedState.progressElement) {
-      this.chunkedState.progressElement.remove();
-      this.chunkedState.progressElement = undefined;
+      this.chunkedState.progressElement.style.opacity = '0';
+      this.chunkedState.progressElement.style.transform = 'translateY(-10px)';
+      
+      setTimeout(() => {
+        this.chunkedState.progressElement?.remove();
+        this.chunkedState.progressElement = undefined;
+      }, 300);
     }
+
+    this.chunkedState = {
+      isChunked: false,
+      currentChunk: 0,
+      totalChunks: 0
+    };
   }
 }

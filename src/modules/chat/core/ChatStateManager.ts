@@ -20,6 +20,7 @@ export class ChatStateManager {
       currentStreamSessionId: null,
       streamingMessageElement: null,
       streamingContentContainer: null,
+      streamingIndicator: null,
       currentCodeBlock: null,
       isInCodeBlock: false,
       codeBlockBuffer: ''
@@ -97,6 +98,7 @@ export class ChatStateManager {
       currentStreamSessionId: null,
       streamingMessageElement: null,
       streamingContentContainer: null,
+      streamingIndicator: null,
       currentCodeBlock: null,
       isInCodeBlock: false,
       codeBlockBuffer: ''
