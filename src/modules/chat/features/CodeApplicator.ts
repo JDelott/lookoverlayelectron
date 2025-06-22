@@ -1,72 +1,43 @@
+import { AICodeRefactor, RefactorRequest } from './AICodeRefactor.js';
+
 export interface ApplyCodeOptions {
-  insertionMode: 'replace' | 'cursor' | 'merge';
+  insertionMode: 'replace' | 'cursor' | 'ai-refactor';
   filePath?: string;
 }
 
 export class CodeApplicator {
-  private state: any; // AppState reference
+  private state: any;
+  private aiRefactor: AICodeRefactor;
 
   constructor(state: any) {
     this.state = state;
+    this.aiRefactor = new AICodeRefactor(state);
   }
 
-  async applyCode(code: string, language: string, options: ApplyCodeOptions = { insertionMode: 'cursor' }): Promise<void> {
+  async applyCode(code: string, language: string, options: ApplyCodeOptions = { insertionMode: 'ai-refactor' }): Promise<void> {
     console.log('🔧 === CodeApplicator.applyCode START ===');
-    console.log('🔧 Code preview:', code.substring(0, 100) + (code.length > 100 ? '...' : ''));
-    console.log('🔧 Language:', language);
-    console.log('🔧 State available:', !!this.state);
-    console.log('🔧 Monaco editor available:', !!this.state?.monacoEditor);
+    console.log('🔧 Options:', options);
     
-    // Check if we have an editor available
     if (!this.state?.monacoEditor) {
       console.error('❌ No Monaco editor available');
-      
-      // Show a more helpful error with options
-      const overlay = document.createElement('div');
-      overlay.className = 'apply-code-overlay';
-      overlay.innerHTML = `
-        <div class="apply-code-modal">
-          <div class="apply-code-header">
-            <h3>No File Open</h3>
-            <button class="close-btn" onclick="this.closest('.apply-code-overlay').remove()">✕</button>
-          </div>
-          <div class="apply-code-content">
-            <p>To apply code, you need to have a file open in the editor first.</p>
-            <div class="apply-code-preview">
-              <div class="preview-label">Code to apply:</div>
-              <textarea class="code-preview" readonly>${code}</textarea>
-            </div>
-          </div>
-          <div class="apply-code-actions">
-            <button class="btn-secondary" onclick="this.closest('.apply-code-overlay').remove()">Cancel</button>
-            <button class="btn-primary" onclick="navigator.clipboard.writeText(\`${code.replace(/`/g, '\\`')}\`).then(() => { this.closest('.apply-code-overlay').remove(); alert('Code copied to clipboard!'); })">Copy Code</button>
-          </div>
-        </div>
-      `;
-      
-      document.body.appendChild(overlay);
-      this.injectApplyCodeStyles();
+      this.showNoEditorDialog(code);
       return;
     }
 
     try {
-      const selection = this.state.monacoEditor.getSelection();
-      const hasSelection = selection && !selection.isEmpty();
+      const currentCode = this.state.monacoEditor.getValue();
+      const hasSelection = this.hasValidSelection();
       
-      console.log('🔧 Selection info:', { hasSelection, selection });
-
-      // Show apply preview dialog
-      this.showApplyPreview(code, language, hasSelection, options);
-      console.log('✅ Apply preview shown');
+      // Show application method selection
+      this.showApplicationMethodDialog(code, language, currentCode, hasSelection);
       
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('❌ Error in applyCode:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      this.showError(`Error: ${errorMessage}`);
+      this.showError(`Error: ${this.getErrorMessage(error)}`);
     }
   }
 
-  private showApplyPreview(code: string, language: string, hasSelection: boolean, options: ApplyCodeOptions): void {
+  private showApplicationMethodDialog(code: string, language: string, currentCode: string, hasSelection: boolean): void {
     const overlay = document.createElement('div');
     overlay.className = 'apply-code-overlay';
     
@@ -75,44 +46,55 @@ export class CodeApplicator {
     
     modal.innerHTML = `
       <div class="apply-code-header">
-        <h3>Apply Code</h3>
+        <h3>How would you like to apply this code?</h3>
         <button class="close-btn" onclick="this.closest('.apply-code-overlay').remove()">✕</button>
       </div>
       
       <div class="apply-code-content">
         <div class="apply-code-preview">
-          <div class="preview-label">Code to apply:</div>
+          <div class="preview-label">Code to apply (${this.getCodeStats(code)}):</div>
           <textarea class="code-preview" readonly>${code}</textarea>
         </div>
         
-        <div class="apply-options">
-          <div class="option-group">
-            <label class="option">
-              <input type="radio" name="apply-mode" value="replace" ${hasSelection ? 'checked' : ''} ${!hasSelection ? 'disabled' : ''}>
-              Replace selected text ${!hasSelection ? '(no selection)' : ''}
-            </label>
-            <label class="option">
-              <input type="radio" name="apply-mode" value="cursor" ${!hasSelection ? 'checked' : ''}>
-              Insert at cursor position
-            </label>
-            <label class="option">
-              <input type="radio" name="apply-mode" value="merge">
-              Smart merge (experimental)
-            </label>
+        <div class="apply-methods">
+          <div class="method-card recommended" data-method="ai-refactor">
+            <div class="method-header">
+              <span class="method-icon">🤖</span>
+              <span class="method-title">AI Smart Refactor</span>
+              <span class="recommended-badge">Recommended</span>
+            </div>
+            <div class="method-description">
+              Let AI intelligently merge and refactor the new code with your existing code
+            </div>
           </div>
           
-          <div class="additional-options">
-            <label class="option">
-              <input type="checkbox" id="format-after-apply" checked>
-              Format code after applying
-            </label>
+          ${hasSelection ? `
+          <div class="method-card" data-method="replace">
+            <div class="method-header">
+              <span class="method-icon">🔄</span>
+              <span class="method-title">Replace Selection</span>
+            </div>
+            <div class="method-description">
+              Replace the selected text with the new code
+            </div>
+          </div>
+          ` : ''}
+          
+          <div class="method-card" data-method="cursor">
+            <div class="method-header">
+              <span class="method-icon">📍</span>
+              <span class="method-title">Insert at Cursor</span>
+            </div>
+            <div class="method-description">
+              Insert the new code at the current cursor position
+            </div>
           </div>
         </div>
       </div>
       
       <div class="apply-code-actions">
         <button class="btn-secondary" onclick="this.closest('.apply-code-overlay').remove()">Cancel</button>
-        <button class="btn-primary" id="confirm-apply">Apply Code</button>
+        <button class="btn-primary" id="apply-with-method" disabled>Apply Code</button>
       </div>
     `;
 
@@ -120,84 +102,109 @@ export class CodeApplicator {
     document.body.appendChild(overlay);
     this.injectApplyCodeStyles();
 
-    // Handle apply confirmation
-    const confirmBtn = modal.querySelector('#confirm-apply') as HTMLButtonElement;
-    confirmBtn.onclick = () => {
-      const selectedMode = (modal.querySelector('input[name="apply-mode"]:checked') as HTMLInputElement)?.value;
-      const formatAfter = (modal.querySelector('#format-after-apply') as HTMLInputElement).checked;
-      
-      this.performApplication(code, selectedMode as ApplyCodeOptions['insertionMode'], formatAfter);
-      overlay.remove();
-    };
+    // Handle method selection
+    let selectedMethod = 'ai-refactor'; // Default to AI refactor
+    const methodCards = modal.querySelectorAll('.method-card');
+    const applyBtn = modal.querySelector('#apply-with-method') as HTMLButtonElement;
 
-    // Handle keyboard shortcuts
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') overlay.remove();
-      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmBtn.click();
+    // Pre-select AI refactor
+    modal.querySelector('.method-card[data-method="ai-refactor"]')?.classList.add('selected');
+    applyBtn.disabled = false;
+
+    methodCards.forEach(card => {
+      card.addEventListener('click', () => {
+        methodCards.forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedMethod = card.getAttribute('data-method')!;
+        applyBtn.disabled = false;
+      });
     });
 
-    modal.tabIndex = -1;
-    modal.focus();
+    // Handle apply
+    applyBtn.onclick = async () => {
+      overlay.remove();
+      
+      switch (selectedMethod) {
+        case 'ai-refactor':
+          await this.performAIRefactor(code, language, currentCode);
+          break;
+        case 'replace':
+          this.performSimpleApplication(code, 'replace');
+          break;
+        case 'cursor':
+          this.performSimpleApplication(code, 'cursor');
+          break;
+      }
+    };
   }
 
-  private performApplication(code: string, mode: ApplyCodeOptions['insertionMode'], formatAfter: boolean): void {
+  private async performAIRefactor(newCode: string, language: string, existingCode: string): Promise<void> {
+    try {
+      // Create refactor request
+      const request: RefactorRequest = {
+        existingCode,
+        newCode,
+        language,
+        filePath: this.state.currentFile,
+        mode: 'merge',
+        instruction: 'Please intelligently merge the new code with the existing code, maintaining the existing structure and style while integrating the new functionality.'
+      };
+
+      // Show preview and get user confirmation
+      const shouldProceed = await this.aiRefactor.showRefactorPreview(request);
+      if (!shouldProceed) {
+        return;
+      }
+
+      // Perform AI refactoring
+      const result = await this.aiRefactor.refactorCode(request);
+      
+      if (result.success) {
+        // Apply the refactored code
+        await this.aiRefactor.applyRefactoredCode(result.refactoredCode, true);
+      } else {
+        this.showError(result.error || 'AI refactoring failed');
+      }
+
+    } catch (error) {
+      console.error('❌ AI refactor failed:', error);
+      this.showError(`AI refactoring failed: ${this.getErrorMessage(error)}`);
+    }
+  }
+
+  private performSimpleApplication(code: string, mode: 'replace' | 'cursor'): void {
     if (!this.state.monacoEditor) return;
 
     try {
       const editor = this.state.monacoEditor;
-      const model = editor.getModel();
       const selection = editor.getSelection();
       const position = editor.getPosition();
 
       let range: any;
       
-      switch (mode) {
-        case 'replace':
-          if (selection && !selection.isEmpty()) {
-            range = selection;
-          } else {
-            this.showError('No text selected for replacement');
-            return;
-          }
-          break;
-          
-        case 'cursor':
-          range = {
-            startLineNumber: position.lineNumber,
-            startColumn: position.column,
-            endLineNumber: position.lineNumber,
-            endColumn: position.column
-          };
-          break;
-          
-        case 'merge':
-          // For merge, we'll replace the entire file content with a merged version
-          return this.performSmartMerge(code, formatAfter);
+      if (mode === 'replace' && this.hasValidSelection()) {
+        range = selection;
+      } else {
+        range = {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        };
       }
 
       // Apply the edit
-      const edit = {
+      editor.executeEdits('code-applicator', [{
         range: range,
         text: code
-      };
+      }]);
 
-      editor.executeEdits('code-applicator', [edit]);
+      // Format code
+      setTimeout(() => {
+        editor.getAction('editor.action.formatDocument')?.run();
+      }, 100);
 
-      // Format if requested
-      if (formatAfter) {
-        setTimeout(() => {
-          editor.getAction('editor.action.formatDocument')?.run();
-        }, 100);
-      }
-
-      // Focus editor and position cursor
       editor.focus();
-      const newPosition = {
-        lineNumber: range.startLineNumber,
-        column: range.startColumn + code.split('\n')[0].length
-      };
-      editor.setPosition(newPosition);
-
       this.showSuccess('Code applied successfully');
 
     } catch (error) {
@@ -206,44 +213,54 @@ export class CodeApplicator {
     }
   }
 
-  private performSmartMerge(newCode: string, formatAfter: boolean): void {
-    if (!this.state.monacoEditor) return;
+  private hasValidSelection(): boolean {
+    if (!this.state.monacoEditor) return false;
+    const selection = this.state.monacoEditor.getSelection();
+    return selection && !selection.isEmpty();
+  }
 
-    const editor = this.state.monacoEditor;
-    const currentCode = editor.getValue();
-    
-    // Simple merge strategy: append or replace based on content similarity
-    let mergedCode: string;
-    
-    // Check if the new code is a function/component that should replace an existing one
-    const functionMatch = newCode.match(/(?:function|const|class|export)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
-    
-    if (functionMatch) {
-      const functionName = functionMatch[1];
-      const existingFunctionRegex = new RegExp(`(?:function|const|class|export)\\s+${functionName}[\\s\\S]*?(?=(?:function|const|class|export|$))`, 'g');
-      
-      if (currentCode.match(existingFunctionRegex)) {
-        // Replace existing function
-        mergedCode = currentCode.replace(existingFunctionRegex, newCode);
-      } else {
-        // Append new function
-        mergedCode = currentCode + '\n\n' + newCode;
-      }
-    } else {
-      // Default: append to end
-      mergedCode = currentCode + '\n\n' + newCode;
+  private getCodeStats(code: string): string {
+    const lines = code.split('\n').length;
+    const chars = code.length;
+    return `${lines} lines, ${chars} chars`;
+  }
+
+  // Helper function to safely extract error messages
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
     }
-
-    // Apply the merged content
-    editor.setValue(mergedCode);
-
-    if (formatAfter) {
-      setTimeout(() => {
-        editor.getAction('editor.action.formatDocument')?.run();
-      }, 100);
+    if (typeof error === 'string') {
+      return error;
     }
+    return 'Unknown error occurred';
+  }
 
-    this.showSuccess('Code merged successfully');
+  private showNoEditorDialog(code: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'apply-code-overlay';
+    overlay.innerHTML = `
+      <div class="apply-code-modal">
+        <div class="apply-code-header">
+          <h3>No File Open</h3>
+          <button class="close-btn" onclick="this.closest('.apply-code-overlay').remove()">✕</button>
+        </div>
+        <div class="apply-code-content">
+          <p>To apply code, you need to have a file open in the editor first.</p>
+          <div class="apply-code-preview">
+            <div class="preview-label">Code to apply:</div>
+            <textarea class="code-preview" readonly>${code}</textarea>
+          </div>
+        </div>
+        <div class="apply-code-actions">
+          <button class="btn-secondary" onclick="this.closest('.apply-code-overlay').remove()">Cancel</button>
+          <button class="btn-primary" onclick="navigator.clipboard.writeText(\`${code.replace(/`/g, '\\`')}\`).then(() => { this.closest('.apply-code-overlay').remove(); alert('Code copied to clipboard!'); })">Copy Code</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    this.injectApplyCodeStyles();
   }
 
   private showSuccess(message: string): void {
@@ -281,7 +298,7 @@ export class CodeApplicator {
       
       .apply-code-modal {
         background: #1a1a1a; border: 1px solid #404040; border-radius: 12px;
-        width: 90%; max-width: 700px; max-height: 80%;
+        width: 90%; max-width: 800px; max-height: 80%;
         display: flex; flex-direction: column;
       }
       
@@ -297,7 +314,7 @@ export class CodeApplicator {
         cursor: pointer; padding: 0.25rem; border-radius: 0.25rem;
       }
       
-      .apply-code-content { flex: 1; padding: 1.5rem; }
+      .apply-code-content { flex: 1; padding: 1.5rem; overflow: auto; }
       
       .code-preview {
         width: 100%; min-height: 120px; max-height: 300px;
@@ -306,16 +323,31 @@ export class CodeApplicator {
         font-size: 0.875rem; resize: vertical;
       }
       
-      .apply-options { margin-top: 1.5rem; }
-      
-      .option-group { margin-bottom: 1rem; }
-      
-      .option {
-        display: flex; align-items: center; gap: 0.5rem; color: #d4d4d8;
-        margin-bottom: 0.5rem; cursor: pointer;
+      .apply-methods {
+        display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;
       }
       
-      .option input[disabled] + span { color: #71717a; }
+      .method-card {
+        border: 2px solid #404040; border-radius: 8px; padding: 1rem;
+        cursor: pointer; transition: all 0.2s;
+      }
+      
+      .method-card:hover { border-color: #3b82f6; }
+      .method-card.selected { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+      .method-card.recommended { border-color: #10b981; }
+      
+      .method-header {
+        display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+      }
+      
+      .method-icon { font-size: 1.2rem; }
+      .method-title { font-weight: 600; color: #e4e4e7; }
+      .recommended-badge {
+        background: #10b981; color: white; padding: 0.125rem 0.5rem;
+        border-radius: 12px; font-size: 0.75rem; margin-left: auto;
+      }
+      
+      .method-description { color: #a1a1aa; font-size: 0.875rem; }
       
       .apply-code-actions {
         padding: 1rem 1.5rem; border-top: 1px solid #404040;
@@ -329,6 +361,7 @@ export class CodeApplicator {
       
       .btn-secondary { background: #374151; color: #d4d4d8; }
       .btn-primary { background: #3b82f6; color: white; }
+      .btn-primary:disabled { background: #6b7280; cursor: not-allowed; }
       
       .code-apply-notification {
         position: fixed; top: 1rem; right: 1rem; z-index: 10001;
