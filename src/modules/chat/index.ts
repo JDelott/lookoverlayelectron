@@ -15,6 +15,7 @@ import { SpeechHandler } from './features/SpeechHandler.js';
 import { QuickActions } from './features/QuickActions.js';
 import { CodeInsertion } from './features/CodeInsertion.js';
 import { MessageRenderer } from './features/MessageRenderer.js';
+import { CodeApplicator } from './features/CodeApplicator.js';
 
 // Utility imports
 import { ScrollManager } from './utils/ScrollManager.js';
@@ -40,6 +41,7 @@ export class ChatManager {
   private quickActions: QuickActions;
   private codeInsertion: CodeInsertion;
   private messageRenderer: MessageRenderer;
+  private codeApplicator: CodeApplicator;
   
   // Utility modules
   private scrollManager: ScrollManager;
@@ -73,6 +75,9 @@ export class ChatManager {
     this.quickActions = new QuickActions();
     this.codeInsertion = new CodeInsertion(this.state);
     this.messageRenderer = new MessageRenderer();
+    
+    // Initialize code applicator
+    this.codeApplicator = new CodeApplicator(this.state);
     
     this.initializeFilePicker();
   }
@@ -131,6 +136,33 @@ export class ChatManager {
     this.uiManager.addEventListener('microphone-btn', 'click', () => this.speechHandler.toggleRecording());
     this.uiManager.addEventListener('attach-files', 'click', () => this.showFilePicker());
     this.uiManager.addEventListener('clear-all-files', 'click', () => this.clearAllAttachedFiles());
+
+    // Add code application listener with debugging
+    document.addEventListener('applyCode', (e: any) => {
+      console.log('🚀 === APPLY CODE EVENT RECEIVED ===');
+      console.log('🔧 Event detail:', e.detail);
+      console.log('🔧 Monaco editor available:', !!this.state.monacoEditor);
+      console.log('🔧 Current file:', this.state.currentFile);
+      
+      if (!this.state.monacoEditor) {
+        console.error('❌ No Monaco editor available');
+        alert('Please open a file in the editor first before applying code.');
+        return;
+      }
+      
+      try {
+        const { code, language } = e.detail;
+        console.log('🔧 Calling codeApplicator.applyCode with code length:', code.length);
+        this.codeApplicator.applyCode(code, language);
+        console.log('✅ codeApplicator.applyCode completed');
+      } catch (error: unknown) {
+        console.error('❌ Error in applyCode event handler:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        alert(`Error applying code: ${errorMessage}`);
+      }
+    });
+    
+    console.log('✅ All event listeners set up, including applyCode');
   }
 
   private removeEventListeners(): void {

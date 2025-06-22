@@ -163,6 +163,41 @@ export class ChatStyles {
           font-size: 0.75rem;
         }
       }
+
+      /* Code Apply Styles */
+      .code-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+      
+      .apply-btn {
+        background: #3b82f6 !important;
+        color: white !important;
+        border: none;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      
+      .apply-btn:hover {
+        background: #2563eb !important;
+      }
+      
+      .apply-btn:disabled {
+        background: #6b7280 !important;
+        cursor: not-allowed;
+      }
+      
+      .copy-btn {
+        background: #374151 !important;
+        color: #d4d4d8 !important;
+      }
+      
+      .copy-btn:hover {
+        background: #4b5563 !important;
+      }
     `;
   }
 

@@ -315,7 +315,8 @@ export class StreamingRenderer {
       <div class="code-header">
         <span class="code-language">${language}</span>
         <div class="code-actions">
-          <button class="code-action">📋 Copy</button>
+          <button class="code-action apply-btn">⚡ Apply</button>
+          <button class="code-action copy-btn">📋 Copy</button>
         </div>
       </div>
       <div class="code-content">
@@ -365,31 +366,42 @@ export class StreamingRenderer {
     }
   }
 
-  private setupFileCreationButtons(): void {
-    if (!this.currentContainer) return;
-
-    const createBtn = this.currentContainer.element.querySelector('.create-btn') as HTMLButtonElement;
-    const copyBtn = this.currentContainer.element.querySelector('.copy-btn') as HTMLButtonElement;
-
-    if (createBtn) {
-      createBtn.onclick = () => this.createFile(
-        this.currentContainer!.filePath!,
-        this.currentContainer!.content,
-        this.currentContainer!.element
-      );
-    }
-
-    if (copyBtn) {
-      copyBtn.onclick = () => this.copyCodeToClipboard(this.currentContainer!.content);
-    }
-  }
-
   private setupCodeBlockButtons(): void {
     if (!this.currentContainer) return;
 
-    const copyBtn = this.currentContainer.element.querySelector('.code-action') as HTMLButtonElement;
+    // Capture the content and language NOW, not when the button is clicked
+    const codeContent = this.currentContainer.content;
+    const codeLanguage = this.currentContainer.language;
+
+    const applyBtn = this.currentContainer.element.querySelector('.apply-btn') as HTMLButtonElement;
+    const copyBtn = this.currentContainer.element.querySelector('.copy-btn') as HTMLButtonElement;
+
+    if (applyBtn) {
+      applyBtn.onclick = () => this.applyCode(codeContent, codeLanguage);
+    }
+
     if (copyBtn) {
-      copyBtn.onclick = () => this.copyCodeToClipboard(this.currentContainer!.content);
+      copyBtn.onclick = () => this.copyCodeToClipboard(codeContent);
+    }
+  }
+
+  private setupFileCreationButtons(): void {
+    if (!this.currentContainer) return;
+
+    // Capture the values NOW
+    const filePath = this.currentContainer.filePath!;
+    const content = this.currentContainer.content;
+    const element = this.currentContainer.element;
+
+    const createBtn = element.querySelector('.create-btn') as HTMLButtonElement;
+    const copyBtn = element.querySelector('.copy-btn') as HTMLButtonElement;
+
+    if (createBtn) {
+      createBtn.onclick = () => this.createFile(filePath, content, element);
+    }
+
+    if (copyBtn) {
+      copyBtn.onclick = () => this.copyCodeToClipboard(content);
     }
   }
 
@@ -496,6 +508,23 @@ export class StreamingRenderer {
       // Could add success feedback here
     } catch (error) {
       console.error('Failed to copy:', error);
+    }
+  }
+
+  private applyCode(code: string, language: string): void {
+    console.log('🔧 Apply button clicked!', { code: code.substring(0, 50) + '...', language });
+    
+    // Test if the event system works
+    try {
+      // Dispatch custom event to trigger code application
+      const event = new CustomEvent('applyCode', {
+        detail: { code, language }
+      });
+      console.log('🔧 Dispatching applyCode event...');
+      document.dispatchEvent(event);
+      console.log('✅ Event dispatched successfully');
+    } catch (error) {
+      console.error('❌ Error dispatching event:', error);
     }
   }
 
