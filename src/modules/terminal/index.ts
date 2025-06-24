@@ -241,6 +241,16 @@ export class TerminalManager {
         const command = input.value.trim();
         if (command) {
           console.log(`🎯 User entered command: "${command}"`);
+          
+          // Force exit interactive mode for git commands and other regular commands
+          if (this.interactiveManager.isInInteractiveMode() && !this.shouldUseInteractiveMode(command)) {
+            console.log('🔄 Exiting interactive mode for regular command');
+            const currentProcess = this.interactiveManager.getCurrentProcess();
+            if (currentProcess) {
+              this.interactiveManager.endInteractiveProcess(currentProcess.id);
+            }
+          }
+          
           if (this.interactiveManager.isInInteractiveMode()) {
             this.sendInteractiveInput(command);
           } else {
@@ -417,6 +427,10 @@ export class TerminalManager {
     try {
       await this.processHandler.killProcess();
       this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
+      
+      // Clear interactive mode when killing processes
+      this.interactiveManager.endInteractiveProcess(this.interactiveManager.getCurrentProcess()?.id || '');
+      
       console.log('🛑 Killed running processes');
     } catch (error) {
       console.error('❌ Failed to kill processes:', error);
@@ -473,5 +487,15 @@ export class TerminalManager {
   public async testGitCommand(): Promise<void> {
     console.log('🧪 Testing git command execution...');
     await this.executeCommand('git status');
+  }
+
+  // Add this helper method
+  private shouldUseInteractiveMode(command: string): boolean {
+    // Only use interactive mode for truly interactive commands
+    const interactiveCommands = [
+      'python', 'node', 'irb', 'rails console', 'mysql', 'psql'
+    ];
+    
+    return interactiveCommands.some(cmd => command.startsWith(cmd));
   }
 }

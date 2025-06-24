@@ -338,6 +338,8 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         cwd: currentWorkingDir,
         env: {
           ...process.env,
+          // Fix PATH for macOS to include common git installation locations
+          PATH: process.env.PATH + ':/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin',
           FORCE_COLOR: '1',
           NODE_ENV: process.env.NODE_ENV || 'development',
           // Add npm/yarn specific environment variables
@@ -479,6 +481,8 @@ ipcMain.handle('execute-git-command', async (event, command: string) => {
         cwd: process.cwd(),
         env: {
           ...process.env,
+          // Fix PATH for macOS to include common git installation locations  
+          PATH: process.env.PATH + ':/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin',
           FORCE_COLOR: '0' // Disable colors for cleaner parsing
         },
         stdio: ['pipe', 'pipe', 'pipe']
