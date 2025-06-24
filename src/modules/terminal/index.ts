@@ -96,6 +96,9 @@ export class TerminalManager {
     this.problemsIntegration.initialize();
     this.filesystemIntegration.initialize();
     
+    // Ensure initial terminal display is rendered
+    this.updateTerminalDisplay();
+    
     console.log('✅ Modular terminal manager initialized');
   }
 
@@ -289,6 +292,10 @@ export class TerminalManager {
     const terminal = this.instanceManager.createTerminal(this.state.currentWorkingDirectory);
     this.stateManager.addTerminal(terminal);
     this.renderTabs();
+    
+    // Automatically update display when creating new terminal
+    this.updateTerminalDisplay();
+    
     console.log(`✅ Created new terminal: ${terminal.id}`);
     
     return terminal.id;
