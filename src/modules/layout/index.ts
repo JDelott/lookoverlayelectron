@@ -1303,11 +1303,6 @@ export class LayoutManager {
                             title="Maximize">
                       ⛶
                     </button>
-                    <button class="terminal-control-btn" 
-                            onclick="window.layoutManager?.hideTerminal()" 
-                            title="Close">
-                      ×
-                    </button>
                   </div>
                 </div>
                 
