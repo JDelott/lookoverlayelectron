@@ -718,7 +718,27 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
       // Kill specific process
       const process = runningProcesses.get(processId);
       if (process) {
-        process.kill('SIGINT'); // Send Ctrl+C signal
+        console.log(`Killing specific process: ${processId}`);
+        
+        // Try SIGINT first (Ctrl+C)
+        process.kill('SIGINT');
+        
+        // If process doesn't die in 2 seconds, use SIGTERM
+        setTimeout(() => {
+          if (!process.killed) {
+            console.log(`Process ${processId} still running, sending SIGTERM`);
+            process.kill('SIGTERM');
+          }
+        }, 2000);
+        
+        // If process still doesn't die in 5 seconds, use SIGKILL
+        setTimeout(() => {
+          if (!process.killed) {
+            console.log(`Process ${processId} still running, sending SIGKILL`);
+            process.kill('SIGKILL');
+          }
+        }, 5000);
+        
         runningProcesses.delete(processId);
         console.log(`Killed process: ${processId}`);
         return { success: true, message: `Process ${processId} terminated` };
@@ -727,16 +747,42 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
       }
     } else {
       // Kill all running processes
+      console.log(`Killing all ${runningProcesses.size} running processes`);
       let killed = 0;
+      
       runningProcesses.forEach((process, id) => {
+        console.log(`Killing process: ${id} (PID: ${process.pid})`);
+        
+        // Try SIGINT first (Ctrl+C)
         process.kill('SIGINT');
+        
+        // If process doesn't die in 2 seconds, use SIGTERM
+        setTimeout(() => {
+          if (!process.killed) {
+            console.log(`Process ${id} still running, sending SIGTERM`);
+            process.kill('SIGTERM');
+          }
+        }, 2000);
+        
+        // If process still doesn't die in 5 seconds, use SIGKILL
+        setTimeout(() => {
+          if (!process.killed) {
+            console.log(`Process ${id} still running, sending SIGKILL`);
+            process.kill('SIGKILL');
+          }
+        }, 5000);
+        
         killed++;
       });
+      
       runningProcesses.clear();
+      interactiveProcesses.clear(); // Also clear interactive processes
+      
       console.log(`Killed ${killed} processes`);
       return { success: true, message: `Terminated ${killed} processes` };
     }
   } catch (error) {
+    console.error('Error killing processes:', error);
     return { success: false, error: (error as Error).message };
   }
 });

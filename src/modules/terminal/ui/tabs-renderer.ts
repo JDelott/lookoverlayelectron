@@ -36,19 +36,46 @@ export class TabsRenderer {
       const isRunning = runningProcesses.size > 0;
       const statusIcon = isRunning ? '🟢' : '⚫';
       
+      // Show different close button behavior if this is the last terminal
+      const isLastTerminal = terminals.length <= 1;
+      const closeButtonContent = isLastTerminal ? '🗑️' : '×';
+      const closeButtonTitle = isLastTerminal ? 'Clear terminal (cannot close last terminal)' : 'Close terminal';
+      
       tab.innerHTML = `
         <span class="terminal-tab-icon">${statusIcon}</span>
         <span class="terminal-tab-name">${terminal.name}</span>
-        <button class="terminal-tab-close" onclick="window.app?.terminalManager?.closeTerminal('${terminal.id}', event)">×</button>
+        <button class="terminal-tab-close" title="${closeButtonTitle}" ${isLastTerminal ? 'style="opacity: 0.6;"' : ''}>${closeButtonContent}</button>
       `;
       
-      tab.onclick = (e) => {
+      // Add click handler for the tab (excluding close button)
+      tab.addEventListener('click', (e) => {
         if (!(e.target as HTMLElement).classList.contains('terminal-tab-close')) {
           // Trigger terminal switch
           const event = new CustomEvent('terminal-switch', { detail: { terminalId: terminal.id } });
           document.dispatchEvent(event);
         }
-      };
+      });
+
+      // Add separate click handler for the close button
+      const closeButton = tab.querySelector('.terminal-tab-close') as HTMLButtonElement;
+      if (closeButton) {
+        closeButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          if (isLastTerminal) {
+            console.log(`🗑️ Clearing last terminal: ${terminal.id}`);
+          } else {
+            console.log(`🗑️ Closing terminal: ${terminal.id}`);
+          }
+          
+          // Dispatch close event (the close method will handle whether to clear or close)
+          const closeEvent = new CustomEvent('terminal-close', { 
+            detail: { terminalId: terminal.id } 
+          });
+          document.dispatchEvent(closeEvent);
+        });
+      }
       
       tabsContainer.appendChild(tab);
     });

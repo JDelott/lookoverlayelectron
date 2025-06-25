@@ -148,6 +148,12 @@ export class TerminalManager {
       this.createNewTerminal();
     });
 
+    // Add the close event listener
+    document.addEventListener('terminal-close', (event: any) => {
+      console.log(`🎯 Terminal close event received for: ${event.detail.terminalId}`);
+      this.closeTerminal(event.detail.terminalId);
+    });
+
     // Problems integration events
     document.addEventListener('terminal-problems-updated', () => {
       if (this.state.terminalVisible && this.stateManager.getCurrentTab() === 'problems') {
@@ -193,8 +199,46 @@ export class TerminalManager {
       this.problemsIntegration.injectProblemsStyles();
     } else {
       const activeTerminal = this.stateManager.getActiveTerminal();
-      if (!activeTerminal) {
-        console.error('❌ No active terminal for display update');
+      const allTerminals = this.stateManager.getAllTerminals();
+      
+      if (!activeTerminal || allTerminals.length === 0) {
+        // Show empty state when no terminals exist
+        terminalOutput.innerHTML = `
+          <div class="terminal-empty-state" style="
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: #666;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+            text-align: center;
+            padding: 2rem;
+          ">
+            <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">🖥️</div>
+            <div style="font-size: 1.2rem; margin-bottom: 0.5rem; color: #888;">No terminal available</div>
+            <div style="font-size: 0.9rem; opacity: 0.7; margin-bottom: 1.5rem;">Click '+ New Terminal' to create one</div>
+            <button 
+              onclick="document.dispatchEvent(new CustomEvent('terminal-create-new'))"
+              style="
+                background: #4a5568;
+                color: #e2e8f0;
+                border: none;
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.375rem;
+                cursor: pointer;
+                font-family: inherit;
+                font-size: 0.875rem;
+                transition: background-color 0.2s;
+              "
+              onmouseover="this.style.backgroundColor='#2d3748'"
+              onmouseout="this.style.backgroundColor='#4a5568'"
+            >
+              + Create New Terminal
+            </button>
+          </div>
+        `;
+        console.log('📄 Showing empty terminal state');
         return;
       }
 
@@ -382,6 +426,8 @@ export class TerminalManager {
   }
 
   closeTerminal(terminalId: string, event?: Event): void {
+    console.log(`🗑️ Attempting to close terminal: ${terminalId}`);
+    
     if (event) {
       event.stopPropagation();
     }
@@ -392,9 +438,83 @@ export class TerminalManager {
       return;
     }
 
-    this.stateManager.removeTerminal(terminalId);
-    this.renderTabs();
-    console.log(`🗑️ Closed terminal: ${terminalId}`);
+    // ALWAYS kill any running processes first, regardless of whether we're closing or clearing
+    this.killTerminalProcesses(terminalId);
+
+    // Check if this is the last terminal - if so, don't allow closing
+    const allTerminals = this.stateManager.getAllTerminals();
+    if (allTerminals.length <= 1) {
+      console.log(`⚠️ Cannot close last terminal - clearing content instead`);
+      
+      // Clear the terminal content but keep it alive
+      terminal.output = '';
+      terminal.history = [];
+      
+      // Clear interactive mode
+      const currentProcess = this.interactiveManager.getCurrentProcess();
+      if (currentProcess) {
+        this.interactiveManager.endInteractiveProcess(currentProcess.id);
+      }
+      
+      // Update the display to show the cleared terminal
+      this.updateTerminalDisplay();
+      
+      console.log(`✅ Cleared terminal content instead of closing: ${terminal.name}`);
+      return;
+    }
+
+    console.log(`✅ Found terminal to close: ${terminal.name} (${allTerminals.length} terminals total)`);
+
+    // Clear interactive mode if this terminal is in interactive mode
+    const currentProcess = this.interactiveManager.getCurrentProcess();
+    if (currentProcess && currentProcess.id.includes(terminalId)) {
+      this.interactiveManager.endInteractiveProcess(currentProcess.id);
+    }
+
+    // Remove terminal from state
+    const wasRemoved = this.stateManager.removeTerminal(terminalId);
+    
+    if (wasRemoved) {
+      console.log(`✅ Successfully closed terminal: ${terminalId}`);
+      
+      // Update the display to reflect the change
+      this.renderTabs();
+      this.updateTerminalDisplay();
+    } else {
+      console.error(`❌ Failed to remove terminal from state: ${terminalId}`);
+    }
+  }
+
+  // Enhanced method to kill processes specific to a terminal
+  private async killTerminalProcesses(terminalId: string): Promise<void> {
+    try {
+      console.log(`🛑 Killing all processes for terminal: ${terminalId}`);
+      
+      // Kill ALL running processes when closing a terminal
+      // This is more aggressive but ensures dev servers and other long-running processes are terminated
+      const result = await this.processHandler.killProcess();
+      
+      // Also clear interactive mode for any processes
+      const currentProcess = this.interactiveManager.getCurrentProcess();
+      if (currentProcess) {
+        this.interactiveManager.endInteractiveProcess(currentProcess.id);
+        console.log(`🛑 Ended interactive process: ${currentProcess.id}`);
+      }
+      
+      // Additional aggressive cleanup - kill via electron API
+      if ((window as any).electronAPI) {
+        try {
+          await (window as any).electronAPI.killProcess();
+          console.log(`🛑 Sent kill signal via electron API`);
+        } catch (error) {
+          console.warn('Failed to kill via electron API:', error);
+        }
+      }
+      
+      console.log(`✅ Successfully killed processes for terminal ${terminalId}`);
+    } catch (error) {
+      console.error(`❌ Failed to kill processes for terminal ${terminalId}:`, error);
+    }
   }
 
   private renderTabs(): void {
@@ -429,9 +549,12 @@ export class TerminalManager {
       this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
       
       // Clear interactive mode when killing processes
-      this.interactiveManager.endInteractiveProcess(this.interactiveManager.getCurrentProcess()?.id || '');
+      const currentProcess = this.interactiveManager.getCurrentProcess();
+      if (currentProcess) {
+        this.interactiveManager.endInteractiveProcess(currentProcess.id);
+      }
       
-      console.log('🛑 Killed running processes');
+      console.log('🛑 Killed running processes via Ctrl+C');
     } catch (error) {
       console.error('❌ Failed to kill processes:', error);
     }
