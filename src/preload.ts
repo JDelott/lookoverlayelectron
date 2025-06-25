@@ -22,7 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeGitCommand: (command: string) => ipcRenderer.invoke('execute-git-command', command),
   
   // Process control
-  killProcess: (processId?: string) => ipcRenderer.invoke('kill-process', processId),
+  killProcess: (processId?: string, terminalId?: string) => 
+    ipcRenderer.invoke('kill-process', processId, terminalId),
   
   // External URL opening
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
@@ -41,8 +42,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   
   // Command output streaming
-  onCommandOutputStream: (callback: (data: string) => void) => {
-    ipcRenderer.on('command-output-stream', (event, data) => callback(data));
+  onCommandOutputStream: (callback: (data: string | { chunk: string; terminalId: string }) => void) => {
+    ipcRenderer.on('command-output-stream', (event, data) => {
+      callback(data);
+    });
   },
   
   // Process lifecycle events

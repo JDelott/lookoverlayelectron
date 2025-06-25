@@ -109,10 +109,48 @@ export class TerminalManager {
       return;
     }
 
-    // Setup output streaming
-    electronAPI.onCommandOutputStream((data: string) => {
-      console.log('📥 Received stream data:', data.substring(0, 100) + (data.length > 100 ? '...' : ''));
-      this.appendToActiveTerminal(data);
+    // Setup output streaming with terminal-specific handling
+    electronAPI.onCommandOutputStream((data: any) => {
+      // Handle both old format (string) and new format (object with terminalId)
+      let chunk: string;
+      let targetTerminalId: string | undefined;
+      
+      if (typeof data === 'string') {
+        // Legacy format - broadcast to active terminal
+        chunk = data;
+        targetTerminalId = undefined;
+      } else if (data && typeof data === 'object') {
+        // New format with terminal-specific targeting
+        chunk = data.chunk;
+        targetTerminalId = data.terminalId;
+      } else {
+        console.warn('⚠️ Invalid output stream data format:', data);
+        return;
+      }
+      
+      console.log(`📥 Received stream data for terminal ${targetTerminalId || 'active'}: ${chunk.substring(0, 100)}${chunk.length > 100 ? '...' : ''}`);
+      
+      // Only append to the specific terminal or active terminal if no target specified
+      if (targetTerminalId) {
+        // Append to specific terminal
+        const targetTerminal = this.stateManager.getTerminalById(targetTerminalId);
+        if (targetTerminal) {
+          const processedData = this.outputHandler.processOutput(chunk);
+          targetTerminal.output += processedData;
+          console.log(`📝 Terminal ${targetTerminalId} output updated, length: ${targetTerminal.output.length}`);
+          
+          // Only update display if this is the currently active terminal
+          const activeTerminal = this.stateManager.getActiveTerminal();
+          if (activeTerminal && activeTerminal.id === targetTerminalId) {
+            this.updateTerminalDisplay();
+          }
+        } else {
+          console.warn(`⚠️ Target terminal ${targetTerminalId} not found for output`);
+        }
+      } else {
+        // Legacy behavior - append to active terminal
+        this.appendToActiveTerminal(chunk);
+      }
     });
 
     // Setup process handlers
@@ -490,25 +528,21 @@ export class TerminalManager {
     try {
       console.log(`🛑 Killing all processes for terminal: ${terminalId}`);
       
-      // Kill ALL running processes when closing a terminal
-      // This is more aggressive but ensures dev servers and other long-running processes are terminated
-      const result = await this.processHandler.killProcess();
-      
-      // Also clear interactive mode for any processes
-      const currentProcess = this.interactiveManager.getCurrentProcess();
-      if (currentProcess) {
-        this.interactiveManager.endInteractiveProcess(currentProcess.id);
-        console.log(`🛑 Ended interactive process: ${currentProcess.id}`);
-      }
-      
-      // Additional aggressive cleanup - kill via electron API
+      // Kill only processes for this specific terminal
       if ((window as any).electronAPI) {
         try {
-          await (window as any).electronAPI.killProcess();
-          console.log(`🛑 Sent kill signal via electron API`);
+          const result = await (window as any).electronAPI.killProcess(undefined, terminalId);
+          console.log(`🛑 Kill result for terminal ${terminalId}:`, result);
         } catch (error) {
           console.warn('Failed to kill via electron API:', error);
         }
+      }
+      
+      // Clear interactive mode for any processes in this terminal
+      const currentProcess = this.interactiveManager.getCurrentProcess();
+      if (currentProcess && currentProcess.id.includes(terminalId)) {
+        this.interactiveManager.endInteractiveProcess(currentProcess.id);
+        console.log(`🛑 Ended interactive process: ${currentProcess.id}`);
       }
       
       console.log(`✅ Successfully killed processes for terminal ${terminalId}`);
@@ -547,56 +581,33 @@ export class TerminalManager {
     try {
       console.log('🛑 Attempting to kill running processes with Ctrl+C...');
       
-      // Get the count of running processes before killing
-      const runningProcesses = this.processHandler.getRunningProcesses();
-      const processCount = runningProcesses.size;
-      
-      if (processCount === 0) {
-        console.log('ℹ️ No running processes to kill');
-        this.appendToActiveTerminal('\n\x1b[93m^C No running processes\x1b[0m\n');
+      const activeTerminal = this.stateManager.getActiveTerminal();
+      if (!activeTerminal) {
+        console.log('⚠️ No active terminal found');
         return;
       }
       
-      console.log(`🛑 Killing ${processCount} running processes...`);
+      console.log(`🛑 Killing processes in terminal: ${activeTerminal.id}`);
       
-      // First attempt: Regular kill
-      await this.processHandler.killProcess();
+      // Kill processes only for the current active terminal
+      if ((window as any).electronAPI) {
+        try {
+          const result = await (window as any).electronAPI.killProcess(undefined, activeTerminal.id);
+          console.log(`🛑 Kill result:`, result);
+        } catch (error) {
+          console.warn('Failed to kill via electron API:', error);
+        }
+      }
       
-      // Clear interactive mode when killing processes
+      // Clear interactive mode for this terminal
       const currentProcess = this.interactiveManager.getCurrentProcess();
       if (currentProcess) {
         this.interactiveManager.endInteractiveProcess(currentProcess.id);
         console.log(`🛑 Ended interactive process: ${currentProcess.id}`);
       }
       
-      // Additional aggressive cleanup for stubborn processes like Next.js dev servers
-      if ((window as any).electronAPI) {
-        try {
-          // Send additional kill signals via electron API
-          await (window as any).electronAPI.killProcess();
-          console.log(`🛑 Sent additional kill signal via electron API`);
-          
-          // Wait a moment and check if processes are still running
-          setTimeout(async () => {
-            const stillRunning = this.processHandler.getRunningProcesses();
-            if (stillRunning.size > 0) {
-              console.log(`⚠️ ${stillRunning.size} processes still running, sending SIGKILL...`);
-              // Send SIGKILL for stubborn processes
-              try {
-                await (window as any).electronAPI.killProcess();
-              } catch (error) {
-                console.warn('Failed to send SIGKILL:', error);
-              }
-            }
-          }, 2000);
-          
-        } catch (error) {
-          console.warn('Failed to kill via electron API:', error);
-        }
-      }
-      
       this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
-      console.log('🛑 Killed running processes via Ctrl+C');
+      console.log(`🛑 Killed running processes in terminal: ${activeTerminal.id}`);
       
     } catch (error) {
       console.error('❌ Failed to kill processes:', error);

@@ -65,10 +65,36 @@ interface FileCreationResponse {
 
 let mainWindow: BrowserWindow | null;
 let terminalProcess: ChildProcess | null = null;
-let runningProcesses: Map<string, ChildProcess> = new Map(); // Track running processes
+
+// Make process tracking terminal-specific
+let terminalProcesses: Map<string, Map<string, ChildProcess>> = new Map(); // terminalId -> processId -> process
+let terminalInteractiveProcesses: Map<string, Map<string, ChildProcess>> = new Map(); // terminalId -> processId -> process
 
 // Global working directory tracking for terminal sessions
 let terminalWorkingDirectories = new Map<string, string>();
+
+// Add a mapping to persist terminal-process relationships
+let processTerminalMapping: Map<string, string> = new Map(); // processId -> terminalId
+
+// Helper functions for terminal-specific process management
+function getTerminalProcesses(terminalId: string): Map<string, ChildProcess> {
+  if (!terminalProcesses.has(terminalId)) {
+    terminalProcesses.set(terminalId, new Map());
+  }
+  return terminalProcesses.get(terminalId)!;
+}
+
+function getTerminalInteractiveProcesses(terminalId: string): Map<string, ChildProcess> {
+  if (!terminalInteractiveProcesses.has(terminalId)) {
+    terminalInteractiveProcesses.set(terminalId, new Map());
+  }
+  return terminalInteractiveProcesses.get(terminalId)!;
+}
+
+// Helper function to find which terminal owns a process
+function findTerminalForProcess(processId: string): string | undefined {
+  return processTerminalMapping.get(processId);
+}
 
 // Add these new imports for speech recognition
 let isRecording = false;
@@ -143,7 +169,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
     return new Promise((resolve) => {
       let currentWorkingDir = workingDir || process.cwd();
       
-      console.log(`🔧 Executing command: "${command}"`);
+      console.log(`🔧 Executing command: "${command}" in terminal: ${terminalId || 'default'}`);
       console.log(`🔧 Working dir passed: ${workingDir}`);
       console.log(`🔧 Terminal ID: ${terminalId}`);
       console.log(`🔧 Current working dir: ${currentWorkingDir}`);
@@ -332,7 +358,7 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
       const shell = os.platform() === 'win32' ? 'cmd.exe' : '/bin/bash';
       const args = os.platform() === 'win32' ? ['/c', command] : ['-c', command];
       
-      console.log(`Executing command: ${command} in directory: ${currentWorkingDir}`);
+      console.log(`Executing command: ${command} in directory: ${currentWorkingDir} for terminal: ${terminalId || 'default'}`);
       
       const childProcess = spawn(shell, args, {
         cwd: currentWorkingDir,
@@ -361,31 +387,43 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
                            command.startsWith('npx create-') || command.includes('create-next-app') ||
                            command.includes('create-react-app') || command.includes('create-vite');
       
-      // Track long-running processes
-      if (isLongRunning) {
-        const processId = `${Date.now()}-${Math.random()}`;
-        runningProcesses.set(processId, childProcess);
-        interactiveProcesses.set(processId, childProcess);
+      // Track long-running processes per terminal
+      if (isLongRunning && terminalId) {
+        const processId = `${terminalId}-${Date.now()}-${Math.random()}`;
+        const terminalProcs = getTerminalProcesses(terminalId);
+        const terminalInteractiveProcs = getTerminalInteractiveProcesses(terminalId);
+        
+        terminalProcs.set(processId, childProcess);
+        terminalInteractiveProcs.set(processId, childProcess);
+        
+        // Add to mapping for persistence
+        processTerminalMapping.set(processId, terminalId);
+        
+        console.log(`🔧 Added long-running process ${processId} to terminal ${terminalId}`);
         
         // Send process ID to renderer for tracking
         mainWindow?.webContents.send('process-started', { 
           id: processId, 
           command: command,
-          isInteractive: true
+          isInteractive: true,
+          terminalId: terminalId
         });
         
         // Clean up when process ends
         childProcess.on('close', (code) => {
-          runningProcesses.delete(processId);
-          interactiveProcesses.delete(processId);
-          mainWindow?.webContents.send('process-ended', { id: processId });
+          terminalProcs.delete(processId);
+          terminalInteractiveProcs.delete(processId);
+          processTerminalMapping.delete(processId); // Clean up mapping
+          mainWindow?.webContents.send('process-ended', { id: processId, terminalId: terminalId });
+          console.log(`🔧 Removed process ${processId} from terminal ${terminalId} (exit code: ${code})`);
         });
         
         childProcess.on('error', (error) => {
           console.error('Process error:', error);
-          runningProcesses.delete(processId);
-          interactiveProcesses.delete(processId);
-          mainWindow?.webContents.send('process-ended', { id: processId });
+          terminalProcs.delete(processId);
+          terminalInteractiveProcs.delete(processId);
+          processTerminalMapping.delete(processId); // Clean up mapping
+          mainWindow?.webContents.send('process-ended', { id: processId, terminalId: terminalId });
         });
       }
 
@@ -399,9 +437,13 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         output += chunk;
         hasInitialOutput = true;
         
-        // For long-running processes, stream output immediately
-        if (isLongRunning) {
-          mainWindow?.webContents.send('command-output-stream', chunk);
+        // For long-running processes, stream output immediately to the specific terminal
+        if (isLongRunning && terminalId) {
+          console.log(`📤 Streaming stdout to terminal ${terminalId}: ${chunk.substring(0, 50)}...`);
+          mainWindow?.webContents.send('command-output-stream', {
+            chunk: chunk,
+            terminalId: terminalId
+          });
         }
       });
 
@@ -411,9 +453,13 @@ ipcMain.handle('execute-command', async (event, command: string, workingDir?: st
         error += chunk;
         hasInitialOutput = true;
         
-        // For long-running processes, stream error output too
-        if (isLongRunning) {
-          mainWindow?.webContents.send('command-output-stream', chunk);
+        // For long-running processes, stream error output to the specific terminal
+        if (isLongRunning && terminalId) {
+          console.log(`📤 Streaming stderr to terminal ${terminalId}: ${chunk.substring(0, 50)}...`);
+          mainWindow?.webContents.send('command-output-stream', {
+            chunk: chunk,
+            terminalId: terminalId
+          });
         }
       });
 
@@ -711,30 +757,40 @@ ipcMain.handle('write-file', async (event, filePath: string, content: string) =>
   }
 });
 
-// Kill running process
-ipcMain.handle('kill-process', async (event, processId?: string) => {
+// Kill running process - updated to be terminal-specific
+ipcMain.handle('kill-process', async (event, processId?: string, terminalId?: string) => {
   try {
-    if (processId) {
-      // Kill specific process
-      const process = runningProcesses.get(processId);
+    console.log(`🛑 Kill request: processId=${processId}, terminalId=${terminalId}`);
+    
+    if (processId && terminalId) {
+      // Kill specific process in specific terminal
+      const terminalProcs = getTerminalProcesses(terminalId);
+      const process = terminalProcs.get(processId);
+      
       if (process) {
-        console.log(`Killing specific process: ${processId} (PID: ${process.pid})`);
-        
+        console.log(`Killing specific process: ${processId} in terminal: ${terminalId} (PID: ${process.pid})`);
         await killProcessTree(process.pid, process);
+        terminalProcs.delete(processId);
         
-        runningProcesses.delete(processId);
+        // Also remove from interactive processes
+        const terminalInteractiveProcs = getTerminalInteractiveProcesses(terminalId);
+        terminalInteractiveProcs.delete(processId);
+        
         console.log(`Successfully killed process: ${processId}`);
         return { success: true, message: `Process ${processId} terminated` };
       } else {
-        return { success: false, error: 'Process not found' };
+        return { success: false, error: 'Process not found in specified terminal' };
       }
-    } else {
-      // Kill all running processes
-      console.log(`Killing all ${runningProcesses.size} running processes`);
+    } else if (terminalId) {
+      // Kill all processes in specific terminal
+      const terminalProcs = getTerminalProcesses(terminalId);
+      const terminalInteractiveProcs = getTerminalInteractiveProcesses(terminalId);
+      
+      console.log(`Killing all ${terminalProcs.size} processes in terminal: ${terminalId}`);
       let killed = 0;
       
-      const killPromises = Array.from(runningProcesses.entries()).map(async ([id, process]) => {
-        console.log(`Killing process: ${id} (PID: ${process.pid})`);
+      const killPromises = Array.from(terminalProcs.entries()).map(async ([id, process]) => {
+        console.log(`Killing process: ${id} (PID: ${process.pid}) in terminal: ${terminalId}`);
         try {
           await killProcessTree(process.pid, process);
           killed++;
@@ -745,11 +801,36 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
       
       await Promise.all(killPromises);
       
-      runningProcesses.clear();
-      interactiveProcesses.clear(); // Also clear interactive processes
+      // Clear all processes for this terminal
+      terminalProcs.clear();
+      terminalInteractiveProcs.clear();
       
-      console.log(`Successfully killed ${killed} processes`);
-      return { success: true, message: `Terminated ${killed} processes` };
+      console.log(`Successfully killed ${killed} processes in terminal: ${terminalId}`);
+      return { success: true, message: `Terminated ${killed} processes in terminal ${terminalId}` };
+    } else {
+      // Legacy: Kill all processes across all terminals (fallback)
+      console.log(`Killing all processes across all terminals`);
+      let totalKilled = 0;
+      
+      for (const [tId, terminalProcs] of terminalProcesses.entries()) {
+        console.log(`Killing ${terminalProcs.size} processes in terminal: ${tId}`);
+        const killPromises = Array.from(terminalProcs.entries()).map(async ([id, process]) => {
+          try {
+            await killProcessTree(process.pid, process);
+            totalKilled++;
+          } catch (error) {
+            console.error(`Failed to kill process ${id}:`, error);
+          }
+        });
+        await Promise.all(killPromises);
+        terminalProcs.clear();
+      }
+      
+      // Clear all interactive processes
+      terminalInteractiveProcesses.clear();
+      
+      console.log(`Successfully killed ${totalKilled} processes across all terminals`);
+      return { success: true, message: `Terminated ${totalKilled} processes` };
     }
   } catch (error) {
     console.error('Error killing processes:', error);
