@@ -512,6 +512,11 @@ export class LayoutManager {
         overflow-x: hidden;
         padding: 8px 12px;
         min-height: 0;
+        /* Enable text selection in the scroll area */
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
       }
 
       .terminal-output-text {
@@ -523,6 +528,12 @@ export class LayoutManager {
         font-size: inherit;
         line-height: inherit;
         color: inherit;
+        /* Enable text selection for terminal output */
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        cursor: text;
       }
 
       .terminal-input-section {
