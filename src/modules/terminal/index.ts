@@ -545,18 +545,62 @@ export class TerminalManager {
 
   private async killRunningProcesses(): Promise<void> {
     try {
+      console.log('🛑 Attempting to kill running processes with Ctrl+C...');
+      
+      // Get the count of running processes before killing
+      const runningProcesses = this.processHandler.getRunningProcesses();
+      const processCount = runningProcesses.size;
+      
+      if (processCount === 0) {
+        console.log('ℹ️ No running processes to kill');
+        this.appendToActiveTerminal('\n\x1b[93m^C No running processes\x1b[0m\n');
+        return;
+      }
+      
+      console.log(`🛑 Killing ${processCount} running processes...`);
+      
+      // First attempt: Regular kill
       await this.processHandler.killProcess();
-      this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
       
       // Clear interactive mode when killing processes
       const currentProcess = this.interactiveManager.getCurrentProcess();
       if (currentProcess) {
         this.interactiveManager.endInteractiveProcess(currentProcess.id);
+        console.log(`🛑 Ended interactive process: ${currentProcess.id}`);
       }
       
+      // Additional aggressive cleanup for stubborn processes like Next.js dev servers
+      if ((window as any).electronAPI) {
+        try {
+          // Send additional kill signals via electron API
+          await (window as any).electronAPI.killProcess();
+          console.log(`🛑 Sent additional kill signal via electron API`);
+          
+          // Wait a moment and check if processes are still running
+          setTimeout(async () => {
+            const stillRunning = this.processHandler.getRunningProcesses();
+            if (stillRunning.size > 0) {
+              console.log(`⚠️ ${stillRunning.size} processes still running, sending SIGKILL...`);
+              // Send SIGKILL for stubborn processes
+              try {
+                await (window as any).electronAPI.killProcess();
+              } catch (error) {
+                console.warn('Failed to send SIGKILL:', error);
+              }
+            }
+          }, 2000);
+          
+        } catch (error) {
+          console.warn('Failed to kill via electron API:', error);
+        }
+      }
+      
+      this.appendToActiveTerminal('\n\x1b[93m^C Process interrupted\x1b[0m\n');
       console.log('🛑 Killed running processes via Ctrl+C');
+      
     } catch (error) {
       console.error('❌ Failed to kill processes:', error);
+      this.appendToActiveTerminal('\n\x1b[91m^C Failed to interrupt process\x1b[0m\n');
     }
   }
 

@@ -718,29 +718,12 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
       // Kill specific process
       const process = runningProcesses.get(processId);
       if (process) {
-        console.log(`Killing specific process: ${processId}`);
+        console.log(`Killing specific process: ${processId} (PID: ${process.pid})`);
         
-        // Try SIGINT first (Ctrl+C)
-        process.kill('SIGINT');
-        
-        // If process doesn't die in 2 seconds, use SIGTERM
-        setTimeout(() => {
-          if (!process.killed) {
-            console.log(`Process ${processId} still running, sending SIGTERM`);
-            process.kill('SIGTERM');
-          }
-        }, 2000);
-        
-        // If process still doesn't die in 5 seconds, use SIGKILL
-        setTimeout(() => {
-          if (!process.killed) {
-            console.log(`Process ${processId} still running, sending SIGKILL`);
-            process.kill('SIGKILL');
-          }
-        }, 5000);
+        await killProcessTree(process.pid, process);
         
         runningProcesses.delete(processId);
-        console.log(`Killed process: ${processId}`);
+        console.log(`Successfully killed process: ${processId}`);
         return { success: true, message: `Process ${processId} terminated` };
       } else {
         return { success: false, error: 'Process not found' };
@@ -750,35 +733,22 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
       console.log(`Killing all ${runningProcesses.size} running processes`);
       let killed = 0;
       
-      runningProcesses.forEach((process, id) => {
+      const killPromises = Array.from(runningProcesses.entries()).map(async ([id, process]) => {
         console.log(`Killing process: ${id} (PID: ${process.pid})`);
-        
-        // Try SIGINT first (Ctrl+C)
-        process.kill('SIGINT');
-        
-        // If process doesn't die in 2 seconds, use SIGTERM
-        setTimeout(() => {
-          if (!process.killed) {
-            console.log(`Process ${id} still running, sending SIGTERM`);
-            process.kill('SIGTERM');
-          }
-        }, 2000);
-        
-        // If process still doesn't die in 5 seconds, use SIGKILL
-        setTimeout(() => {
-          if (!process.killed) {
-            console.log(`Process ${id} still running, sending SIGKILL`);
-            process.kill('SIGKILL');
-          }
-        }, 5000);
-        
-        killed++;
+        try {
+          await killProcessTree(process.pid, process);
+          killed++;
+        } catch (error) {
+          console.error(`Failed to kill process ${id}:`, error);
+        }
       });
+      
+      await Promise.all(killPromises);
       
       runningProcesses.clear();
       interactiveProcesses.clear(); // Also clear interactive processes
       
-      console.log(`Killed ${killed} processes`);
+      console.log(`Successfully killed ${killed} processes`);
       return { success: true, message: `Terminated ${killed} processes` };
     }
   } catch (error) {
@@ -786,6 +756,76 @@ ipcMain.handle('kill-process', async (event, processId?: string) => {
     return { success: false, error: (error as Error).message };
   }
 });
+
+// Add this helper function to kill process trees more aggressively
+async function killProcessTree(pid: number | undefined, process: any): Promise<void> {
+  if (!pid || !process) {
+    console.warn('No PID or process provided to killProcessTree');
+    return;
+  }
+
+  console.log(`Killing process tree for PID: ${pid}`);
+  
+  try {
+    // For Unix-like systems (macOS, Linux), kill the entire process group
+    if (os.platform() !== 'win32') {
+      // Kill the process group to ensure all child processes are terminated
+      try {
+        // First try to kill the process group (negative PID)
+        process.kill('SIGINT');
+        console.log(`Sent SIGINT to process ${pid}`);
+        
+        // Give it 2 seconds to gracefully shutdown
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        if (!process.killed) {
+          console.log(`Process ${pid} still running, sending SIGTERM to process group...`);
+          // Kill the entire process group
+          require('child_process').spawn('kill', ['-TERM', `-${pid}`], { detached: true });
+          
+          // Give it another 2 seconds
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          if (!process.killed) {
+            console.log(`Process ${pid} still running, sending SIGKILL to process group...`);
+            // Force kill the entire process group
+            require('child_process').spawn('kill', ['-KILL', `-${pid}`], { detached: true });
+            
+            // Also try to kill the main process directly
+            process.kill('SIGKILL');
+          }
+        }
+      } catch (error) {
+        console.error(`Error killing process tree for PID ${pid}:`, error);
+        // Fallback: try to kill just the main process
+        try {
+          process.kill('SIGKILL');
+        } catch (fallbackError) {
+          console.error(`Fallback kill also failed for PID ${pid}:`, fallbackError);
+        }
+      }
+    } else {
+      // Windows process killing
+      process.kill('SIGINT');
+      
+      setTimeout(() => {
+        if (!process.killed) {
+          console.log(`Windows process ${pid} still running, sending SIGTERM`);
+          process.kill('SIGTERM');
+        }
+      }, 2000);
+      
+      setTimeout(() => {
+        if (!process.killed) {
+          console.log(`Windows process ${pid} still running, sending SIGKILL`);
+          process.kill('SIGKILL');
+        }
+      }, 5000);
+    }
+  } catch (error) {
+    console.error(`Failed to kill process tree for PID ${pid}:`, error);
+  }
+}
 
 // Update the complex query detection to be more conservative
 function isComplexQuery(messages: any[]): boolean {
