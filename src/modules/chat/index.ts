@@ -170,33 +170,50 @@ export class ChatManager {
   }
 
   private async setupAPIKey(): Promise<void> {
+    console.log('🔑 ChatManager.setupAPIKey - starting API key setup');
+    
     const input = document.getElementById('api-key-input') as HTMLInputElement;
     const button = document.getElementById('api-key-submit') as HTMLButtonElement;
     
-    if (!input || !button) return;
+    if (!input || !button) {
+      console.error('❌ ChatManager.setupAPIKey - missing input or button elements');
+      return;
+    }
 
     const apiKey = input.value.trim();
-    if (!apiKey) return;
+    console.log('🔑 ChatManager.setupAPIKey - API key from input, length:', apiKey.length);
+    
+    if (!apiKey) {
+      console.warn('⚠️ ChatManager.setupAPIKey - empty API key');
+      return;
+    }
 
     button.disabled = true;
     button.innerHTML = '<span class="btn-text">Connecting...</span>';
+    console.log('🔑 ChatManager.setupAPIKey - starting validation...');
 
     try {
+      console.log('🔑 ChatManager.setupAPIKey - calling api.validateAPIKey');
       const isValid = await this.api.validateAPIKey(apiKey);
+      console.log('🔑 ChatManager.setupAPIKey - validation result:', isValid);
       
       if (isValid) {
+        console.log('✅ ChatManager.setupAPIKey - API key validated successfully');
         this.stateManager.setAPIKeyConfigured(true);
         this.uiManager.showChatInterface();
         this.addWelcomeMessage();
+        console.log('✅ ChatManager.setupAPIKey - chat interface shown');
       } else {
+        console.error('❌ ChatManager.setupAPIKey - API key validation failed');
         throw new Error('Invalid response from API');
       }
     } catch (error) {
-      console.error('API key validation failed:', error);
+      console.error('❌ ChatManager.setupAPIKey - error during setup:', error);
       alert('Invalid API key. Please check your Anthropic API key.');
     } finally {
       button.disabled = false;
       button.innerHTML = '<span class="btn-text">Connect</span>';
+      console.log('🔑 ChatManager.setupAPIKey - button reset');
     }
   }
 
@@ -215,8 +232,15 @@ export class ChatManager {
   }
 
   private async sendMessage(): Promise<void> {
+    console.log('💬 ChatManager.sendMessage - starting message send');
+    
     const input = document.getElementById('chat-input') as HTMLTextAreaElement;
-    if (!input || !input.value.trim() || this.stateManager.isLoading()) return;
+    if (!input || !input.value.trim() || this.stateManager.isLoading()) {
+      console.warn('⚠️ ChatManager.sendMessage - invalid input or already loading');
+      return;
+    }
+
+    console.log('💬 ChatManager.sendMessage - API key available:', !!this.api.getAPIKey());
 
     const userContent = input.value.trim();
     let messageContent = userContent;
@@ -271,10 +295,12 @@ export class ChatManager {
         content: messageContent
       });
 
+      console.log('💬 ChatManager.sendMessage - starting streaming with', apiMessages.length, 'messages');
       await this.streaming.startStreaming(apiMessages, this.api.getSystemPrompt(this.state, attachedFiles));
+      console.log('✅ ChatManager.sendMessage - streaming started successfully');
       
     } catch (error) {
-      console.error('Failed to start streaming:', error);
+      console.error('❌ ChatManager.sendMessage - streaming failed:', error);
       this.handleSendError(error as Error);
     }
   }

@@ -939,12 +939,13 @@ function prepareChunkedContext(messages: any[], isFollowup: boolean = false): an
   }));
 }
 
-// Update the callAnthropicAPI function to handle much longer responses
-async function callAnthropicAPI(messages: any[], systemPrompt: string, options: any = {}): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+// Update the callAnthropicAPI function to use passed API key
+async function callAnthropicAPI(messages: any[], systemPrompt: string, options: any = {}, passedApiKey?: string): Promise<string> {
+  // Use passed API key or fall back to environment variable
+  const apiKey = passedApiKey || process.env.ANTHROPIC_API_KEY;
   
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not found in environment variables');
+    throw new Error('API key not provided. Please enter your Anthropic API key in the chat interface.');
   }
 
   const {
@@ -987,8 +988,8 @@ async function callAnthropicAPI(messages: any[], systemPrompt: string, options: 
   return data.content[0].text;
 }
 
-// Update the main anthropic-api-call handler with much larger token limits
-ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
+// Update the main API call handler to accept API key parameter
+ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt, apiKey) => {
   try {
     console.log(`Anthropic API call - ${messages.length} messages`);
     
@@ -1035,7 +1036,7 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
           const chunkResponse = await callAnthropicAPI(processedMessages, chunkSystemPrompt, {
             maxTokens: chunkNumber === 1 ? 16384 : 12288, // Very large for first chunk, large for subsequent
             timeout: 180000 // 3 minutes per chunk
-          });
+          }, apiKey); // Pass the API key
           
           fullResponse += (chunkNumber > 1 ? '\n\n' : '') + chunkResponse;
           
@@ -1100,7 +1101,7 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
     const responseText = await callAnthropicAPI(messages, systemPrompt, {
       maxTokens: 16384, // Much higher for simple queries too
       timeout: 120000   // 2 minutes
-    });
+    }, apiKey); // Pass the API key
     
     return {
       id: Date.now().toString(),
@@ -1115,12 +1116,13 @@ ipcMain.handle('anthropic-api-call', async (event, messages, systemPrompt) => {
   }
 });
 
-// Also update the streaming API handler with higher token limits
-ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+// Update the streaming API handler to accept API key parameter
+ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt, apiKey) => {
+  // Use passed API key or fall back to environment variable
+  const finalApiKey = apiKey || process.env.ANTHROPIC_API_KEY;
   
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not found in environment variables');
+  if (!finalApiKey) {
+    throw new Error('API key not provided. Please enter your Anthropic API key in the chat interface.');
   }
   
   try {
@@ -1130,7 +1132,7 @@ ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': finalApiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
@@ -1190,41 +1192,33 @@ ipcMain.handle('anthropic-api-call-stream', async (event, messages, systemPrompt
             const data = line.slice(6); // Remove 'data: ' prefix
             
             if (data === '[DONE]') {
-              mainWindow?.webContents.send('ai-stream-end', { sessionId });
-              return { success: true, sessionId };
+              continue;
             }
             
             try {
-              const parsed: StreamingToken = JSON.parse(data);
+              const parsed = JSON.parse(data) as StreamingToken;
               
-              // Handle different event types
               if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
                 // Send token to renderer
                 mainWindow?.webContents.send('ai-stream-token', {
                   sessionId,
                   token: parsed.delta.text,
-                  type: 'text'
-                });
-              } else if (parsed.type === 'content_block_start' && parsed.content_block?.text) {
-                // Initial content block
-                mainWindow?.webContents.send('ai-stream-token', {
-                  sessionId,
-                  token: parsed.content_block.text,
-                  type: 'text'
+                  type: 'content'
                 });
               }
             } catch (parseError) {
-              console.log('Failed to parse streaming data:', data);
-              // Continue processing other lines
+              console.error('Failed to parse streaming data:', parseError, 'Data:', data);
             }
           }
         }
       }
-    } finally {
-      reader.releaseLock();
+    } catch (streamError) {
+      console.error('Streaming error:', streamError);
+      mainWindow?.webContents.send('ai-stream-error', {
+        error: streamError instanceof Error ? streamError.message : 'Unknown streaming error'
+      });
+      throw streamError;
     }
-    
-    return { success: true, sessionId };
     
   } catch (error) {
     console.error('Anthropic Streaming API Error:', error);

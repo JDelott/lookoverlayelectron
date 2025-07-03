@@ -2,27 +2,63 @@ import { ChatMessage } from '../core/ChatTypes.js';
 
 export class ChatAPI {
   private electronAPI: any;
+  private apiKey: string | null = null;
 
   constructor() {
     this.electronAPI = (window as any).electronAPI;
+    console.log('🔧 ChatAPI constructor - electronAPI available:', !!this.electronAPI);
+  }
+
+  setAPIKey(apiKey: string): void {
+    this.apiKey = apiKey;
+    console.log('🔑 ChatAPI.setAPIKey - API key stored, length:', apiKey.length, 'starts with:', apiKey.substring(0, 15) + '...');
+  }
+
+  getAPIKey(): string | null {
+    console.log('🔑 ChatAPI.getAPIKey - returning API key, available:', !!this.apiKey);
+    return this.apiKey;
   }
 
   async validateAPIKey(apiKey: string): Promise<boolean> {
     try {
+      console.log('🔑 ChatAPI.validateAPIKey - starting validation, key length:', apiKey.length);
+      console.log('🔑 ChatAPI.validateAPIKey - key starts with:', apiKey.substring(0, 15) + '...');
+      
+      // Store the API key for future use
+      this.setAPIKey(apiKey);
+      
+      console.log('🔑 ChatAPI.validateAPIKey - calling electronAPI.callAnthropicAPI with API key');
       const testResult = await this.electronAPI.callAnthropicAPI(
         [{ role: 'user', content: 'Hello' }],
-        'You are a helpful assistant. Respond with just "OK" to confirm the connection.'
+        'You are a helpful assistant. Respond with just "OK" to confirm the connection.',
+        apiKey // Pass the API key
       );
 
-      return !!(testResult && (typeof testResult === 'string' || testResult.content));
+      console.log('🔑 ChatAPI.validateAPIKey - received response:', !!testResult, typeof testResult);
+      console.log('🔑 ChatAPI.validateAPIKey - response content:', testResult);
+
+      const isValid = !!(testResult && (typeof testResult === 'string' || testResult.content));
+      console.log('🔑 ChatAPI.validateAPIKey - validation result:', isValid);
+      
+      return isValid;
     } catch (error) {
-      console.error('API key validation failed:', error);
+      console.error('❌ ChatAPI.validateAPIKey - validation failed:', error);
+      // Clear the API key if validation fails
+      this.apiKey = null;
       return false;
     }
   }
 
   async startStreaming(messages: any[], systemPrompt: string): Promise<void> {
-    return await this.electronAPI.callAnthropicAPIStream(messages, systemPrompt);
+    console.log('🚀 ChatAPI.startStreaming - starting, API key available:', !!this.apiKey);
+    
+    if (!this.apiKey) {
+      console.error('❌ ChatAPI.startStreaming - no API key configured');
+      throw new Error('API key not configured');
+    }
+    
+    console.log('🚀 ChatAPI.startStreaming - calling electronAPI.callAnthropicAPIStream with stored API key');
+    return await this.electronAPI.callAnthropicAPIStream(messages, systemPrompt, this.apiKey);
   }
 
   buildEnhancedContext(state: any, attachedFiles: Map<string, any>): string {

@@ -60,13 +60,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSources: () => ipcRenderer.invoke('get-sources'),
   getScreenInfo: () => ipcRenderer.invoke('get-screen-info'),
   
-  // AI API calls
-  callAnthropicAPI: (messages: any[], systemPrompt?: string) => 
-    ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt),
+  // AI API calls - now with API key parameter
+  callAnthropicAPI: (messages: any[], systemPrompt?: string, apiKey?: string) => 
+    ipcRenderer.invoke('anthropic-api-call', messages, systemPrompt, apiKey),
   
-  // AI Streaming API calls
-  callAnthropicAPIStream: (messages: any[], systemPrompt?: string) => 
-    ipcRenderer.invoke('anthropic-api-call-stream', messages, systemPrompt),
+  // AI Streaming API calls - now with API key parameter
+  callAnthropicAPIStream: (messages: any[], systemPrompt?: string, apiKey?: string) => 
+    ipcRenderer.invoke('anthropic-api-call-stream', messages, systemPrompt, apiKey),
   
   // AI Streaming event listeners
   onAIStreamStart: (callback: (data: { sessionId: string }) => void) => {

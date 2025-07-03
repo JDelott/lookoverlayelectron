@@ -25,8 +25,9 @@ declare global {
       onProcessStarted: (callback: (info: { id: string; command: string }) => void) => void;
       onProcessEnded: (callback: (info: { id: string }) => void) => void;
       
-      // AI API
-      callAnthropicAPI: (messages: any[], systemPrompt?: string) => Promise<any>;
+      // AI API - updated to include optional API key parameter
+      callAnthropicAPI: (messages: any[], systemPrompt?: string, apiKey?: string) => Promise<any>;
+      callAnthropicAPIStream: (messages: any[], systemPrompt?: string, apiKey?: string) => Promise<void>;
       
       // Project management
       setCurrentDirectory: (directoryPath: string) => Promise<{ success: boolean; currentDirectory?: string; error?: string }>;
